@@ -6,4 +6,4 @@ if command -v uv >/dev/null 2>&1; then
 else
   python3 -m pip install --user --upgrade "$ROOT"
 fi
-printf '\nInstalled qg. Run: qg init --install\n'
+printf '\nInstalled AQG. Run: qg setup /path/to/project --owner @your-owner\n'

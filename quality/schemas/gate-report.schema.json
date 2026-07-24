@@ -1,33 +1,58 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/agent-quality-gauntlet/gate-report.schema.json",
-  "title": "Agent Quality Gauntlet gate report",
+  "$id": "https://github.com/siraht/AgentGauntlet/blob/main/quality/schemas/gate-report.schema.json",
+  "title": "Agent Quality Gauntlet v2 gate evidence",
   "type": "object",
   "required": [
     "schema_version",
+    "run_id",
     "gate",
     "status",
+    "exit_code",
+    "raw_exit_code",
+    "command",
     "started_at",
     "duration_ms",
-    "command",
-    "findings"
+    "timed_out",
+    "revision",
+    "base_ref",
+    "change_fingerprint",
+    "control_fingerprint",
+    "stdout",
+    "stderr"
   ],
   "properties": {
     "schema_version": {
-      "const": "1"
+      "const": "2"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
     },
     "gate": {
       "type": "string",
       "minLength": 1
     },
+    "profile": {
+      "type": ["string", "null"]
+    },
     "status": {
       "enum": [
         "pass",
-        "fail",
+        "quality_failure",
         "configuration_error",
-        "infrastructure_error",
-        "skip"
+        "infrastructure_error"
       ]
+    },
+    "exit_code": {
+      "enum": [0, 1, 2, 3]
+    },
+    "raw_exit_code": {
+      "type": "integer"
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1
     },
     "started_at": {
       "type": "string",
@@ -37,80 +62,25 @@
       "type": "integer",
       "minimum": 0
     },
-    "command": {
+    "timed_out": {
+      "type": "boolean"
+    },
+    "revision": {
       "type": "string"
     },
-    "tool": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "version": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false
-    },
-    "scope": {
+    "base_ref": {
       "type": "string"
     },
-    "input_hash": {
+    "change_fingerprint": {
       "type": "string"
     },
-    "summary": {
-      "type": "object"
-    },
-    "findings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "rule",
-          "message"
-        ],
-        "properties": {
-          "rule": {
-            "type": "string"
-          },
-          "severity": {
-            "enum": [
-              "info",
-              "warning",
-              "error"
-            ]
-          },
-          "message": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "line": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "column": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "help": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": true
-      }
-    },
-    "artifacts": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "stdout_log": {
+    "control_fingerprint": {
       "type": "string"
     },
-    "stderr_log": {
+    "stdout": {
+      "type": "string"
+    },
+    "stderr": {
       "type": "string"
     }
   },

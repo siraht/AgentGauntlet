@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
 import json
-from pathlib import Path
 import re
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 from .constants import DEFAULT_EXCLUDES
-from .util import command_exists, iter_files, matches_any
-
+from .util import command_exists, iter_files
 
 JS_SUFFIXES = {".js", ".jsx", ".mjs", ".cjs"}
 TS_SUFFIXES = {".ts", ".tsx", ".mts", ".cts"}
@@ -88,7 +87,11 @@ def _python_manager(root: Path) -> str | None:
         return "poetry"
     if (root / "Pipfile.lock").exists() or (root / "Pipfile").exists():
         return "pipenv"
-    if any(root.glob("requirements*.txt")) or (root / "setup.py").exists() or (root / "setup.cfg").exists():
+    if (
+        any(root.glob("requirements*.txt"))
+        or (root / "setup.py").exists()
+        or (root / "setup.cfg").exists()
+    ):
         return "pip"
     if (root / "pyproject.toml").exists():
         return "uv" if command_exists("uv") else "pip"
@@ -129,7 +132,12 @@ def _frameworks(package: dict[str, Any], root: Path) -> list[str]:
         for path in [pyproject, *root.glob("requirements*.txt")]
         if path.exists()
     ).lower()
-    for token, label in (("django", "django"), ("flask", "flask"), ("fastapi", "fastapi"), ("pytest", "pytest")):
+    for token, label in (
+        ("django", "django"),
+        ("flask", "flask"),
+        ("fastapi", "fastapi"),
+        ("pytest", "pytest"),
+    ):
         if re.search(rf"\b{re.escape(token)}\b", requirements):
             found.add(label)
     return sorted(found)
@@ -153,7 +161,9 @@ def _path_roots(root: Path, files: list[Path]) -> list[str]:
     roots: set[str] = set()
     for name in preferred:
         candidate = root / name
-        if candidate.exists() and any(path == candidate or candidate in path.parents for path in files):
+        if candidate.exists() and any(
+            path == candidate or candidate in path.parents for path in files
+        ):
             roots.add(name)
     for path in files:
         rel = path.relative_to(root)
@@ -170,7 +180,9 @@ def _test_paths(root: Path, files: list[Path]) -> list[str]:
         rel = path.relative_to(root)
         lower_parts = [part.lower() for part in rel.parts]
         filename = rel.name.lower()
-        if any(marker in lower_parts for marker in TEST_MARKERS) or re.search(r"(?:^|[._-])(test|spec)(?:[._-]|$)", filename):
+        if any(marker in lower_parts for marker in TEST_MARKERS) or re.search(
+            r"(?:^|[._-])(test|spec)(?:[._-]|$)", filename
+        ):
             result.add(rel.parts[0] if len(rel.parts) > 1 else rel.as_posix())
     return sorted(result)
 
@@ -212,7 +224,9 @@ def _script_command(manager: str | None, script: str) -> list[str] | None:
 
 def detect_project(root: Path) -> Detection:
     excludes = list(DEFAULT_EXCLUDES)
-    all_code = iter_files(root, JS_SUFFIXES | TS_SUFFIXES | PY_SUFFIXES | HTML_SUFFIXES | CSS_SUFFIXES, excludes)
+    all_code = iter_files(
+        root, JS_SUFFIXES | TS_SUFFIXES | PY_SUFFIXES | HTML_SUFFIXES | CSS_SUFFIXES, excludes
+    )
     js_files = [path for path in all_code if path.suffix.lower() in JS_SUFFIXES]
     ts_files = [path for path in all_code if path.suffix.lower() in TS_SUFFIXES]
     py_files = [path for path in all_code if path.suffix.lower() in PY_SUFFIXES]
@@ -221,16 +235,25 @@ def detect_project(root: Path) -> Detection:
 
     package = _safe_package(root)
     manager = _package_manager(root, package)
-    scripts = {str(k): str(v) for k, v in package.get("scripts", {}).items()} if isinstance(package.get("scripts"), dict) else {}
+    scripts = (
+        {str(k): str(v) for k, v in package.get("scripts", {}).items()}
+        if isinstance(package.get("scripts"), dict)
+        else {}
+    )
     javascript = bool(package or js_files or ts_files)
     typescript = bool(ts_files or (root / "tsconfig.json").exists())
-    python = bool(py_files or (root / "pyproject.toml").exists() or any(root.glob("requirements*.txt")))
+    python = bool(
+        py_files or (root / "pyproject.toml").exists() or any(root.glob("requirements*.txt"))
+    )
     html = bool(html_files)
     css = bool(css_files)
     files_for_sources = [
         path
         for path in all_code
-        if not any(marker in [part.lower() for part in path.relative_to(root).parts] for marker in TEST_MARKERS)
+        if not any(
+            marker in [part.lower() for part in path.relative_to(root).parts]
+            for marker in TEST_MARKERS
+        )
     ]
     source_paths = _path_roots(root, files_for_sources)
     test_paths = _test_paths(root, all_code)
@@ -238,11 +261,17 @@ def detect_project(root: Path) -> Detection:
     css_paths = _path_roots(root, css_files)
     notes: list[str] = []
     if javascript and not package:
-        notes.append("JavaScript/TypeScript files found without a root package.json; AQG will use its isolated quality toolchain.")
+        notes.append(
+            "JavaScript/TypeScript files found without a root package.json; AQG will use its isolated quality toolchain."
+        )
     if files_for_sources and not test_paths:
-        notes.append("Production source was found but no test directory or test-named file was detected.")
+        notes.append(
+            "Production source was found but no test directory or test-named file was detected."
+        )
     if typescript and not (root / "tsconfig.json").exists():
-        notes.append("TypeScript files were found without tsconfig.json; AQG will generate a strict analysis overlay.")
+        notes.append(
+            "TypeScript files were found without tsconfig.json; AQG will generate a strict analysis overlay."
+        )
 
     start_command = None
     for script in ("start", "dev", "serve", "preview"):

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/agent-quality-gauntlet/change-risk.schema.json",
+  "$id": "https://github.com/siraht/AgentGauntlet/blob/main/quality/schemas/change-risk.schema.json",
   "title": "Change risk card",
   "type": "object",
   "required": [
@@ -26,12 +26,7 @@
       "minLength": 1
     },
     "risk_profile": {
-      "enum": [
-        "experiment",
-        "standard",
-        "high_assurance",
-        "critical"
-      ]
+      "enum": ["experiment", "standard", "high_assurance", "critical"]
     },
     "production_scope": {
       "type": "boolean",
@@ -65,6 +60,19 @@
     },
     "risk_factors": {
       "type": "object",
+      "required": [
+        "data_loss",
+        "authentication",
+        "authorization",
+        "privacy",
+        "money",
+        "external_contract",
+        "migration",
+        "concurrency",
+        "irreversible_action",
+        "supply_chain",
+        "safety"
+      ],
       "properties": {
         "data_loss": {
           "type": "boolean"
@@ -93,11 +101,14 @@
         "irreversible_action": {
           "type": "boolean"
         },
+        "supply_chain": {
+          "type": "boolean"
+        },
         "safety": {
           "type": "boolean"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "failure_detection": {
       "type": "string",

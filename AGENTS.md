@@ -31,3 +31,7 @@ Before completion:
 6. Do not claim completion while a required result is unknown.
 
 Use the repository skill `quality-gauntlet` for the full workflow.
+
+## Agent Quality Gauntlet
+
+This repository uses the Agent Quality Gauntlet. Before changing code, read `QUALITY.md`, `KEYSTONE.md`, the applicable files under `feature-spec/`, and `quality/change-risk.json`. Run `python3 quality/qg.py status`, then `python3 quality/qg.py check-risk --keep-going` before declaring completion. Never modify policy-plane files, approve golden changes, suppress a checker, weaken a test, or update mutation baselines unless the user explicitly assigns a policy-maintenance task.

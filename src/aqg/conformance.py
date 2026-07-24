@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
-from typing import Any, Callable
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
 
 from .checks import lint_features, scan_secrets, scan_test_integrity
 from .constants import PASS, QUALITY_FAILURE
@@ -31,7 +30,13 @@ class ConformanceCase:
 
 
 def _project(stacks: dict[str, bool] | None = None) -> dict[str, Any]:
-    values = {"javascript": False, "typescript": False, "python": False, "html": False, "css": False}
+    values = {
+        "javascript": False,
+        "typescript": False,
+        "python": False,
+        "html": False,
+        "css": False,
+    }
     values.update(stacks or {})
     applicable = bool(values["javascript"] or values["python"])
     gates = {
@@ -42,18 +47,37 @@ def _project(stacks: dict[str, bool] | None = None) -> dict[str, Any]:
         "unit": {"applicable": applicable, "reason": "No supported source was detected."},
         "structure": {"applicable": applicable, "reason": "No supported source was detected."},
         "coverage": {"applicable": applicable, "reason": "No coverable source was detected."},
-        "contracts": {"applicable": False, "reason": "No contract fixtures in the conformance project."},
+        "contracts": {
+            "applicable": False,
+            "reason": "No contract fixtures in the conformance project.",
+        },
         "acceptance": {"applicable": True, "reason": "Conformance exercises Gherkin directly."},
         "golden": {"applicable": True, "reason": "Conformance configures one golden scenario."},
         "mutation_changed": {"applicable": applicable, "reason": "No mutable source was detected."},
-        "mutation_acceptance": {"applicable": True, "reason": "Conformance exercises example mutation."},
+        "mutation_acceptance": {
+            "applicable": True,
+            "reason": "Conformance exercises example mutation.",
+        },
         "review": {"applicable": True, "reason": "Review analysis is always applicable."},
         "secrets": {"applicable": True, "reason": "Secret scanning is always applicable."},
         "security_fast": {"applicable": applicable, "reason": "No supported source was detected."},
         "security_deep": {"applicable": applicable, "reason": "No supported source was detected."},
-        "performance": {"applicable": False, "reason": "No runnable web surface in the conformance project."},
-        "reproducible_build": {"applicable": False, "reason": "No build command in the conformance project."},
-        "release_readiness": {"applicable": True, "reason": "Release evidence is always applicable."},
+        "supply_chain": {
+            "applicable": applicable,
+            "reason": "No supported dependency ecosystem was detected.",
+        },
+        "performance": {
+            "applicable": False,
+            "reason": "No runnable web surface in the conformance project.",
+        },
+        "reproducible_build": {
+            "applicable": False,
+            "reason": "No build command in the conformance project.",
+        },
+        "release_readiness": {
+            "applicable": True,
+            "reason": "Release evidence is always applicable.",
+        },
     }
     return {
         "schema_version": 2,
@@ -78,8 +102,20 @@ def _project(stacks: dict[str, bool] | None = None) -> dict[str, Any]:
         },
         "gates": gates,
         "thresholds": {
-            "coverage": {"lines": 85, "branches": 75, "functions": 80, "statements": 85, "changed_lines": 90, "allow_missing": False},
-            "structure": {"max_function_lines": 50, "max_cyclomatic_complexity": 10, "max_crap": 15, "max_nesting_depth": 4},
+            "coverage": {
+                "lines": 85,
+                "branches": 75,
+                "functions": 80,
+                "statements": 85,
+                "changed_lines": 90,
+                "allow_missing": False,
+            },
+            "structure": {
+                "max_function_lines": 50,
+                "max_cyclomatic_complexity": 10,
+                "max_crap": 15,
+                "max_nesting_depth": 4,
+            },
             "mutation": {"minimum_score": 70, "maximum_survivors": 0, "changed_only": True},
             "security": {"audit_level": "high", "allow_unreviewed_ignores": False},
             "performance": {"lighthouse_performance": 0.8, "lighthouse_accessibility": 0.95},
@@ -88,8 +124,28 @@ def _project(stacks: dict[str, bool] | None = None) -> dict[str, Any]:
     }
 
 
-def _record(cases: list[ConformanceCase], name: str, condition: bool, expected: str, observed: Any, detail: str = "") -> None:
-    cases.append(ConformanceCase(name, "pass" if condition else "fail", detail or ("Checker behaved as required." if condition else "Checker did not exhibit the required failure behavior."), expected, observed))
+def _record(
+    cases: list[ConformanceCase],
+    name: str,
+    condition: bool,
+    expected: str,
+    observed: Any,
+    detail: str = "",
+) -> None:
+    cases.append(
+        ConformanceCase(
+            name,
+            "pass" if condition else "fail",
+            detail
+            or (
+                "Checker behaved as required."
+                if condition
+                else "Checker did not exhibit the required failure behavior."
+            ),
+            expected,
+            observed,
+        )
+    )
 
 
 def _git(root: Path, *args: str) -> None:
@@ -112,27 +168,62 @@ def run_internal_conformance() -> dict[str, Any]:
         project = _project({"python": True})
 
         clean = scan_test_integrity(root, project)
-        _record(cases, "test-integrity-clean", clean["errors"] == 0, "clean tests pass integrity scan", clean)
-        atomic_write(root / "tests" / "test_focus.py", "import pytest\n\n@pytest.mark.skip(reason='hidden')\ndef test_hidden():\n    assert False\n")
+        _record(
+            cases,
+            "test-integrity-clean",
+            clean["errors"] == 0,
+            "clean tests pass integrity scan",
+            clean,
+        )
+        atomic_write(
+            root / "tests" / "test_focus.py",
+            "import pytest\n\n@pytest.mark.skip(reason='hidden')\ndef test_hidden():\n    assert False\n",
+        )
         skipped = scan_test_integrity(root, project)
-        _record(cases, "test-integrity-skip-detected", any(item["code"] == "skipped-test" for item in skipped["findings"]), "skip marker is detected", skipped)
+        _record(
+            cases,
+            "test-integrity-skip-detected",
+            any(item["code"] == "skipped-test" for item in skipped["findings"]),
+            "skip marker is detected",
+            skipped,
+        )
 
-        atomic_write(root / "src" / "secret.py", "TOKEN = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'\n")
+        value = "".join(chr(code) for code in (103, 104, 112, 95)) + "A" * 40
+        atomic_write(root / "src" / "secret.py", "TOKEN = " + repr(value) + "\n")
         secrets = scan_secrets(root, project)
-        _record(cases, "secret-detected", secrets["errors"] > 0, "credential-like material fails the scan", secrets)
+        _record(
+            cases,
+            "secret-detected",
+            secrets["errors"] > 0,
+            "credential-like material fails the scan",
+            secrets,
+        )
 
         atomic_write(
             root / "features" / "bad.feature",
             "Feature: Example\nScenario: bad\n  Givven a value\n  When it runs\n  Then it works\n",
         )
         gherkin = lint_features(root)
-        _record(cases, "gherkin-unknown-syntax-rejected", gherkin["errors"] > 0 and any(item["code"] == "unsupported-gherkin" for item in gherkin["findings"]), "unknown Gherkin syntax fails closed", gherkin)
+        _record(
+            cases,
+            "gherkin-unknown-syntax-rejected",
+            gherkin["errors"] > 0
+            and any(item["code"] == "unsupported-gherkin" for item in gherkin["findings"]),
+            "unknown Gherkin syntax fails closed",
+            gherkin,
+        )
         atomic_write(
             root / "features" / "bad.feature",
             "Feature: Example\nScenario Outline: disconnected\n  When input <value> is processed\n  Then output is valid\nExamples:\n  | value | unused |\n  | 1 | x |\n",
         )
         disconnected = lint_features(root)
-        _record(cases, "gherkin-disconnected-example-rejected", any(item["code"] == "unused-example-value" for item in disconnected["findings"]), "unused Examples data is rejected", disconnected)
+        _record(
+            cases,
+            "gherkin-disconnected-example-rejected",
+            any(item["code"] == "unused-example-value" for item in disconnected["findings"]),
+            "unused Examples data is rejected",
+            disconnected,
+        )
 
         scenarios = {
             "schema_version": 1,
@@ -152,7 +243,14 @@ def run_internal_conformance() -> dict[str, Any]:
             protected = code != PASS
         except Exception as exc:
             code, golden, protected = 2, {"error": str(exc)}, True
-        _record(cases, "golden-update-protected", protected and not (root / "quality" / "golden" / "expected" / "deterministic.json").exists(), "golden update is refused without explicit authorization", golden)
+        _record(
+            cases,
+            "golden-update-protected",
+            protected
+            and not (root / "quality" / "golden" / "expected" / "deterministic.json").exists(),
+            "golden update is refused without explicit authorization",
+            golden,
+        )
         old = os.environ.get("AQG_ALLOW_GOLDEN_UPDATE")
         os.environ["AQG_ALLOW_GOLDEN_UPDATE"] = "1"
         try:
@@ -163,7 +261,13 @@ def run_internal_conformance() -> dict[str, Any]:
                 os.environ.pop("AQG_ALLOW_GOLDEN_UPDATE", None)
             else:
                 os.environ["AQG_ALLOW_GOLDEN_UPDATE"] = old
-        _record(cases, "golden-authorized-update-and-compare", update_code == PASS and compare_code == PASS, "authorized update creates deterministic evidence that compares cleanly", compare)
+        _record(
+            cases,
+            "golden-authorized-update-and-compare",
+            update_code == PASS and compare_code == PASS,
+            "authorized update creates deterministic evidence that compares cleanly",
+            compare,
+        )
 
         # Review conformance uses a real Git diff so it exercises the same path as a PR.
         _git(root, "init", "-q")
@@ -178,7 +282,13 @@ def run_internal_conformance() -> dict[str, Any]:
         policy = _read_toml(root / "quality" / "policy.toml")
         packet = analyze_review(root, policy, base="HEAD", require_evidence=False)
         codes = {item["code"] for item in packet["findings"]}
-        _record(cases, "review-production-without-tests", "production-without-tests" in codes, "review flags production changes without changed tests", packet["summary"])
+        _record(
+            cases,
+            "review-production-without-tests",
+            "production-without-tests" in codes,
+            "review flags production changes without changed tests",
+            packet["summary"],
+        )
 
     failures = [case for case in cases if case.status != "pass"]
     return {
@@ -187,7 +297,11 @@ def run_internal_conformance() -> dict[str, Any]:
         "suite": "internal",
         "status": "pass" if not failures else "fail",
         "cases": [case.as_dict() for case in cases],
-        "summary": {"total": len(cases), "passed": len(cases) - len(failures), "failed": len(failures)},
+        "summary": {
+            "total": len(cases),
+            "passed": len(cases) - len(failures),
+            "failed": len(failures),
+        },
     }
 
 
@@ -199,7 +313,7 @@ def _read_toml(path: Path) -> dict[str, Any]:
 
 
 def _minimal_policy() -> str:
-    return '''version = 2
+    return """version = 2
 initialized = true
 default_risk_profile = "standard"
 default_execution_profile = "fast"
@@ -235,7 +349,7 @@ command="true"
 timeout_seconds=5
 clean_paths=[]
 quality_failure_exit_codes=[1]
-'''
+"""
 
 
 def _risk_card() -> dict[str, Any]:
@@ -288,40 +402,192 @@ def run_tool_conformance(root: Path) -> dict[str, Any]:
         if all(path.exists() for path in js_tools.values()):
             atomic_write(fixture / "bad.js", "const x={a:1}; eval('x')\n")
             prettier = run_command([str(js_tools["prettier"]), "--check", "bad.js"], cwd=fixture)
-            _record(cases, "prettier-rejects-unformatted", prettier.code != 0, "Prettier rejects unformatted source", prettier.as_dict())
-            eslint = run_command([str(js_tools["eslint"]), "--no-config-lookup", "--rule", "no-eval:error", "bad.js"], cwd=fixture)
-            _record(cases, "eslint-rejects-eval", eslint.code != 0, "ESLint rejects forbidden eval", eslint.as_dict())
+            _record(
+                cases,
+                "prettier-rejects-unformatted",
+                prettier.code != 0,
+                "Prettier rejects unformatted source",
+                prettier.as_dict(),
+            )
+            eslint = run_command(
+                [
+                    str(js_tools["eslint"]),
+                    "--no-config-lookup",
+                    "--rule",
+                    "no-eval:error",
+                    "bad.js",
+                ],
+                cwd=fixture,
+            )
+            _record(
+                cases,
+                "eslint-rejects-eval",
+                eslint.code != 0,
+                "ESLint rejects forbidden eval",
+                eslint.as_dict(),
+            )
             atomic_write(fixture / "bad.css", "a { color: red; color: blue; }\n")
-            stylelint = run_command([str(js_tools["stylelint"]), "--config", str(root / "quality/tools/js/config/stylelint.config.mjs"), "bad.css"], cwd=fixture)
-            _record(cases, "stylelint-rejects-duplicate-property", stylelint.code != 0, "Stylelint rejects duplicate declarations", stylelint.as_dict())
-            atomic_write(fixture / "bad.html", "<!doctype html><html><body><input><div id='x'></div><p id='x'></p></body></html>\n")
-            html = run_command([str(js_tools["html-validate"]), "--config", str(root / "quality/tools/js/config/htmlvalidate.json"), "bad.html"], cwd=fixture)
-            _record(cases, "html-validate-rejects-invalid-markup", html.code != 0, "HTML validator rejects duplicate IDs and unlabeled input", html.as_dict())
+            stylelint = run_command(
+                [
+                    str(js_tools["stylelint"]),
+                    "--config",
+                    str(root / "quality/tools/js/config/stylelint.config.mjs"),
+                    "bad.css",
+                ],
+                cwd=fixture,
+                quality_exit_codes=(1, 2),
+            )
+            _record(
+                cases,
+                "stylelint-rejects-duplicate-property",
+                stylelint.status == "quality_failure",
+                "Stylelint classifies duplicate declarations as a quality failure",
+                stylelint.as_dict(),
+            )
+            atomic_write(
+                fixture / "bad.html",
+                "<!doctype html><html><body><input><div id='x'></div><p id='x'></p></body></html>\n",
+            )
+            html = run_command(
+                [
+                    str(js_tools["html-validate"]),
+                    "--config",
+                    str(root / "quality/tools/js/config/htmlvalidate.json"),
+                    "bad.html",
+                ],
+                cwd=fixture,
+            )
+            _record(
+                cases,
+                "html-validate-rejects-invalid-markup",
+                html.code != 0,
+                "HTML validator rejects duplicate IDs and unlabeled input",
+                html.as_dict(),
+            )
             atomic_write(fixture / "bad.ts", "const value: string = null;\n")
-            tsc = run_command([str(js_tools["tsc"]), "--strict", "--noEmit", "--skipLibCheck", "--target", "ES2022", "bad.ts"], cwd=fixture)
-            _record(cases, "typescript-strict-rejects-null", tsc.code != 0, "TypeScript strict mode rejects null assignment", tsc.as_dict())
-            atomic_write(fixture / "tests" / "math.test.js", "import { test, expect } from 'vitest'; test('fails',()=>expect(1).toBe(2));\n")
-            vitest = run_command([str(js_tools["vitest"]), "run", str(fixture / "tests" / "math.test.js"), "--passWithNoTests=false"], cwd=root, env={"CI": "1"}, timeout=120)
-            _record(cases, "vitest-propagates-failure", vitest.code != 0, "Vitest returns nonzero for a failed assertion", vitest.as_dict())
+            tsc = run_command(
+                [
+                    str(js_tools["tsc"]),
+                    "--strict",
+                    "--noEmit",
+                    "--skipLibCheck",
+                    "--target",
+                    "ES2022",
+                    "bad.ts",
+                ],
+                cwd=fixture,
+                quality_exit_codes=(1, 2),
+            )
+            _record(
+                cases,
+                "typescript-strict-rejects-null",
+                tsc.status == "quality_failure",
+                "TypeScript classifies a strict type error as a quality failure",
+                tsc.as_dict(),
+            )
+            atomic_write(
+                fixture / "tests" / "math.test.js",
+                "test('fails', () => expect(1).toBe(2));\n",
+            )
+            vitest = run_command(
+                [
+                    str(js_tools["vitest"]),
+                    "run",
+                    "--root",
+                    str(fixture),
+                    "--globals",
+                    "tests/math.test.js",
+                    "--passWithNoTests=false",
+                ],
+                cwd=fixture,
+                env={"CI": "1"},
+                timeout=120,
+            )
+            _record(
+                cases,
+                "vitest-propagates-failure",
+                vitest.status == "quality_failure"
+                and "1 failed" in (vitest.stdout + vitest.stderr)
+                and "No test files found" not in (vitest.stdout + vitest.stderr),
+                "Vitest executes the fixture and classifies its failed assertion as a quality failure",
+                vitest.as_dict(),
+            )
         else:
             missing = [name for name, path in js_tools.items() if not path.exists()]
-            cases.append(ConformanceCase("javascript-toolchain", "skip", "JavaScript toolchain is not installed.", "Run qg tools install", missing))
+            cases.append(
+                ConformanceCase(
+                    "javascript-toolchain",
+                    "skip",
+                    "JavaScript toolchain is not installed.",
+                    "Run qg tools install",
+                    missing,
+                )
+            )
 
         py_tools = {name: _venv_bin(root, name) for name in ("pytest", "ruff", "mypy", "bandit")}
         if all(path.exists() for path in py_tools.values()):
-            atomic_write(fixture / "src" / "bad.py", "import os\n\ndef value() -> str:\n    return 1\n\ndef dangerous(x: str):\n    return eval(x)\n")
-            atomic_write(fixture / "tests" / "test_bad.py", "def test_failure():\n    assert 1 == 2\n")
-            pytest = run_command([str(py_tools["pytest"]), "-q", str(fixture / "tests")], cwd=fixture, timeout=120)
-            _record(cases, "pytest-propagates-failure", pytest.code != 0, "pytest returns nonzero for a failed assertion", pytest.as_dict())
-            ruff = run_command([str(py_tools["ruff"]), "check", str(fixture / "src")], cwd=fixture, timeout=120)
-            _record(cases, "ruff-rejects-defects", ruff.code != 0, "Ruff rejects lint defects", ruff.as_dict())
-            mypy = run_command([str(py_tools["mypy"]), "--strict", str(fixture / "src" / "bad.py")], cwd=fixture, timeout=120)
-            _record(cases, "mypy-strict-rejects-type-error", mypy.code != 0, "mypy strict mode rejects return-type mismatch", mypy.as_dict())
-            bandit = run_command([str(py_tools["bandit"]), "-q", "-r", str(fixture / "src")], cwd=fixture, timeout=120)
-            _record(cases, "bandit-rejects-eval", bandit.code != 0, "Bandit flags eval", bandit.as_dict())
+            atomic_write(
+                fixture / "src" / "bad.py",
+                "import os\n\ndef value() -> str:\n    return 1\n\ndef dangerous(x: str):\n    return eval(x)\n",
+            )
+            atomic_write(
+                fixture / "tests" / "test_bad.py", "def test_failure():\n    assert 1 == 2\n"
+            )
+            pytest = run_command(
+                [str(py_tools["pytest"]), "-q", str(fixture / "tests")], cwd=fixture, timeout=120
+            )
+            _record(
+                cases,
+                "pytest-propagates-failure",
+                pytest.code != 0,
+                "pytest returns nonzero for a failed assertion",
+                pytest.as_dict(),
+            )
+            ruff = run_command(
+                [str(py_tools["ruff"]), "check", str(fixture / "src")], cwd=fixture, timeout=120
+            )
+            _record(
+                cases,
+                "ruff-rejects-defects",
+                ruff.code != 0,
+                "Ruff rejects lint defects",
+                ruff.as_dict(),
+            )
+            mypy = run_command(
+                [str(py_tools["mypy"]), "--strict", str(fixture / "src" / "bad.py")],
+                cwd=fixture,
+                timeout=120,
+            )
+            _record(
+                cases,
+                "mypy-strict-rejects-type-error",
+                mypy.code != 0,
+                "mypy strict mode rejects return-type mismatch",
+                mypy.as_dict(),
+            )
+            bandit = run_command(
+                [str(py_tools["bandit"]), "-q", "-r", str(fixture / "src")],
+                cwd=fixture,
+                timeout=120,
+            )
+            _record(
+                cases,
+                "bandit-rejects-eval",
+                bandit.code != 0,
+                "Bandit flags eval",
+                bandit.as_dict(),
+            )
         else:
             missing = [name for name, path in py_tools.items() if not path.exists()]
-            cases.append(ConformanceCase("python-toolchain", "skip", "Python toolchain is not installed.", "Run qg tools install", missing))
+            cases.append(
+                ConformanceCase(
+                    "python-toolchain",
+                    "skip",
+                    "Python toolchain is not installed.",
+                    "Run qg tools install",
+                    missing,
+                )
+            )
 
     failed = [case for case in cases if case.status == "fail"]
     passed = [case for case in cases if case.status == "pass"]
@@ -332,7 +598,12 @@ def run_tool_conformance(root: Path) -> dict[str, Any]:
         "suite": "tools",
         "status": "pass" if not failed else "fail",
         "cases": [case.as_dict() for case in cases],
-        "summary": {"total": len(cases), "passed": len(passed), "failed": len(failed), "skipped": len(skipped)},
+        "summary": {
+            "total": len(cases),
+            "passed": len(passed),
+            "failed": len(failed),
+            "skipped": len(skipped),
+        },
     }
 
 

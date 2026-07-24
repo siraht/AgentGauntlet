@@ -6,7 +6,6 @@
   "devDependencies": {
     "@axe-core/playwright": "latest",
     "@eslint/js": "latest",
-    "@lhci/cli": "latest",
     "@playwright/test": "latest",
     "@stryker-mutator/core": "latest",
     "@stryker-mutator/jest-runner": "latest",
@@ -21,6 +20,7 @@
     "globals": "latest",
     "html-validate": "latest",
     "knip": "latest",
+    "lighthouse": "latest",
     "prettier": "latest",
     "stylelint": "latest",
     "stylelint-config-standard": "latest",

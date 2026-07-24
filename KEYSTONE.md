@@ -4,15 +4,34 @@ This project keeps durable product intent beside the code.
 
 ## Feature context
 
-Replace this section during bootstrap with:
+Agent Quality Gauntlet is a Python 3.11+ control plane used by project owners, developers, Codex, Claude Code, and CI systems to install and run deterministic quality constraints for agentic coding.
 
-- what the product does and who uses it;
-- its distinct applications, services, commands, libraries, or runtimes;
-- behavior shared across those surfaces;
-- the natural top-level feature namespaces;
-- links to durable architecture and operational documents.
+Its executable surfaces are:
 
-Do not invent context when existing sources conflict. Surface the conflict for human resolution.
+- the global/source/zipapp `qg` CLI;
+- the project-vendored `quality/qg.py` runtime;
+- the guided terminal interface;
+- the authenticated loopback web dashboard;
+- generated CI, hooks, agent skills, verifier definitions, and review artifacts;
+- JavaScript, TypeScript, HTML, CSS, and Python adapter packs.
+
+Behavior shared across every surface:
+
+- exit 0 is pass, 1 quality failure, 2 configuration/input failure, and 3 infrastructure failure;
+- missing, stale, malformed, or untrustworthy evidence never becomes a pass;
+- risk rules may raise but never lower the minimum required profile;
+- policy, expected-output, waiver, approval, and governance changes remain separately reviewable;
+- target projects receive a pinned vendored runtime and isolated checker definitions.
+
+The top-level feature namespace is `AgentQualityGauntlet`, with subfeatures for Setup, Risk, Execution, Review, Evidence, Dashboard, SupplyChain, and Release.
+
+Durable design and operating documents:
+
+- `ARCHITECTURE.md`
+- `IMPLEMENTATION_STATUS.md`
+- `docs/CONTROL_SURFACE.md`
+- `docs/OWNER_OPERATING_PLAYBOOK.md`
+- `BLUEPRINT.md`
 
 ## Contract states
 

@@ -7,7 +7,6 @@ from typing import Any
 
 from .util import atomic_write, read_json, utc_now, write_json
 
-
 SEVERITY_LEVEL = {"blocker": "error", "review": "warning", "warning": "warning", "info": "note"}
 
 
@@ -24,7 +23,9 @@ def review_to_sarif(packet: dict[str, Any]) -> dict[str, Any]:
                 "shortDescription": {"text": str(finding.get("title", code))},
                 "fullDescription": {"text": str(finding.get("detail", ""))},
                 "help": {"text": str(finding.get("action", "Review and resolve this finding."))},
-                "defaultConfiguration": {"level": SEVERITY_LEVEL.get(str(finding.get("severity")), "warning")},
+                "defaultConfiguration": {
+                    "level": SEVERITY_LEVEL.get(str(finding.get("severity")), "warning")
+                },
             },
         )
         paths = finding.get("paths") or [None]
@@ -33,7 +34,10 @@ def review_to_sarif(packet: dict[str, Any]) -> dict[str, Any]:
                 "ruleId": code,
                 "level": SEVERITY_LEVEL.get(str(finding.get("severity")), "warning"),
                 "message": {"text": f"{finding.get('title')}: {finding.get('detail')}"},
-                "properties": {"automated": bool(finding.get("automated", True)), "action": finding.get("action")},
+                "properties": {
+                    "automated": bool(finding.get("automated", True)),
+                    "action": finding.get("action"),
+                },
             }
             if path:
                 result["locations"] = [
@@ -59,7 +63,10 @@ def review_to_sarif(packet: dict[str, Any]) -> dict[str, Any]:
                     }
                 },
                 "results": results,
-                "properties": {"generatedAt": packet.get("generated_at", utc_now()), "base": packet.get("base")},
+                "properties": {
+                    "generatedAt": packet.get("generated_at", utc_now()),
+                    "base": packet.get("base"),
+                },
             }
         ],
     }
@@ -87,9 +94,13 @@ def github_summary(packet: dict[str, Any]) -> str:
     ]
     evidence = packet.get("evidence", [])
     if evidence:
-        lines.extend(["## Required evidence", "", "| Profile | Status | Run |", "| --- | --- | --- |"] )
+        lines.extend(
+            ["## Required evidence", "", "| Profile | Status | Run |", "| --- | --- | --- |"]
+        )
         for item in evidence:
-            lines.append(f"| `{item.get('profile')}` | {item.get('status')} | `{item.get('run_id') or '—'}` |")
+            lines.append(
+                f"| `{item.get('profile')}` | {item.get('status')} | `{item.get('run_id') or '—'}` |"
+            )
         lines.append("")
     for severity in ("blocker", "review", "info"):
         findings = [item for item in packet.get("findings", []) if item.get("severity") == severity]
@@ -106,7 +117,9 @@ def github_summary(packet: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def write_github_summary(root: Path, packet: dict[str, Any], destination: Path | None = None) -> Path:
+def write_github_summary(
+    root: Path, packet: dict[str, Any], destination: Path | None = None
+) -> Path:
     path = destination or root / ".aqg" / "review" / "github-summary.md"
     atomic_write(path, github_summary(packet))
     return path
@@ -122,4 +135,10 @@ def latest_evidence_bundle(root: Path) -> dict[str, Any]:
         if gate_dir.exists():
             for path in sorted(gate_dir.glob("*.json")):
                 gates[path.stem] = read_json(path)
-    return {"schema_version": 1, "generated_at": utc_now(), "latest": latest, "review": review, "gates": gates}
+    return {
+        "schema_version": 1,
+        "generated_at": utc_now(),
+        "latest": latest,
+        "review": review,
+        "gates": gates,
+    }

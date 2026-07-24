@@ -1,80 +1,249 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>AQG Control Surface</title>
-  <link rel="stylesheet" href="app.css">
-</head>
-<body>
-  <div class="app-shell">
-    <aside class="rail" aria-label="Primary navigation">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">AQ</span><div><strong>Agent Quality</strong><small>Gauntlet control surface</small></div></div>
-      <nav>
-        <button class="nav active" data-view="overview"><span>01</span>Overview</button>
-        <button class="nav" data-view="runs"><span>02</span>Evidence</button>
-        <button class="nav" data-view="review"><span>03</span>Review</button>
-        <button class="nav" data-view="setup"><span>04</span>Setup</button>
-        <button class="nav" data-view="policy"><span>05</span>Policy</button>
-      </nav>
-      <div class="rail-status"><span class="live-dot" aria-hidden="true"></span><div><strong id="connection">Connecting</strong><small id="mode-label">read-only</small></div></div>
-    </aside>
-
-    <main>
-      <header class="topbar">
-        <div class="identity"><p class="eyebrow">Constraint-first engineering evidence</p><h1 id="project-name">Quality control</h1><p id="project-root" class="muted"></p></div>
-        <div class="control-cluster">
-          <label class="profile-control"><span>Execution</span><select id="profile-select"><option value="risk">Risk-resolved</option><option value="fast">Fast</option><option value="pr">PR</option><option value="deep">Deep</option><option value="release">Release</option></select></label>
-          <button id="run-profile" class="button primary">Run</button>
-          <button id="generate-review" class="button">Review packet</button>
-          <button id="refresh" class="icon-button" aria-label="Refresh dashboard" title="Refresh">↻</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>AQG Control Surface</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="Primary navigation">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">AQ</span>
+          <div>
+            <strong>Agent Quality</strong
+            ><small>Gauntlet control surface</small>
+          </div>
         </div>
-      </header>
-
-      <div id="portfolio-banner" class="portfolio hidden"></div>
-      <div id="action-banner" class="action-banner hidden" role="status"></div>
-
-      <section id="view-overview" class="view active">
-        <div id="decision-strip" class="decision-strip neutral"></div>
-        <div id="metrics" class="metric-grid"></div>
-        <div class="grid split-wide">
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Risk and authority</p><h2>Required proof</h2></div><span id="risk-badge" class="badge neutral">Unresolved</span></div><div id="risk-overview"></div></article>
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Current evidence</p><h2>Gate map</h2></div><span id="latest-badge" class="badge neutral">No run</span></div><div id="gate-map" class="gate-map empty">No evidence yet.</div></article>
+        <nav>
+          <button type="button" class="nav active" data-view="overview">
+            <span>01</span>Overview
+          </button>
+          <button type="button" class="nav" data-view="runs">
+            <span>02</span>Evidence
+          </button>
+          <button type="button" class="nav" data-view="review">
+            <span>03</span>Review
+          </button>
+          <button type="button" class="nav" data-view="setup">
+            <span>04</span>Setup
+          </button>
+          <button type="button" class="nav" data-view="policy">
+            <span>05</span>Policy
+          </button>
+        </nav>
+        <div class="rail-status">
+          <span class="live-dot" aria-hidden="true"></span>
+          <div>
+            <strong id="connection">Connecting</strong
+            ><small id="mode-label">read-only</small>
+          </div>
         </div>
-        <div class="grid two">
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Automated reviewer</p><h2>Attention queue</h2></div><button class="text-button" data-jump="review">Open review →</button></div><div id="review-preview"></div></article>
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Repository model</p><h2>Adapter coverage</h2></div></div><div id="adapter-grid" class="adapter-grid"></div></article>
-        </div>
-      </section>
+      </aside>
 
-      <section id="view-runs" class="view">
-        <article class="panel"><div class="panel-head"><div><p class="eyebrow">Evidence ledger</p><h2>Profile history</h2></div><small>Bound to revision, diff, and control fingerprints</small></div><div id="history-table"></div></article>
-        <article class="panel"><div class="panel-head"><div><p class="eyebrow">Latest execution</p><h2>Gate details</h2></div></div><div id="gates-table"></div></article>
-      </section>
+      <main>
+        <header class="topbar">
+          <div class="identity">
+            <p class="eyebrow">Constraint-first engineering evidence</p>
+            <h1 id="project-name">Quality control</h1>
+            <p id="project-root" class="muted"></p>
+          </div>
+          <div class="control-cluster">
+            <label class="profile-control"
+              ><span>Execution</span
+              ><select id="profile-select">
+                <option value="risk">Risk-resolved</option>
+                <option value="fast">Fast</option>
+                <option value="pr">PR</option>
+                <option value="deep">Deep</option>
+                <option value="release">Release</option>
+              </select></label
+            >
+            <button type="button" id="run-profile" class="button primary">
+              Run
+            </button>
+            <button type="button" id="generate-review" class="button">
+              Review packet
+            </button>
+            <button
+              type="button"
+              id="refresh"
+              class="icon-button"
+              aria-label="Refresh dashboard"
+              title="Refresh"
+            >
+              ↻
+            </button>
+          </div>
+        </header>
 
-      <section id="view-review" class="view">
-        <div class="grid two">
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Deterministic profiles</p><h2>Evidence matrix</h2></div></div><div id="evidence-matrix"></div></article>
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Human authority</p><h2>Approval matrix</h2></div></div><div id="approval-matrix"></div></article>
-        </div>
-        <article class="panel"><div class="panel-head"><div><p class="eyebrow">Review intelligence</p><h2>Findings and decisions</h2></div><button id="regenerate-review" class="button">Regenerate</button></div><div id="review-full"></div></article>
-      </section>
+        <div id="portfolio-banner" class="portfolio hidden"></div>
+        <div
+          id="action-banner"
+          class="action-banner hidden"
+          role="status"
+        ></div>
 
-      <section id="view-setup" class="view">
-        <div class="grid split-wide">
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Onboarding control flow</p><h2>Path to guarded operation</h2></div><span id="onboarding-badge" class="badge neutral">Unknown</span></div><div id="setup-stages" class="stages"></div></article>
-          <article class="panel"><div class="panel-head"><div><p class="eyebrow">Next action</p><h2>Resolve this first</h2></div></div><div id="next-action"></div></article>
-        </div>
-        <article class="panel"><div class="panel-head"><div><p class="eyebrow">Detected gaps</p><h2>Setup and governance backlog</h2></div></div><div id="onboarding-gaps"></div></article>
-      </section>
+        <section id="view-overview" class="view active">
+          <div id="decision-strip" class="decision-strip neutral"></div>
+          <div id="metrics" class="metric-grid"></div>
+          <div class="grid split-wide">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Risk and authority</p>
+                  <h2>Required proof</h2>
+                </div>
+                <span id="risk-badge" class="badge neutral">Unresolved</span>
+              </div>
+              <div id="risk-overview"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Current evidence</p>
+                  <h2>Gate map</h2>
+                </div>
+                <span id="latest-badge" class="badge neutral">No run</span>
+              </div>
+              <div id="gate-map" class="gate-map empty">No evidence yet.</div>
+            </article>
+          </div>
+          <div class="grid two">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Automated reviewer</p>
+                  <h2>Attention queue</h2>
+                </div>
+                <button type="button" class="text-button" data-jump="review">
+                  Open review →
+                </button>
+              </div>
+              <div id="review-preview"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Repository model</p>
+                  <h2>Adapter coverage</h2>
+                </div>
+              </div>
+              <div id="adapter-grid" class="adapter-grid"></div>
+            </article>
+          </div>
+        </section>
 
-      <section id="view-policy" class="view">
-        <article class="panel"><div class="panel-head"><div><p class="eyebrow">Single source of control</p><h2>Resolved project model</h2></div><small>Dashboard is observational; policy changes happen in reviewed repository files.</small></div><pre id="config-json"></pre></article>
-      </section>
-    </main>
-  </div>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js"></script>
-</body>
+        <section id="view-runs" class="view">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Evidence ledger</p>
+                <h2>Profile history</h2>
+              </div>
+              <small>Bound to revision, diff, and control fingerprints</small>
+            </div>
+            <div id="history-table"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Latest execution</p>
+                <h2>Gate details</h2>
+              </div>
+            </div>
+            <div id="gates-table"></div>
+          </article>
+        </section>
+
+        <section id="view-review" class="view">
+          <div class="grid two">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Deterministic profiles</p>
+                  <h2>Evidence matrix</h2>
+                </div>
+              </div>
+              <div id="evidence-matrix"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Human authority</p>
+                  <h2>Approval matrix</h2>
+                </div>
+              </div>
+              <div id="approval-matrix"></div>
+            </article>
+          </div>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Review intelligence</p>
+                <h2>Findings and decisions</h2>
+              </div>
+              <button type="button" id="regenerate-review" class="button">
+                Regenerate
+              </button>
+            </div>
+            <div id="review-full"></div>
+          </article>
+        </section>
+
+        <section id="view-setup" class="view">
+          <div class="grid split-wide">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Onboarding control flow</p>
+                  <h2>Path to guarded operation</h2>
+                </div>
+                <span id="onboarding-badge" class="badge neutral">Unknown</span>
+              </div>
+              <div id="setup-stages" class="stages"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Next action</p>
+                  <h2>Resolve this first</h2>
+                </div>
+              </div>
+              <div id="next-action"></div>
+            </article>
+          </div>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Detected gaps</p>
+                <h2>Setup and governance backlog</h2>
+              </div>
+            </div>
+            <div id="onboarding-gaps"></div>
+          </article>
+        </section>
+
+        <section id="view-policy" class="view">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Single source of control</p>
+                <h2>Resolved project model</h2>
+              </div>
+              <small
+                >Dashboard is observational; policy changes happen in reviewed
+                repository files.</small
+              >
+            </div>
+            <pre id="config-json"></pre>
+          </article>
+        </section>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="app.js"></script>
+  </body>
 </html>

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
-import sys
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 from .approvals import validate_required_approvals
@@ -18,7 +17,7 @@ from .detect import detect_project
 from .policy import load_policy, risk_summary, validate_policy
 from .project import gate_applicable, load_project, validate_project
 from .scaffold import current_onboarding
-from .util import command_exists, git_revision, read_json, sha256_file, utc_now
+from .util import command_exists, git_revision, sha256_file, utc_now
 
 
 @dataclass(slots=True)
@@ -33,7 +32,14 @@ class Diagnostic:
         return asdict(self)
 
 
-def _diag(items: list[Diagnostic], code: str, status: str, message: str, remediation: str | None = None, detail: Any = None) -> None:
+def _diag(
+    items: list[Diagnostic],
+    code: str,
+    status: str,
+    message: str,
+    remediation: str | None = None,
+    detail: Any = None,
+) -> None:
     items.append(Diagnostic(code, status, message, remediation, detail))
 
 
@@ -69,7 +75,9 @@ def _compare_detection(project: dict[str, Any], detected: dict[str, Any]) -> lis
     configured = project.get("stacks", {})
     for stack in ("javascript", "typescript", "python", "html", "css"):
         if bool(configured.get(stack)) != bool(detected.get(stack)):
-            drift.append(f"{stack}: configured={bool(configured.get(stack))}, detected={bool(detected.get(stack))}")
+            drift.append(
+                f"{stack}: configured={bool(configured.get(stack))}, detected={bool(detected.get(stack))}"
+            )
     return drift
 
 
@@ -78,7 +86,13 @@ def diagnose(root: Path, *, strict_tools: bool = False) -> dict[str, Any]:
     items: list[Diagnostic] = []
 
     if not (root / "quality" / "policy.toml").exists():
-        _diag(items, "policy-missing", "error", "quality/policy.toml does not exist.", "Run `qg setup` in the repository root.")
+        _diag(
+            items,
+            "policy-missing",
+            "error",
+            "quality/policy.toml does not exist.",
+            "Run `qg setup` in the repository root.",
+        )
         return _report(root, items)
 
     try:
@@ -86,11 +100,23 @@ def diagnose(root: Path, *, strict_tools: bool = False) -> dict[str, Any]:
         errors = validate_policy(policy)
         if errors:
             for message in errors:
-                _diag(items, "policy-invalid", "error", message, "Repair the policy during an explicit policy-maintenance task.")
+                _diag(
+                    items,
+                    "policy-invalid",
+                    "error",
+                    message,
+                    "Repair the policy during an explicit policy-maintenance task.",
+                )
         else:
             _diag(items, "policy-valid", "pass", "Policy is initialized and internally consistent.")
     except Exception as exc:
-        _diag(items, "policy-unreadable", "error", str(exc), "Repair or regenerate quality/policy.toml.")
+        _diag(
+            items,
+            "policy-unreadable",
+            "error",
+            str(exc),
+            "Repair or regenerate quality/policy.toml.",
+        )
         return _report(root, items)
 
     try:
@@ -98,11 +124,23 @@ def diagnose(root: Path, *, strict_tools: bool = False) -> dict[str, Any]:
         project_errors = validate_project(project)
         if project_errors:
             for message in project_errors:
-                _diag(items, "project-invalid", "error", message, "Repair quality/project.json during policy maintenance.")
+                _diag(
+                    items,
+                    "project-invalid",
+                    "error",
+                    message,
+                    "Repair quality/project.json during policy maintenance.",
+                )
         else:
             _diag(items, "project-valid", "pass", "Project adapter configuration is valid.")
     except Exception as exc:
-        _diag(items, "project-unreadable", "error", str(exc), "Run `qg init --force` or repair quality/project.json.")
+        _diag(
+            items,
+            "project-unreadable",
+            "error",
+            str(exc),
+            "Run `qg init --force` or repair quality/project.json.",
+        )
         return _report(root, items)
 
     detected = detect_project(root).as_dict()
@@ -117,34 +155,81 @@ def diagnose(root: Path, *, strict_tools: bool = False) -> dict[str, Any]:
             drift,
         )
     else:
-        _diag(items, "stack-detection", "pass", "Configured stacks match current repository detection.")
+        _diag(
+            items,
+            "stack-detection",
+            "pass",
+            "Configured stacks match current repository detection.",
+        )
 
     generated_by = str(project.get("generated_by", ""))
     if generated_by and not generated_by.endswith(__version__):
-        _diag(items, "runtime-version-drift", "warning", f"Project configuration was generated by {generated_by}; installed AQG is {__version__}.", "Run `qg upgrade` and review the diff.")
+        _diag(
+            items,
+            "runtime-version-drift",
+            "warning",
+            f"Project configuration was generated by {generated_by}; installed AQG is {__version__}.",
+            "Run `qg upgrade` and review the diff.",
+        )
 
     local_runtime = root / "quality" / "_aqg" / "constants.py"
+    source_runtime = root / "src" / "aqg" / "constants.py"
     if local_runtime.exists():
         text = local_runtime.read_text(encoding="utf-8", errors="replace")
         if f'__version__ = "{__version__}"' in text:
-            _diag(items, "vendored-runtime", "pass", f"Vendored project runtime is AQG {__version__}.")
+            _diag(
+                items, "vendored-runtime", "pass", f"Vendored project runtime is AQG {__version__}."
+            )
         else:
-            _diag(items, "vendored-runtime-stale", "warning", "Vendored runtime differs from the installed command.", "Run `qg upgrade` during policy maintenance.")
+            _diag(
+                items,
+                "vendored-runtime-stale",
+                "warning",
+                "Vendored runtime differs from the installed command.",
+                "Run `qg upgrade` during policy maintenance.",
+            )
+    elif source_runtime.exists() and f'__version__ = "{__version__}"' in source_runtime.read_text(
+        encoding="utf-8", errors="replace"
+    ):
+        _diag(items, "source-runtime", "pass", f"Source-checkout runtime is AQG {__version__}.")
     else:
-        _diag(items, "vendored-runtime-missing", "error", "quality/_aqg is missing.", "Run `qg upgrade` to restore the project-local runtime.")
+        _diag(
+            items,
+            "vendored-runtime-missing",
+            "error",
+            "quality/_aqg is missing.",
+            "Run `qg upgrade` to restore the project-local runtime.",
+        )
 
     wrapper = root / "quality" / "qg.py"
     if wrapper.exists() and os.access(wrapper, os.R_OK):
         _diag(items, "project-launcher", "pass", "Project-local quality/qg.py launcher is present.")
     else:
-        _diag(items, "project-launcher-missing", "error", "Project-local quality/qg.py launcher is missing or unreadable.", "Run `qg upgrade`.")
+        _diag(
+            items,
+            "project-launcher-missing",
+            "error",
+            "Project-local quality/qg.py launcher is missing or unreadable.",
+            "Run `qg upgrade`.",
+        )
 
     risk_errors, risk = risk_summary(root, policy, "quality/change-risk.json")
     if risk_errors:
         for message in risk_errors:
-            _diag(items, "risk-card-invalid", "error", message, "Update quality/change-risk.json in observable product terms.")
+            _diag(
+                items,
+                "risk-card-invalid",
+                "error",
+                message,
+                "Update quality/change-risk.json in observable product terms.",
+            )
     else:
-        _diag(items, "risk-card-valid", "pass", f"Risk card resolves to {risk['selected_risk_profile']} and requires {', '.join(risk['required_execution_profiles'])}.")
+        _diag(
+            items,
+            "risk-card-valid",
+            "pass",
+            f"Risk card resolves to {risk['selected_risk_profile']} and requires {', '.join(risk['required_execution_profiles'])}.",
+        )
 
     _check_gate_applicability(root, project, items)
     _check_toolchains(root, project, items, strict_tools=strict_tools)
@@ -164,17 +249,36 @@ def _check_gate_applicability(root: Path, project: dict[str, Any], items: list[D
             applicable.append(gate)
         else:
             skipped.append({"gate": gate, "reason": reason})
-    _diag(items, "gate-applicability", "pass", f"{len(applicable)} gates are applicable; {len(skipped)} are explicitly not applicable.", detail={"applicable": applicable, "not_applicable": skipped})
+    _diag(
+        items,
+        "gate-applicability",
+        "pass",
+        f"{len(applicable)} gates are applicable; {len(skipped)} are explicitly not applicable.",
+        detail={"applicable": applicable, "not_applicable": skipped},
+    )
 
 
-def _check_toolchains(root: Path, project: dict[str, Any], items: list[Diagnostic], *, strict_tools: bool) -> None:
+def _check_toolchains(
+    root: Path, project: dict[str, Any], items: list[Diagnostic], *, strict_tools: bool
+) -> None:
     tool_status = "error" if strict_tools else "warning"
     stacks = project.get("stacks", {})
     if stacks.get("javascript") or stacks.get("html") or stacks.get("css"):
         if not command_exists("node") or not command_exists("npm"):
-            _diag(items, "node-missing", "error", "Node.js and npm are required for JavaScript/Web adapters.", "Install a supported Node.js LTS release, then run `qg tools install`.")
+            _diag(
+                items,
+                "node-missing",
+                "error",
+                "Node.js and npm are required for JavaScript/Web adapters.",
+                "Install a supported Node.js LTS release, then run `qg tools install`.",
+            )
         else:
-            _diag(items, "node-present", "pass", f"Node.js toolchain is available: {shutil.which('node')}")
+            _diag(
+                items,
+                "node-present",
+                "pass",
+                f"Node.js toolchain is available: {shutil.which('node')}",
+            )
         required = ["prettier", "eslint"]
         if stacks.get("css"):
             required.append("stylelint")
@@ -193,58 +297,141 @@ def _check_toolchains(root: Path, project: dict[str, Any], items: list[Diagnosti
             else:
                 versions[name] = _tool_version(path)
         if missing:
-            _diag(items, "js-tools-missing", tool_status, "JavaScript/Web quality tools are not fully installed.", "Run `qg tools install`.", missing)
+            _diag(
+                items,
+                "js-tools-missing",
+                tool_status,
+                "JavaScript/Web quality tools are not fully installed.",
+                "Run `qg tools install`.",
+                missing,
+            )
         else:
-            _diag(items, "js-tools", "pass", f"JavaScript/Web toolchain contains {len(versions)} required commands.", detail=versions)
+            _diag(
+                items,
+                "js-tools",
+                "pass",
+                f"JavaScript/Web toolchain contains {len(versions)} required commands.",
+                detail=versions,
+            )
         package_lock = root / "quality" / "tools" / "js" / "package-lock.json"
         package_manifest = root / "quality" / "tools" / "js" / "package.json"
         if package_lock.exists():
-            _diag(items, "js-tool-lock", "pass", "JavaScript quality dependencies have a protected package-lock.json.", detail={"sha256": sha256_file(package_lock)})
+            _diag(
+                items,
+                "js-tool-lock",
+                "pass",
+                "JavaScript quality dependencies have a protected package-lock.json.",
+                detail={"sha256": sha256_file(package_lock)},
+            )
         else:
-            _diag(items, "js-tool-lock-missing", tool_status, "JavaScript quality dependencies are not locked yet.", "Run `qg tools install`; commit the generated protected lockfile.")
+            _diag(
+                items,
+                "js-tool-lock-missing",
+                tool_status,
+                "JavaScript quality dependencies are not locked yet.",
+                "Run `qg tools install`; commit the generated protected lockfile.",
+            )
         if package_manifest.exists():
             try:
                 manifest = json.loads(package_manifest.read_text(encoding="utf-8"))
                 specs = manifest.get("devDependencies", {})
-                floating = [name for name, value in specs.items() if not isinstance(value, str) or value in {"latest", "*"} or value.startswith(("^", "~", ">", "<"))]
+                floating = [
+                    name
+                    for name, value in specs.items()
+                    if not isinstance(value, str)
+                    or value in {"latest", "*"}
+                    or value.startswith(("^", "~", ">", "<"))
+                ]
             except (json.JSONDecodeError, AttributeError) as exc:
-                _diag(items, "js-tool-manifest-invalid", "error", f"JavaScript quality package manifest is invalid: {exc}", "Regenerate it with `qg upgrade` during policy maintenance.")
+                _diag(
+                    items,
+                    "js-tool-manifest-invalid",
+                    "error",
+                    f"JavaScript quality package manifest is invalid: {exc}",
+                    "Regenerate it with `qg upgrade` during policy maintenance.",
+                )
             else:
                 if floating:
-                    _diag(items, "js-tool-specs-floating", tool_status, "JavaScript checker versions are not exact in package.json.", "Run `qg tools install` locally; AQG will rewrite the protected manifest to exact lock-resolved versions.", floating)
+                    _diag(
+                        items,
+                        "js-tool-specs-floating",
+                        tool_status,
+                        "JavaScript checker versions are not exact in package.json.",
+                        "Run `qg tools install` locally; AQG will rewrite the protected manifest to exact lock-resolved versions.",
+                        floating,
+                    )
                 else:
-                    _diag(items, "js-tool-specs-exact", "pass", "JavaScript checker versions are exact and reviewable.")
+                    _diag(
+                        items,
+                        "js-tool-specs-exact",
+                        "pass",
+                        "JavaScript checker versions are exact and reviewable.",
+                    )
 
     if stacks.get("python"):
-        if sys.version_info < (3, 11):
-            _diag(items, "python-version", "error", "AQG requires Python 3.11 or newer.")
-        else:
-            _diag(items, "python-version", "pass", f"Python {platform.python_version()} is available.")
+        _diag(items, "python-version", "pass", f"Python {platform.python_version()} is available.")
         required = ["pytest", "ruff", "mypy", "radon", "xenon", "bandit", "pip-audit", "mutmut"]
-        missing: list[str] = []
-        versions: dict[str, Any] = {}
+        python_missing: list[str] = []
+        python_versions: dict[str, Any] = {}
         for name in required:
             path = _venv_bin(root, name)
             if not path.exists():
-                missing.append(name)
+                python_missing.append(name)
             else:
                 args = ["--version"]
-                versions[name] = _tool_version(path, args)
-        if missing:
-            _diag(items, "python-tools-missing", tool_status, "Python quality tools are not fully installed.", "Run `qg tools install`.", missing)
+                python_versions[name] = _tool_version(path, args)
+        if python_missing:
+            _diag(
+                items,
+                "python-tools-missing",
+                tool_status,
+                "Python quality tools are not fully installed.",
+                "Run `qg tools install`.",
+                python_missing,
+            )
         else:
-            _diag(items, "python-tools", "pass", f"Python quality virtual environment contains {len(versions)} required commands.", detail=versions)
+            _diag(
+                items,
+                "python-tools",
+                "pass",
+                f"Python quality virtual environment contains {len(python_versions)} required commands.",
+                detail=python_versions,
+            )
         lock = root / "quality" / "tools" / "python" / "requirements.lock.txt"
         if lock.exists():
             lock_text = lock.read_text(encoding="utf-8", errors="replace")
             if "--hash=sha256:" not in lock_text:
-                _diag(items, "python-tool-lock-unhashed", tool_status, "Python quality dependency lock lacks package hashes.", "Regenerate it with `qg tools install` and commit the hash-locked file.")
+                _diag(
+                    items,
+                    "python-tool-lock-unhashed",
+                    tool_status,
+                    "Python quality dependency lock lacks package hashes.",
+                    "Regenerate it with `qg tools install` and commit the hash-locked file.",
+                )
             else:
-                _diag(items, "python-tool-lock", "pass", "Python quality dependencies have a protected hash lock.", detail={"sha256": sha256_file(lock)})
+                _diag(
+                    items,
+                    "python-tool-lock",
+                    "pass",
+                    "Python quality dependencies have a protected hash lock.",
+                    detail={"sha256": sha256_file(lock)},
+                )
         else:
-            _diag(items, "python-tool-lock-missing", tool_status, "Python quality dependencies are not locked yet.", "Run `qg tools install`; commit requirements.lock.txt.")
+            _diag(
+                items,
+                "python-tool-lock-missing",
+                tool_status,
+                "Python quality dependencies are not locked yet.",
+                "Run `qg tools install`; commit requirements.lock.txt.",
+            )
         if os.name == "nt":
-            _diag(items, "mutmut-requires-wsl", "warning", "Mutmut requires fork support and cannot run natively on Windows.", "Run the deep/release mutation profiles inside WSL or Linux CI.")
+            _diag(
+                items,
+                "mutmut-requires-wsl",
+                "warning",
+                "Mutmut requires fork support and cannot run natively on Windows.",
+                "Run the deep/release mutation profiles inside WSL or Linux CI.",
+            )
 
 
 def _check_governance(root: Path, policy: dict[str, Any], items: list[Diagnostic]) -> None:
@@ -258,36 +445,85 @@ def _check_governance(root: Path, policy: dict[str, Any], items: list[Diagnostic
     }
     missing = [path for path in required if not (root / path).exists()]
     if missing:
-        _diag(items, "governance-files", "warning", f"{len(missing)} governance integration files are missing.", "Run `qg init --force` during policy maintenance and review each merge.", missing)
+        _diag(
+            items,
+            "governance-files",
+            "warning",
+            f"{len(missing)} governance integration files are missing.",
+            "Run `qg init --force` during policy maintenance and review each merge.",
+            missing,
+        )
     else:
-        _diag(items, "governance-files", "pass", "CI, CODEOWNERS, and agent integrations are present.")
+        _diag(
+            items, "governance-files", "pass", "CI, CODEOWNERS, and agent integrations are present."
+        )
     codeowners = root / ".github" / "CODEOWNERS"
     if codeowners.exists() and "@OWNER" in codeowners.read_text(encoding="utf-8", errors="replace"):
-        _diag(items, "codeowners-placeholder", "warning", "CODEOWNERS still contains @OWNER placeholders.", "Replace @OWNER with real GitHub users or teams before relying on branch protection.")
+        _diag(
+            items,
+            "codeowners-placeholder",
+            "warning",
+            "CODEOWNERS still contains @OWNER placeholders.",
+            "Replace @OWNER with real GitHub users or teams before relying on branch protection.",
+        )
     protected = policy.get("policy", {}).get("protected_paths", [])
     if "quality/approvals/**" not in protected:
-        _diag(items, "approvals-unprotected", "warning", "quality/approvals/** is not in the local protected-path policy.", "Upgrade the policy before using release approval records.")
+        _diag(
+            items,
+            "approvals-unprotected",
+            "warning",
+            "quality/approvals/** is not in the local protected-path policy.",
+            "Upgrade the policy before using release approval records.",
+        )
 
 
-def _check_lock_and_environment(root: Path, project: dict[str, Any], items: list[Diagnostic]) -> None:
+def _check_lock_and_environment(
+    root: Path, project: dict[str, Any], items: list[Diagnostic]
+) -> None:
     if not (root / ".git").exists():
-        _diag(items, "git-repository", "warning", "Repository is not a Git checkout; changed-code and review gates have reduced fidelity.", "Initialize Git and establish a base revision.")
+        _diag(
+            items,
+            "git-repository",
+            "warning",
+            "Repository is not a Git checkout; changed-code and review gates have reduced fidelity.",
+            "Initialize Git and establish a base revision.",
+        )
     else:
         revision = git_revision(root)
         _diag(items, "git-repository", "pass", f"Git revision is {revision[:16]}.")
     base = str(project.get("enforcement", {}).get("base_ref", "HEAD"))
     if (root / ".git").exists():
-        completed = subprocess.run(["git", "rev-parse", "--verify", base], cwd=root, text=True, capture_output=True, check=False)
+        completed = subprocess.run(
+            ["git", "rev-parse", "--verify", base],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
         if completed.returncode != 0:
-            _diag(items, "base-ref-missing", "warning", f"Configured comparison base {base!r} is not available locally.", "Fetch the base branch or set enforcement.base_ref in quality/project.json.")
+            _diag(
+                items,
+                "base-ref-missing",
+                "warning",
+                f"Configured comparison base {base!r} is not available locally.",
+                "Fetch the base branch or set enforcement.base_ref in quality/project.json.",
+            )
         else:
             _diag(items, "base-ref", "pass", f"Configured comparison base {base!r} resolves.")
     source_date = os.environ.get("SOURCE_DATE_EPOCH")
     if source_date:
-        _diag(items, "source-date-epoch", "pass", "SOURCE_DATE_EPOCH is set for reproducibility-sensitive commands.", detail=source_date)
+        _diag(
+            items,
+            "source-date-epoch",
+            "pass",
+            "SOURCE_DATE_EPOCH is set for reproducibility-sensitive commands.",
+            detail=source_date,
+        )
 
 
-def _check_onboarding(root: Path, project: dict[str, Any], risk: dict[str, Any], items: list[Diagnostic]) -> None:
+def _check_onboarding(
+    root: Path, project: dict[str, Any], risk: dict[str, Any], items: list[Diagnostic]
+) -> None:
     onboarding_state = current_onboarding(root)
     onboarding = onboarding_state["current"]
     if onboarding_state["stale"]:
@@ -297,34 +533,90 @@ def _check_onboarding(root: Path, project: dict[str, Any], risk: dict[str, Any],
             "warning",
             "quality/onboarding.json no longer matches the repository's detected stacks, tests, contracts, features, tool locks, or governance files.",
             "Run `python3 quality/qg.py onboarding refresh`, then review the newly generated gaps and stage plan.",
-            {"stored_fingerprint": onboarding_state["stored"].get("state_fingerprint"), "current_fingerprint": onboarding.get("state_fingerprint")},
+            {
+                "stored_fingerprint": onboarding_state["stored"].get("state_fingerprint"),
+                "current_fingerprint": onboarding.get("state_fingerprint"),
+            },
         )
     gaps = onboarding.get("gaps", []) if isinstance(onboarding, dict) else []
     blockers = [gap for gap in gaps if isinstance(gap, dict) and gap.get("severity") == "blocker"]
     if blockers:
-        _diag(items, "onboarding-blockers", "warning", f"{len(blockers)} onboarding blocker(s) remain unresolved.", "Run `python3 quality/qg.py onboarding show` and complete the named work before trusting agent autonomy.", blockers)
+        _diag(
+            items,
+            "onboarding-blockers",
+            "warning",
+            f"{len(blockers)} onboarding blocker(s) remain unresolved.",
+            "Run `python3 quality/qg.py onboarding show` and complete the named work before trusting agent autonomy.",
+            blockers,
+        )
     else:
         _diag(items, "onboarding", "pass", "No current generated onboarding blocker remains.")
 
     keystone = root / "KEYSTONE.md"
-    if keystone.exists() and "Replace this section" in keystone.read_text(encoding="utf-8", errors="replace"):
-        _diag(items, "product-context-placeholder", "warning", "KEYSTONE.md still contains the generated product-context placeholder.", "Replace it with the real purpose, users, surfaces, shared behavior, and feature namespaces.")
-    active_specs = [path for path in (root / "feature-spec").glob("*.md") if not path.name.startswith(("README", "EXAMPLE", "TODO."))] if (root / "feature-spec").exists() else []
+    if keystone.exists() and "Replace this section" in keystone.read_text(
+        encoding="utf-8", errors="replace"
+    ):
+        _diag(
+            items,
+            "product-context-placeholder",
+            "warning",
+            "KEYSTONE.md still contains the generated product-context placeholder.",
+            "Replace it with the real purpose, users, surfaces, shared behavior, and feature namespaces.",
+        )
+    active_specs = (
+        [
+            path
+            for path in (root / "feature-spec").glob("*.md")
+            if not path.name.startswith(("README", "EXAMPLE", "TODO."))
+        ]
+        if (root / "feature-spec").exists()
+        else []
+    )
     if not active_specs:
-        _diag(items, "active-spec-missing", "warning", "No project-specific active feature specification is present.", "Create and review the smallest current-behavior contract with `qg new spec Product.Feature`.")
+        _diag(
+            items,
+            "active-spec-missing",
+            "warning",
+            "No project-specific active feature specification is present.",
+            "Create and review the smallest current-behavior contract with `qg new spec Product.Feature`.",
+        )
     else:
-        _diag(items, "active-specs", "pass", f"{len(active_specs)} active feature specification(s) are present.")
+        _diag(
+            items,
+            "active-specs",
+            "pass",
+            f"{len(active_specs)} active feature specification(s) are present.",
+        )
 
-    selected = str(risk.get("selected_risk_profile") or "standard") if isinstance(risk, dict) else "standard"
+    selected = (
+        str(risk.get("selected_risk_profile") or "standard")
+        if isinstance(risk, dict)
+        else "standard"
+    )
     approvals = validate_required_approvals(root, selected)
     if approvals["errors"]:
-        _diag(items, "approvals-pending", "warning", f"{len(approvals['errors'])} required human approval condition(s) are not yet current.", "Complete approvals only after the final deterministic evidence run; approval fingerprints invalidate automatically after changes.", approvals["errors"][:20])
+        _diag(
+            items,
+            "approvals-pending",
+            "warning",
+            f"{len(approvals['errors'])} required human approval condition(s) are not yet current.",
+            "Complete approvals only after the final deterministic evidence run; approval fingerprints invalidate automatically after changes.",
+            approvals["errors"][:20],
+        )
     else:
-        _diag(items, "approvals-current", "pass", f"All approvals required for {selected} are current.")
+        _diag(
+            items,
+            "approvals-current",
+            "pass",
+            f"All approvals required for {selected} are current.",
+        )
 
 
 def _report(root: Path, items: list[Diagnostic], **extra: Any) -> dict[str, Any]:
-    counts = {status: sum(item.status == status for item in items) for status in ("pass", "warning", "error")}
+    counts = {
+        status: sum(item.status == status for item in items)
+        for status in ("pass", "warning", "error")
+    }
     return {
         "schema_version": 1,
         "generated_at": utc_now(),

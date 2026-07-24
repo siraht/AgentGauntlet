@@ -5,17 +5,31 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-from pathlib import Path
+import shlex
 import subprocess
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
-from .constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE, STATUS_NAMES
+from .constants import (
+    CONFIGURATION_ERROR,
+    INFRASTRUCTURE_ERROR,
+    PASS,
+    QUALITY_FAILURE,
+    STATUS_NAMES,
+)
 from .errors import ConfigurationError
 from .policy import safe_remove, validate_policy
 from .project import load_project
-from .util import change_fingerprint, control_fingerprint, git_revision, human_duration, utc_now, write_json
+from .util import (
+    change_fingerprint,
+    control_fingerprint,
+    git_revision,
+    human_duration,
+    utc_now,
+    write_json,
+)
 
 
 def _classify(code: int, quality_codes: list[int]) -> int:
@@ -54,7 +68,9 @@ def _run_dir(root: Path, run_id: str) -> Path:
     return path
 
 
-def run_gate(root: Path, policy: dict[str, Any], gate_name: str, run_id: str, profile_name: str | None = None) -> tuple[int, dict[str, Any]]:
+def run_gate(
+    root: Path, policy: dict[str, Any], gate_name: str, run_id: str, profile_name: str | None = None
+) -> tuple[int, dict[str, Any]]:
     gate = policy.get("gates", {}).get(gate_name)
     if not isinstance(gate, dict):
         raise ConfigurationError(f"unknown gate {gate_name!r}")
@@ -70,17 +86,21 @@ def run_gate(root: Path, policy: dict[str, Any], gate_name: str, run_id: str, pr
     if profile_name:
         env["AQG_PROFILE"] = profile_name
     try:
+        argv = shlex.split(command, posix=os.name != "nt")
+        if not argv:
+            raise ConfigurationError(f"gate {gate_name!r} has an empty command")
         completed = subprocess.run(
-            command,
+            argv,
             cwd=root,
             env=env,
-            shell=True,
             text=True,
             capture_output=True,
             timeout=timeout,
             check=False,
         )
-        code = _classify(completed.returncode, [int(v) for v in gate.get("quality_failure_exit_codes", [1])])
+        code = _classify(
+            completed.returncode, [int(v) for v in gate.get("quality_failure_exit_codes", [1])]
+        )
         stdout = completed.stdout
         stderr = completed.stderr
         raw_code = completed.returncode
@@ -88,8 +108,16 @@ def run_gate(root: Path, policy: dict[str, Any], gate_name: str, run_id: str, pr
     except subprocess.TimeoutExpired as exc:
         code = INFRASTRUCTURE_ERROR
         raw_code = INFRASTRUCTURE_ERROR
-        stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        stdout = (
+            exc.stdout.decode(errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or "")
+        )
+        stderr = (
+            exc.stderr.decode(errors="replace")
+            if isinstance(exc.stderr, bytes)
+            else (exc.stderr or "")
+        )
         stderr = (stderr + f"\nGate timed out after {timeout}s").strip()
         timed_out = True
     duration = int((time.monotonic() - started) * 1000)
@@ -132,7 +160,10 @@ def run_profile(
     profile = policy.get("profiles", {}).get(profile_name)
     if not isinstance(profile, dict):
         raise ConfigurationError(f"unknown execution profile {profile_name!r}")
-    run_id = os.environ.get("AQG_RUN_ID") or f"{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    run_id = (
+        os.environ.get("AQG_RUN_ID")
+        or f"{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    )
     run_dir = _run_dir(root, run_id)
     started = time.monotonic()
     start_provenance = _provenance(root)
@@ -152,11 +183,15 @@ def run_profile(
             marker = "✓" if code == PASS else "✗"
             detail = evidence.get("stderr", "").strip().splitlines()
             tail = f" · {detail[-1][:140]}" if code != PASS and detail else ""
-            print(f"  {marker} {gate_name} [{STATUS_NAMES[code]}] {human_duration(int((time.monotonic()-gate_started)*1000))}{tail}")
+            print(
+                f"  {marker} {gate_name} [{STATUS_NAMES[code]}] {human_duration(int((time.monotonic() - gate_started) * 1000))}{tail}"
+            )
         if code != PASS and not keep_going:
             break
     end_provenance = _provenance(root)
-    workspace_mutated = start_provenance["change_fingerprint"] != end_provenance["change_fingerprint"]
+    workspace_mutated = (
+        start_provenance["change_fingerprint"] != end_provenance["change_fingerprint"]
+    )
     if workspace_mutated:
         integrity = {
             "schema_version": "2",
@@ -178,7 +213,9 @@ def run_profile(
         write_json(run_dir / "gates" / "workspace_integrity.json", integrity)
         final = max(final, QUALITY_FAILURE)
         if not quiet:
-            print("  ✗ workspace_integrity [quality_failure] · a checker modified the review surface")
+            print(
+                "  ✗ workspace_integrity [quality_failure] · a checker modified the review surface"
+            )
 
     summary = {
         "schema_version": "2",
@@ -204,7 +241,9 @@ def run_profile(
     write_json(run_dir / "summary.json", summary)
     write_json(root / ".aqg" / "latest.json", {"run_id": run_id, "path": str(run_dir), **summary})
     if not quiet:
-        print(f"AQG {profile_name}: {STATUS_NAMES[final]} in {human_duration(summary['duration_ms'])}")
+        print(
+            f"AQG {profile_name}: {STATUS_NAMES[final]} in {human_duration(int(str(summary['duration_ms'])))}"
+        )
     return final, summary
 
 

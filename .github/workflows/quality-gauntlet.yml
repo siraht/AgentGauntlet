@@ -1,0 +1,66 @@
+name: Agent Quality Gauntlet Source CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install source test dependencies
+        run: python -m pip install --disable-pip-version-check -e . pytest
+      - name: Compile
+        run: python -m compileall -q src tests scripts
+      - name: Test
+        run: python -m pytest -q
+
+  release-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build twice
+        run: |
+          python scripts/build_release.py --output dist-one
+          python scripts/build_release.py --output dist-two
+          cmp dist-one/aqg.pyz dist-two/aqg.pyz
+          cmp dist-one/agent-quality-gauntlet-2.0.0-portable.zip dist-two/agent-quality-gauntlet-2.0.0-portable.zip
+      - name: Smoke test standalone executable
+        run: |
+          python dist-one/aqg.pyz --version
+          python dist-one/aqg.pyz --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-quality-gauntlet-portable
+          path: |
+            dist-one/aqg.pyz
+            dist-one/aqg.pyz.sha256
+            dist-one/agent-quality-gauntlet-2.0.0-portable.zip
+            dist-one/agent-quality-gauntlet-2.0.0-portable.zip.sha256
+            dist-one/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

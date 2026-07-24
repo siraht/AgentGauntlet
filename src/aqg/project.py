@@ -44,7 +44,9 @@ def validate_project(project: dict[str, Any]) -> list[str]:
     else:
         for key in ("source", "tests", "html", "css", "exclude"):
             value = paths.get(key)
-            if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+            if not isinstance(value, list) or any(
+                not isinstance(item, str) or not item.strip() for item in value
+            ):
                 errors.append(f"paths.{key} must be an array of non-empty strings")
 
     enforcement = project.get("enforcement")
@@ -55,7 +57,10 @@ def validate_project(project: dict[str, Any]) -> list[str]:
             errors.append("enforcement.mode must be adopt or greenfield")
         if enforcement.get("scope") not in {"changed", "full"}:
             errors.append("enforcement.scope must be changed or full")
-        if not isinstance(enforcement.get("base_ref"), str) or not enforcement.get("base_ref", "").strip():
+        if (
+            not isinstance(enforcement.get("base_ref"), str)
+            or not enforcement.get("base_ref", "").strip()
+        ):
             errors.append("enforcement.base_ref must be a non-empty Git ref")
 
     gates = project.get("gates")
@@ -78,17 +83,32 @@ def validate_project(project: dict[str, Any]) -> list[str]:
         for group in ("coverage", "structure", "mutation", "security", "performance"):
             if not isinstance(thresholds.get(group), dict):
                 errors.append(f"thresholds.{group} must be an object")
-        coverage = thresholds.get("coverage", {}) if isinstance(thresholds.get("coverage"), dict) else {}
+        coverage = (
+            thresholds.get("coverage", {}) if isinstance(thresholds.get("coverage"), dict) else {}
+        )
         for key in ("lines", "branches", "functions", "statements", "changed_lines"):
             value = coverage.get(key)
-            if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0 <= value <= 100:
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not 0 <= value <= 100
+            ):
                 errors.append(f"thresholds.coverage.{key} must be a number from 0 to 100")
-        structure = thresholds.get("structure", {}) if isinstance(thresholds.get("structure"), dict) else {}
-        for key in ("max_function_lines", "max_cyclomatic_complexity", "max_crap", "max_nesting_depth"):
+        structure = (
+            thresholds.get("structure", {}) if isinstance(thresholds.get("structure"), dict) else {}
+        )
+        for key in (
+            "max_function_lines",
+            "max_cyclomatic_complexity",
+            "max_crap",
+            "max_nesting_depth",
+        ):
             value = structure.get(key)
             if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
                 errors.append(f"thresholds.structure.{key} must be a positive number")
-        mutation = thresholds.get("mutation", {}) if isinstance(thresholds.get("mutation"), dict) else {}
+        mutation = (
+            thresholds.get("mutation", {}) if isinstance(thresholds.get("mutation"), dict) else {}
+        )
         score = mutation.get("minimum_score")
         if not isinstance(score, (int, float)) or isinstance(score, bool) or not 0 <= score <= 100:
             errors.append("thresholds.mutation.minimum_score must be a number from 0 to 100")
@@ -111,10 +131,16 @@ def validate_project(project: dict[str, Any]) -> list[str]:
         errors.append("web must be an object")
     else:
         start = web.get("start_command")
-        if start is not None and (not isinstance(start, list) or not start or any(not isinstance(item, str) for item in start)):
+        if start is not None and (
+            not isinstance(start, list)
+            or not start
+            or any(not isinstance(item, str) for item in start)
+        ):
             errors.append("web.start_command must be null or a non-empty string array")
         url = web.get("base_url")
-        if url is not None and (not isinstance(url, str) or not url.startswith(("http://", "https://"))):
+        if url is not None and (
+            not isinstance(url, str) or not url.startswith(("http://", "https://"))
+        ):
             errors.append("web.base_url must be null or an http(s) URL")
     return errors
 

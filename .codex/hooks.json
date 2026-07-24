@@ -3,25 +3,25 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|apply_patch|mcp__.*",
         "hooks": [
           {
-            "type": "command",
             "command": "python3 \"$(git rev-parse --show-toplevel)/quality/qg.py\" hook-pretool",
+            "statusMessage": "Checking repository quality policy",
             "timeout": 30,
-            "statusMessage": "Checking repository quality policy"
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "Bash|Edit|Write|apply_patch|mcp__.*"
       }
     ],
     "Stop": [
       {
         "hooks": [
           {
-            "type": "command",
             "command": "python3 \"$(git rev-parse --show-toplevel)/quality/qg.py\" hook-stop",
+            "statusMessage": "Checking fast quality profile",
             "timeout": 300,
-            "statusMessage": "Checking fast quality profile"
+            "type": "command"
           }
         ]
       }

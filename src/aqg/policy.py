@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import fnmatch
-import json
 import os
-from pathlib import Path
 import re
 import shutil
-from typing import Any, Iterable
+from pathlib import Path
+from typing import Any
 
 try:
     import tomllib
@@ -17,10 +15,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from .constants import PLACEHOLDER, RISK_ORDER
 from .errors import ConfigurationError
-from .util import matches_any, read_json
+from .util import read_json
 
-
-POLICY_TEMPLATE = r'''version = 2
+POLICY_TEMPLATE = r"""version = 2
 initialized = true
 default_risk_profile = "standard"
 default_execution_profile = "fast"
@@ -149,15 +146,15 @@ gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "
 max_total_seconds = 1800
 
 [profiles.deep]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "performance"]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance"]
 max_total_seconds = 10800
 
 [profiles.release]
-gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "performance", "release_readiness"]
+gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "release_readiness"]
 max_total_seconds = 14400
 
 {gates}
-'''
+"""
 
 GATE_NAMES = [
     "format",
@@ -176,6 +173,7 @@ GATE_NAMES = [
     "secrets",
     "security_fast",
     "security_deep",
+    "supply_chain",
     "performance",
     "reproducible_build",
     "release_readiness",
@@ -198,6 +196,7 @@ GATE_TIMEOUTS = {
     "secrets": 300,
     "security_fast": 900,
     "security_deep": 3600,
+    "supply_chain": 900,
     "performance": 3600,
     "reproducible_build": 3600,
     "release_readiness": 1800,
@@ -209,11 +208,11 @@ def render_policy(owner: str) -> str:
     for name in GATE_NAMES:
         clean = f'clean_paths = [".aqg/work/{name}"]'
         blocks.append(
-            f'[gates.{name}]\n'
+            f"[gates.{name}]\n"
             f'command = "python3 quality/qg.py adapter {name}"\n'
-            f'timeout_seconds = {GATE_TIMEOUTS[name]}\n'
-            f'{clean}\n'
-            'quality_failure_exit_codes = [1]\n'
+            f"timeout_seconds = {GATE_TIMEOUTS[name]}\n"
+            f"{clean}\n"
+            "quality_failure_exit_codes = [1]\n"
         )
     return POLICY_TEMPLATE.format(owner=owner.replace('"', "'"), gates="\n".join(blocks))
 
@@ -266,14 +265,18 @@ def validate_policy(policy: dict[str, Any], *, require_initialized: bool = True)
         if not isinstance(timeout, int) or timeout <= 0:
             errors.append(f"gate {name!r} needs a positive timeout_seconds")
         clean_paths = gate.get("clean_paths", []) if isinstance(gate, dict) else []
-        if not isinstance(clean_paths, list) or not all(isinstance(value, str) for value in clean_paths):
+        if not isinstance(clean_paths, list) or not all(
+            isinstance(value, str) for value in clean_paths
+        ):
             errors.append(f"gate {name!r} clean_paths must be a string array")
     policy_cfg = policy.get("policy", {})
     for key in ("protected_paths", "human_review_paths", "blocked_command_regex"):
         values = policy_cfg.get(key, []) if isinstance(policy_cfg, dict) else []
         if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
             errors.append(f"policy.{key} must be a string array")
-    for expression in policy_cfg.get("blocked_command_regex", []) if isinstance(policy_cfg, dict) else []:
+    for expression in (
+        policy_cfg.get("blocked_command_regex", []) if isinstance(policy_cfg, dict) else []
+    ):
         try:
             re.compile(expression, re.IGNORECASE)
         except re.error as exc:
@@ -298,7 +301,9 @@ def safe_remove(root: Path, configured_path: str) -> None:
     try:
         target.relative_to(resolved)
     except ValueError as exc:
-        raise ConfigurationError(f"refusing to clean path outside repository: {configured_path}") from exc
+        raise ConfigurationError(
+            f"refusing to clean path outside repository: {configured_path}"
+        ) from exc
     if target == resolved:
         raise ConfigurationError("refusing to clean repository root")
     if target.is_symlink() or target.is_file():
@@ -341,7 +346,13 @@ def risk_card_errors(card: dict[str, Any], policy: dict[str, Any]) -> list[str]:
         errors.append("risk card schema_version must be '1'")
     if card.get("risk_profile") not in RISK_ORDER:
         errors.append(f"risk_profile must be one of: {', '.join(RISK_ORDER)}")
-    if card.get("blast_radius") not in {"local", "single_service", "multi_service", "organization", "public"}:
+    if card.get("blast_radius") not in {
+        "local",
+        "single_service",
+        "multi_service",
+        "organization",
+        "public",
+    }:
         errors.append("blast_radius has an invalid value")
     for field in ("summary", "failure_detection", "rollback"):
         if isinstance(card.get(field), str) and not card[field].strip():
@@ -378,7 +389,9 @@ def minimum_risk_profile(card: dict[str, Any], policy: dict[str, Any]) -> str:
     return minimum
 
 
-def risk_summary(root: Path, policy: dict[str, Any], card_path: str) -> tuple[list[str], dict[str, Any]]:
+def risk_summary(
+    root: Path, policy: dict[str, Any], card_path: str
+) -> tuple[list[str], dict[str, Any]]:
     card = load_risk_card(root, card_path)
     errors = risk_card_errors(card, policy)
     selected = card.get("risk_profile", "experiment")
@@ -391,7 +404,9 @@ def risk_summary(root: Path, policy: dict[str, Any], card_path: str) -> tuple[li
         "selected_risk_profile": selected,
         "minimum_risk_profile": minimum,
         "required_execution_profiles": risk_cfg.get("required_execution_profiles", []),
-        "required_controls": {key: value for key, value in risk_cfg.items() if key.startswith("requires_")},
+        "required_controls": {
+            key: value for key, value in risk_cfg.items() if key.startswith("requires_")
+        },
         "errors": errors,
     }
 

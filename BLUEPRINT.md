@@ -14,18 +14,18 @@ A traditional workflow asks a person to infer correctness by reading implementat
 
 The division of labor is:
 
-| Artifact | Primary author | Required reviewer |
-|---|---|---|
-| Product context and active feature requirements | Human with agent assistance | Human |
-| Future/TODO feature requirements | Human with agent assistance | Human before implementation |
-| Gherkin acceptance examples | Agent drafts | Human review scaled by risk |
-| Manual QA procedures | Agent drafts | Human review scaled by risk |
-| Implementation code | Agent | Automated gauntlet; human code review only where profile requires it |
-| Unit/property/contract tests | Agent | Mutation, coverage, test-integrity gates |
-| Golden output | Test runner proposes | Human approves behavioral diffs |
-| Gate definitions, hook scripts, CI policy | Policy-maintenance task only | Human/code owner |
-| Quality reports | Deterministic tools | CI and verifier agent; human sees summary |
-| Final exploratory test | Human | Human |
+| Artifact                                        | Primary author               | Required reviewer                                                    |
+| ----------------------------------------------- | ---------------------------- | -------------------------------------------------------------------- |
+| Product context and active feature requirements | Human with agent assistance  | Human                                                                |
+| Future/TODO feature requirements                | Human with agent assistance  | Human before implementation                                          |
+| Gherkin acceptance examples                     | Agent drafts                 | Human review scaled by risk                                          |
+| Manual QA procedures                            | Agent drafts                 | Human review scaled by risk                                          |
+| Implementation code                             | Agent                        | Automated gauntlet; human code review only where profile requires it |
+| Unit/property/contract tests                    | Agent                        | Mutation, coverage, test-integrity gates                             |
+| Golden output                                   | Test runner proposes         | Human approves behavioral diffs                                      |
+| Gate definitions, hook scripts, CI policy       | Policy-maintenance task only | Human/code owner                                                     |
+| Quality reports                                 | Deterministic tools          | CI and verifier agent; human sees summary                            |
+| Final exploratory test                          | Human                        | Human                                                                |
 
 This does not remove judgment. It moves judgment to the artifacts with the highest leverage: what the product must do, what failure would cost, which exceptions are allowed, and whether observed behavior changed intentionally.
 
@@ -229,12 +229,12 @@ A complex method can be acceptable when its behavior is thoroughly exercised, an
 
 Recommended starting targets, to be calibrated by language and repository:
 
-| Profile | Changed-function length | Cyclomatic complexity | Changed-method CRAP |
-|---|---:|---:|---:|
-| Experiment | target ≤ 50, hard cap 75 | hard cap 15 | no new score ≥ 30 |
-| Standard | target ≤ 40, hard cap 50 | target ≤ 8, hard cap 10 | target ≤ 15 |
-| High assurance | target ≤ 30, hard cap 40 | target ≤ 5, hard cap 8 | ≤ 8 |
-| Critical | target ≤ 25, hard cap 30 | target ≤ 4, hard cap 5 | ≤ 5 |
+| Profile        |  Changed-function length |   Cyclomatic complexity | Changed-method CRAP |
+| -------------- | -----------------------: | ----------------------: | ------------------: |
+| Experiment     | target ≤ 50, hard cap 75 |             hard cap 15 |   no new score ≥ 30 |
+| Standard       | target ≤ 40, hard cap 50 | target ≤ 8, hard cap 10 |         target ≤ 15 |
+| High assurance | target ≤ 30, hard cap 40 |  target ≤ 5, hard cap 8 |                 ≤ 8 |
+| Critical       | target ≤ 25, hard cap 30 |  target ≤ 4, hard cap 5 |                 ≤ 5 |
 
 These are starter values, not universal laws. Different analyzers count branches differently, generated code may need exclusions, and legacy projects should use a **ratchet**:
 
@@ -252,11 +252,11 @@ Measure line/statement and branch coverage for changed code, and track whole-pro
 
 Suggested changed-code starting floors:
 
-| Profile | Line/statement | Branch |
-|---|---:|---:|
-| Standard | 85% | 75% |
-| High assurance | 90% | 85% |
-| Critical | 95% | 90% |
+| Profile        | Line/statement | Branch |
+| -------------- | -------------: | -----: |
+| Standard       |            85% |    75% |
+| High assurance |            90% |    85% |
+| Critical       |            95% |    90% |
 
 Coverage proves execution, not correctness. It is useful because low coverage makes complex code risky and because it scopes mutation work, but it cannot replace assertions, acceptance tests, or mutation testing.
 
@@ -367,11 +367,11 @@ Mutation is expensive, so persistent workers, coverage-guided selection, unique 
 
 Suggested starting mutation expectations:
 
-| Profile | Pull request | Scheduled/release |
-|---|---|---|
-| Standard | changed logic, target ≥ 70% killed after triage | broader suite periodically |
-| High assurance | all changed modules, target ≥ 85% | full applicable modules |
-| Critical | all affected critical paths, target ≥ 90% and no unexplained critical survivor | full relevant suite |
+| Profile        | Pull request                                                                   | Scheduled/release          |
+| -------------- | ------------------------------------------------------------------------------ | -------------------------- |
+| Standard       | changed logic, target ≥ 70% killed after triage                                | broader suite periodically |
+| High assurance | all changed modules, target ≥ 85%                                              | full applicable modules    |
+| Critical       | all affected critical paths, target ≥ 90% and no unexplained critical survivor | full relevant suite        |
 
 Mutation score alone is not the goal. One surviving authorization or data-loss mutant matters more than many trivial killed mutants.
 
@@ -675,25 +675,25 @@ Keep human code review for Critical scopes and any area where the evidence syste
 
 ## 14. Common failure modes and controls
 
-| Failure mode | Why it happens | Control |
-|---|---|---|
-| Agent changes the tests to match a bug | Code and tests share an author | Mutation, test-change audit, human-owned acceptance/QA, verifier agent |
-| Agent lowers thresholds | Policy is inside its writable scope | Protected policy plane, hooks, CODEOWNERS, central CI |
-| Green tests discover nothing | Framework silently ignores malformed tests | Test-structure checker, minimum-count and no-new-skip gates |
-| High coverage with weak assertions | Coverage measures execution | Source mutation, properties, acceptance mutation |
-| Stale coverage changes CRAP | Old artifacts are reused | Delete/fingerprint artifacts; fail on ambiguous mapping |
-| Mutation workers collide | Parallel runs share paths or ports | Unique run roots, isolated workers, deterministic IDs |
-| Mutation becomes too slow | Full suite runs for every mutant | Coverage-guided scope, persistent workers, differential manifests, scheduled full runs |
-| Equivalent mutants waste effort | Mutation does not alter observable behavior | Narrow suppression with rationale; score after triage |
-| Gherkin becomes verbose and inconsistent | Agents invent new phrasing per scenario | Small grammar, canonical vocabulary, advisory DRY checker |
-| Step handlers test a fake | Acceptance plumbing bypasses the real app | Thin entrypoints, public-boundary handlers, acceptance mutation |
-| Goldens hide regressions | Broad normalizers or blind updates | Schema, field classification, bounded artifacts, human raw-diff review |
-| Flaky tests are retried until green | Retry masks nondeterminism | Hermetic clocks/RNG/network, seed logging, flake budget, no silent retry |
-| Tiny functions create wrapper soup | Agent games size metrics | Coupling, duplication, architecture, mutation, module-level review |
-| Tool crash is reported as test failure | Status model is too coarse | Separate pass/fail/config/infra statuses and exit codes |
-| Full stack slows every change | Risk is not classified | Experiment/Standard/High/Critical profiles |
-| Acceptance spec is subtly wrong | Human delegates product intent too far | Human review of observable examples and manual QA |
-| Manual QA finds recurring bugs | Findings stay informal | Convert each meaningful finding into a durable automated contract |
+| Failure mode                             | Why it happens                              | Control                                                                                |
+| ---------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Agent changes the tests to match a bug   | Code and tests share an author              | Mutation, test-change audit, human-owned acceptance/QA, verifier agent                 |
+| Agent lowers thresholds                  | Policy is inside its writable scope         | Protected policy plane, hooks, CODEOWNERS, central CI                                  |
+| Green tests discover nothing             | Framework silently ignores malformed tests  | Test-structure checker, minimum-count and no-new-skip gates                            |
+| High coverage with weak assertions       | Coverage measures execution                 | Source mutation, properties, acceptance mutation                                       |
+| Stale coverage changes CRAP              | Old artifacts are reused                    | Delete/fingerprint artifacts; fail on ambiguous mapping                                |
+| Mutation workers collide                 | Parallel runs share paths or ports          | Unique run roots, isolated workers, deterministic IDs                                  |
+| Mutation becomes too slow                | Full suite runs for every mutant            | Coverage-guided scope, persistent workers, differential manifests, scheduled full runs |
+| Equivalent mutants waste effort          | Mutation does not alter observable behavior | Narrow suppression with rationale; score after triage                                  |
+| Gherkin becomes verbose and inconsistent | Agents invent new phrasing per scenario     | Small grammar, canonical vocabulary, advisory DRY checker                              |
+| Step handlers test a fake                | Acceptance plumbing bypasses the real app   | Thin entrypoints, public-boundary handlers, acceptance mutation                        |
+| Goldens hide regressions                 | Broad normalizers or blind updates          | Schema, field classification, bounded artifacts, human raw-diff review                 |
+| Flaky tests are retried until green      | Retry masks nondeterminism                  | Hermetic clocks/RNG/network, seed logging, flake budget, no silent retry               |
+| Tiny functions create wrapper soup       | Agent games size metrics                    | Coupling, duplication, architecture, mutation, module-level review                     |
+| Tool crash is reported as test failure   | Status model is too coarse                  | Separate pass/fail/config/infra statuses and exit codes                                |
+| Full stack slows every change            | Risk is not classified                      | Experiment/Standard/High/Critical profiles                                             |
+| Acceptance spec is subtly wrong          | Human delegates product intent too far      | Human review of observable examples and manual QA                                      |
+| Manual QA finds recurring bugs           | Findings stay informal                      | Convert each meaningful finding into a durable automated contract                      |
 
 ---
 

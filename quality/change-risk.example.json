@@ -5,9 +5,7 @@
   "production_scope": true,
   "reversible": true,
   "blast_radius": "single_service",
-  "behavior_changes": [
-    "Describe one observable behavior change."
-  ],
+  "behavior_changes": ["Describe one observable behavior change."],
   "behavior_preserved": [
     "Describe important behavior that must remain unchanged."
   ],
@@ -21,12 +19,10 @@
     "migration": false,
     "concurrency": false,
     "irreversible_action": false,
+    "supply_chain": false,
     "safety": false
   },
   "failure_detection": "Describe tests, monitoring, or manual evidence.",
   "rollback": "Describe how to restore the previous safe state.",
-  "human_review": [
-    "Feature requirements",
-    "Gherkin examples"
-  ]
+  "human_review": ["Feature requirements", "Gherkin examples"]
 }

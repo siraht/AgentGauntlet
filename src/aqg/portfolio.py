@@ -34,12 +34,21 @@ def save_portfolio(payload: dict[str, Any]) -> None:
     write_json(config_path(), payload)
 
 
-def add_project(root: Path, *, name: str | None = None, tags: list[str] | None = None) -> dict[str, Any]:
+def add_project(
+    root: Path, *, name: str | None = None, tags: list[str] | None = None
+) -> dict[str, Any]:
     root = root.resolve()
     project = load_project(root)
     payload = load_portfolio()
-    projects = [item for item in payload.get("projects", []) if Path(item.get("path", "")).resolve() != root]
-    entry = {"name": name or project["name"], "path": str(root), "tags": sorted(set(tags or [])), "added_at": utc_now()}
+    projects = [
+        item for item in payload.get("projects", []) if Path(item.get("path", "")).resolve() != root
+    ]
+    entry = {
+        "name": name or project["name"],
+        "path": str(root),
+        "tags": sorted(set(tags or [])),
+        "added_at": utc_now(),
+    }
     projects.append(entry)
     payload["projects"] = sorted(projects, key=lambda item: item["name"].lower())
     save_portfolio(payload)
@@ -51,7 +60,8 @@ def remove_project(value: str) -> bool:
     before = len(payload.get("projects", []))
     target = Path(value).expanduser().resolve()
     payload["projects"] = [
-        item for item in payload.get("projects", [])
+        item
+        for item in payload.get("projects", [])
         if item.get("name") != value and Path(item.get("path", "")).expanduser().resolve() != target
     ]
     changed = len(payload["projects"]) != before

@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import getpass
-import importlib.util
-import json
 import hashlib
+import json
 import os
-from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sys
+from importlib import resources
+from importlib.resources.abc import Traversable
+from pathlib import Path
 from typing import Any
 
 from .constants import DEFAULT_EXCLUDES, __version__
@@ -19,32 +20,70 @@ from .detect import Detection, detect_project
 from .errors import ConfigurationError, InfrastructureError
 from .policy import render_policy
 from .project import load_project
-from .util import atomic_write, command_exists, merge_gitignore, run_command, slugify, write_json, detect_base_ref, read_json, utc_now
-
+from .util import (
+    atomic_write,
+    command_exists,
+    detect_base_ref,
+    merge_gitignore,
+    read_json,
+    run_command,
+    utc_now,
+    write_json,
+)
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
-TEMPLATE_ROOT = PACKAGE_ROOT / "templates"
+PACKAGE_RESOURCES = resources.files(__package__.split(".", 1)[0])
+
+
+def _resource(relative: str) -> Traversable:
+    current = PACKAGE_RESOURCES
+    for part in Path(relative).parts:
+        current = current.joinpath(part)
+    return current
 
 
 def _copy_text(template: str, destination: Path, *, force: bool = False) -> bool:
-    source = TEMPLATE_ROOT / template
     if destination.exists() and not force:
         return False
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
+    destination.write_bytes(_resource(f"templates/{template}").read_bytes())
     return True
+
+
+def _copy_resource_tree(source: Any, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for item in source.iterdir():
+        if item.name in {"__pycache__", ".DS_Store"} or item.name.endswith(".pyc"):
+            continue
+        target = destination / item.name
+        if item.is_dir():
+            _copy_resource_tree(item, target)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(item.read_bytes())
 
 
 def _copy_runtime(root: Path) -> None:
     destination = root / "quality" / "_aqg"
     if destination.exists():
         shutil.rmtree(destination)
-    shutil.copytree(
-        PACKAGE_ROOT,
-        destination,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"),
-    )
-    wrapper = '''#!/usr/bin/env python3
+    source_checkout = root / "src" / "aqg"
+    if (
+        PACKAGE_ROOT.is_dir()
+        and source_checkout.exists()
+        and source_checkout.resolve() == PACKAGE_ROOT.resolve()
+    ):
+        wrapper = '''#!/usr/bin/env python3
+"""Agent Quality Gauntlet source-checkout launcher."""
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from aqg.cli import main
+raise SystemExit(main())
+'''
+    else:
+        _copy_resource_tree(PACKAGE_RESOURCES, destination)
+        wrapper = '''#!/usr/bin/env python3
 """Project-local Agent Quality Gauntlet runtime. Managed by `qg upgrade`."""
 from pathlib import Path
 import sys
@@ -59,7 +98,9 @@ def _parse_command(value: str | None) -> list[str] | None:
     return shlex.split(value) if value and value.strip() else None
 
 
-def _infer_web(detection: Detection, root: Path, start_override: str | None, base_url: str | None) -> dict[str, Any]:
+def _infer_web(
+    detection: Detection, root: Path, start_override: str | None, base_url: str | None
+) -> dict[str, Any]:
     start = _parse_command(start_override) or detection.start_command
     url = base_url
     frameworks = set(detection.frameworks)
@@ -69,7 +110,16 @@ def _infer_web(detection: Detection, root: Path, start_override: str | None, bas
             if any((root / candidate).glob("*.html")):
                 directory = candidate
                 break
-        start = [sys.executable, "-m", "http.server", "4173", "--bind", "127.0.0.1", "--directory", directory]
+        start = [
+            sys.executable,
+            "-m",
+            "http.server",
+            "4173",
+            "--bind",
+            "127.0.0.1",
+            "--directory",
+            directory,
+        ]
         url = url or "http://127.0.0.1:4173"
     if url is None:
         if "vite" in frameworks:
@@ -126,20 +176,47 @@ def build_project_config(
         raise ConfigurationError("mode must be adopt or greenfield")
     has_tests = _test_files_exist(root, detection)
     has_code = detection.javascript or detection.python
-    has_web = detection.html or detection.css or any(
-        framework in detection.frameworks for framework in ("react", "vue", "svelte", "sveltekit", "next", "nuxt", "astro", "vite")
+    has_web = (
+        detection.html
+        or detection.css
+        or any(
+            framework in detection.frameworks
+            for framework in (
+                "react",
+                "vue",
+                "svelte",
+                "sveltekit",
+                "next",
+                "nuxt",
+                "astro",
+                "vite",
+            )
+        )
     )
-    web = _infer_web(detection, root, start_command, base_url) if has_web else {"base_url": None, "start_command": None}
+    web = (
+        _infer_web(detection, root, start_command, base_url)
+        if has_web
+        else {"base_url": None, "start_command": None}
+    )
     has_acceptance = has_web or _feature_files_exist(root) or _acceptance_files_exist(root)
-    has_contracts = any((root / path).exists() for path in ("tests/contracts", "test/contracts", "contracts"))
+    has_contracts = any(
+        (root / path).exists() for path in ("tests/contracts", "test/contracts", "contracts")
+    )
     has_build = bool(detection.build_command)
     js_unit_command = None
     if detection.javascript:
         if "test" in detection.package_scripts:
             manager = detection.package_manager or "npm"
-            js_unit_command = [manager, "run", "test"] if manager in {"npm", "bun"} else [manager, "test"]
+            js_unit_command = (
+                [manager, "run", "test"] if manager in {"npm", "bun"} else [manager, "test"]
+            )
         elif detection.js_test_runner == "vitest" or has_tests:
-            js_unit_command = ["$AQG_JS_BIN/vitest", "run", "--config", "quality/tools/js/config/vitest.config.mjs"]
+            js_unit_command = [
+                "$AQG_JS_BIN/vitest",
+                "run",
+                "--config",
+                "quality/tools/js/config/vitest.config.mjs",
+            ]
     python_sources = [path for path in detection.source_paths if path not in {"tests", "test", "."}]
     if not python_sources:
         python_sources = ["."]
@@ -166,36 +243,89 @@ def build_project_config(
         "fast": {},
         "pr": {},
         "deep": {
-            "coverage": {"lines": 90, "branches": 85, "functions": 90, "statements": 90, "changed_lines": 95},
-            "structure": {"max_function_lines": 40, "max_cyclomatic_complexity": 8, "max_crap": 8, "max_nesting_depth": 4},
+            "coverage": {
+                "lines": 90,
+                "branches": 85,
+                "functions": 90,
+                "statements": 90,
+                "changed_lines": 95,
+            },
+            "structure": {
+                "max_function_lines": 40,
+                "max_cyclomatic_complexity": 8,
+                "max_crap": 8,
+                "max_nesting_depth": 4,
+            },
             "mutation": {"minimum_score": 85, "maximum_survivors": 0},
             "performance": {"lighthouse_performance": 0.9, "lighthouse_accessibility": 0.98},
         },
         "release": {
-            "coverage": {"lines": 95, "branches": 90, "functions": 95, "statements": 95, "changed_lines": 95},
-            "structure": {"max_function_lines": 30, "max_cyclomatic_complexity": 5, "max_crap": 5, "max_nesting_depth": 3},
+            "coverage": {
+                "lines": 95,
+                "branches": 90,
+                "functions": 95,
+                "statements": 95,
+                "changed_lines": 95,
+            },
+            "structure": {
+                "max_function_lines": 30,
+                "max_cyclomatic_complexity": 5,
+                "max_crap": 5,
+                "max_nesting_depth": 3,
+            },
             "mutation": {"minimum_score": 90, "maximum_survivors": 0},
             "performance": {"lighthouse_performance": 0.95, "lighthouse_accessibility": 0.99},
         },
     }
     gates = {
-        "format": _gate(has_code or detection.html or detection.css, "No supported source files were detected."),
-        "lint": _gate(has_code or detection.html or detection.css, "No supported source files were detected."),
-        "typecheck": _gate(detection.typescript or detection.python, "No TypeScript or Python source was detected."),
-        "test_integrity": _gate(has_code, "No JavaScript/TypeScript/Python production source was detected."),
+        "format": _gate(
+            has_code or detection.html or detection.css, "No supported source files were detected."
+        ),
+        "lint": _gate(
+            has_code or detection.html or detection.css, "No supported source files were detected."
+        ),
+        "typecheck": _gate(
+            detection.typescript or detection.python, "No TypeScript or Python source was detected."
+        ),
+        "test_integrity": _gate(
+            has_code, "No JavaScript/TypeScript/Python production source was detected."
+        ),
         "unit": _gate(has_code, "No JavaScript/TypeScript/Python production source was detected."),
-        "structure": _gate(has_code, "No JavaScript/TypeScript/Python production source was detected."),
+        "structure": _gate(
+            has_code, "No JavaScript/TypeScript/Python production source was detected."
+        ),
         "coverage": _gate(has_code, "No coverable production source was detected."),
-        "contracts": _gate(has_contracts, "No contract-test directory was detected; add tests/contracts or mark a project command."),
-        "acceptance": _gate(has_acceptance, "No web surface, Gherkin feature, or acceptance-test directory was detected."),
-        "golden": _gate(_golden_configured(root), "No quality/golden/scenarios.json is configured."),
+        "contracts": _gate(
+            has_contracts,
+            "No contract-test directory was detected; add tests/contracts or mark a project command.",
+        ),
+        "acceptance": _gate(
+            has_acceptance,
+            "No web surface, Gherkin feature, or acceptance-test directory was detected.",
+        ),
+        "golden": _gate(
+            _golden_configured(root), "No quality/golden/scenarios.json is configured."
+        ),
         "mutation_changed": _gate(has_code, "No mutable production source was detected."),
-        "mutation_acceptance": _gate(_feature_files_exist(root), "No Gherkin Examples-based acceptance specifications were detected."),
+        "mutation_acceptance": _gate(
+            _feature_files_exist(root),
+            "No Gherkin Examples-based acceptance specifications were detected.",
+        ),
         "review": _gate(True, "Review analysis is always applicable."),
         "secrets": _gate(True, "Secret scanning is always applicable."),
-        "security_fast": _gate(has_code, "No supported dependency or source ecosystem was detected."),
-        "security_deep": _gate(has_code, "No supported dependency or source ecosystem was detected."),
-        "performance": _gate(bool(has_web and web.get("start_command")), "No runnable web surface was detected."),
+        "security_fast": _gate(
+            has_code, "No supported dependency or source ecosystem was detected."
+        ),
+        "security_deep": _gate(
+            has_code, "No supported dependency or source ecosystem was detected."
+        ),
+        "supply_chain": _gate(
+            detection.javascript or detection.python,
+            "No supported JavaScript or Python dependency ecosystem was detected.",
+        ),
+        "performance": _gate(
+            bool(has_web and web.get("start_command")), "No runnable web surface was detected."
+        ),
         "reproducible_build": _gate(has_build, "No deterministic build command was detected."),
         "release_readiness": _gate(True, "Release evidence is always applicable."),
     }
@@ -246,7 +376,7 @@ def build_project_config(
 
 
 def _render_agents_addendum() -> str:
-    return '''\n## Agent Quality Gauntlet\n\nThis repository uses the Agent Quality Gauntlet. Before changing code, read `QUALITY.md`, `KEYSTONE.md`, the applicable files under `feature-spec/`, and `quality/change-risk.json`. Run `python3 quality/qg.py status`, then `python3 quality/qg.py check-risk --keep-going` before declaring completion. Never modify policy-plane files, approve golden changes, suppress a checker, weaken a test, or update mutation baselines unless the user explicitly assigns a policy-maintenance task.\n'''
+    return """\n## Agent Quality Gauntlet\n\nThis repository uses the Agent Quality Gauntlet. Before changing code, read `QUALITY.md`, `KEYSTONE.md`, the applicable files under `feature-spec/`, and `quality/change-risk.json`. Run `python3 quality/qg.py status`, then `python3 quality/qg.py check-risk --keep-going` before declaring completion. Never modify policy-plane files, approve golden changes, suppress a checker, weaken a test, or update mutation baselines unless the user explicitly assigns a policy-maintenance task.\n"""
 
 
 def _append_once(path: Path, marker: str, content: str) -> None:
@@ -272,38 +402,62 @@ def _merge_hooks(path: Path, root_variable: str, matcher: str) -> None:
     stop_command = f'python3 "{root_variable}/quality/qg.py" hook-stop'
     pre = hooks.setdefault("PreToolUse", [])
     if not any("hook-pretool" in json.dumps(item) for item in pre):
-        pre.append({"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": 30}]})
+        pre.append(
+            {"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": 30}]}
+        )
     stop = hooks.setdefault("Stop", [])
     if not any("hook-stop" in json.dumps(item) for item in stop):
-        stop.append({"matcher": "", "hooks": [{"type": "command", "command": stop_command, "timeout": 600}]})
+        stop.append(
+            {"matcher": "", "hooks": [{"type": "command", "command": stop_command, "timeout": 600}]}
+        )
     write_json(path, payload)
 
 
 def _write_agent_integrations(root: Path) -> None:
     _append_once(root / "AGENTS.md", "## Agent Quality Gauntlet", _render_agents_addendum())
     _append_once(root / "CLAUDE.md", "## Agent Quality Gauntlet", _render_agents_addendum())
-    _merge_hooks(root / ".claude" / "settings.json", "$CLAUDE_PROJECT_DIR", "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*")
-    _merge_hooks(root / ".codex" / "hooks.json", "$(git rev-parse --show-toplevel)", "Bash|Edit|Write|apply_patch|mcp__.*")
-    skill = '''---\nname: quality-gauntlet\ndescription: Run and interpret the repository's deterministic quality gauntlet, create test and QA evidence, and prepare review packets.\n---\n# Quality Gauntlet\n\n1. Read `QUALITY.md`, `KEYSTONE.md`, applicable `feature-spec/` files, and `quality/change-risk.json`.\n2. Run `python3 quality/qg.py status` before editing.\n3. Keep product behavior and tests aligned; do not weaken policy or approve expected-output changes.\n4. Use `python3 quality/qg.py guidance <topic>` for test-writing instructions.\n5. Run `python3 quality/qg.py check fast` during work and `python3 quality/qg.py check-risk --keep-going` before completion.\n6. Generate the review packet with `python3 quality/qg.py review --write`.\n7. Report every failed, skipped, stale, or inapplicable gate explicitly.\n'''
+    _merge_hooks(
+        root / ".claude" / "settings.json",
+        "$CLAUDE_PROJECT_DIR",
+        "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*",
+    )
+    _merge_hooks(
+        root / ".codex" / "hooks.json",
+        "$(git rev-parse --show-toplevel)",
+        "Bash|Edit|Write|apply_patch|mcp__.*",
+    )
+    skill = """---\nname: quality-gauntlet\ndescription: Run and interpret the repository's deterministic quality gauntlet, create test and QA evidence, and prepare review packets.\n---\n# Quality Gauntlet\n\n1. Read `QUALITY.md`, `KEYSTONE.md`, applicable `feature-spec/` files, and `quality/change-risk.json`.\n2. Run `python3 quality/qg.py status` before editing.\n3. Keep product behavior and tests aligned; do not weaken policy or approve expected-output changes.\n4. Use `python3 quality/qg.py guidance <topic>` for test-writing instructions.\n5. Run `python3 quality/qg.py check fast` during work and `python3 quality/qg.py check-risk --keep-going` before completion.\n6. Generate the review packet with `python3 quality/qg.py review --write`.\n7. Report every failed, skipped, stale, or inapplicable gate explicitly.\n"""
     atomic_write(root / ".agents" / "skills" / "quality-gauntlet" / "SKILL.md", skill)
     atomic_write(root / ".claude" / "skills" / "quality-gauntlet" / "SKILL.md", skill)
-    verifier = '''# Quality verifier\n\nAct as an independent, read-only verifier. Do not edit source, tests, snapshots, policies, waivers, baselines, or generated evidence. Inspect the risk card and behavior contracts, run the required AQG profile, examine raw gate evidence and review findings, and report unsupported claims, skipped controls, stale evidence, surviving mutants, unreviewed expected-output changes, and rollback gaps.\n'''
+    verifier = """# Quality verifier\n\nAct as an independent, read-only verifier. Do not edit source, tests, snapshots, policies, waivers, baselines, or generated evidence. Inspect the risk card and behavior contracts, run the required AQG profile, examine raw gate evidence and review findings, and report unsupported claims, skipped controls, stale evidence, surviving mutants, unreviewed expected-output changes, and rollback gaps.\n"""
     atomic_write(root / ".claude" / "agents" / "quality-verifier.md", verifier)
-    atomic_write(root / ".codex" / "agents" / "quality-verifier.toml", 'name = "quality-verifier"\ndescription = "Independent read-only verification of AQG evidence and behavior contracts"\nmodel = "default"\n')
+    atomic_write(
+        root / ".codex" / "agents" / "quality-verifier.toml",
+        'name = "quality-verifier"\ndescription = "Independent read-only verification of AQG evidence and behavior contracts"\nmodel = "default"\n',
+    )
 
 
-def _write_ci(root: Path, codeowner: str | None = None, project: dict[str, Any] | None = None) -> None:
+def _write_ci(
+    root: Path, codeowner: str | None = None, project: dict[str, Any] | None = None
+) -> None:
     project = project or build_project_config(root, detect_project(root))
     stacks = project.get("stacks", {})
     has_js = bool(stacks.get("javascript") or stacks.get("html") or stacks.get("css"))
-    node_step = '''
+    browser_option = (
+        " --browsers" if project.get("gates", {}).get("acceptance", {}).get("applicable") else ""
+    )
+    node_step = (
+        """
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: quality/tools/js/package-lock.json
-''' if has_js else ""
-    workflow = f'''name: Agent Quality Gauntlet
+"""
+        if has_js
+        else ""
+    )
+    workflow = f"""name: Agent Quality Gauntlet
 
 on:
   pull_request:
@@ -346,7 +500,7 @@ jobs:
           echo "AQG_DIFF_BASE=$AQG_BASE" >> "$GITHUB_ENV"
           echo "Comparison base: $AQG_BASE"
       - name: Install locked AQG toolchains
-        run: python3 quality/qg.py tools install --ci
+        run: python3 quality/qg.py tools install --ci{browser_option}
       - name: Prove checker failure behavior
         run: python3 quality/qg.py conformance --tools
       - name: Validate policy, project model, and risk card
@@ -378,14 +532,14 @@ jobs:
             .aqg/work
           if-no-files-found: warn
           retention-days: 30
-'''
+"""
     path = root / ".github" / "workflows" / "quality-gauntlet.yml"
     if not path.exists():
         atomic_write(path, workflow)
-    owner = codeowner or '@OWNER'
-    if owner != '@OWNER' and not owner.startswith('@'):
-        owner = '@' + owner
-    codeowners = '''# Policy and human-review planes
+    owner = codeowner or "@OWNER"
+    if owner != "@OWNER" and not owner.startswith("@"):
+        owner = "@" + owner
+    codeowners = """# Policy and human-review planes
 /quality/ @OWNER
 /.github/workflows/ @OWNER
 /.github/CODEOWNERS @OWNER
@@ -397,17 +551,17 @@ jobs:
 /features/ @OWNER
 /qa/procedures/ @OWNER
 /quality/approvals/ @OWNER
-'''.replace('@OWNER', owner)
+""".replace("@OWNER", owner)
     path = root / ".github" / "CODEOWNERS"
     if not path.exists():
         atomic_write(path, codeowners)
 
 
 def _write_docs(root: Path) -> None:
-    quality_doc = '''# Quality policy\n\nThis repository uses **Agent Quality Gauntlet 2**. `quality/policy.toml` defines cumulative execution profiles and `quality/project.json` defines stack applicability, commands, paths, and thresholds. Exit 0 means checked and passed; exit 1 means the checker found a quality defect; exit 2 means policy or configuration is invalid; exit 3 means infrastructure failed or trustworthy evidence was not produced.\n\n## Required workflow\n\n1. Update `quality/change-risk.json` in observable product terms.\n2. Read `KEYSTONE.md` and applicable `feature-spec/` documents.\n3. Run `python3 quality/qg.py check fast` during implementation.\n4. Run `python3 quality/qg.py check-risk --keep-going` and `python3 quality/qg.py review --write` before review.\n5. A human reviews behavior contracts, QA procedures, expected-output changes, waivers, surviving mutations, and release controls according to the resolved risk profile.\n\nPolicy-plane files may change only during an explicit policy-maintenance task. A passing local hook is advisory; protected CI and code-owner review are authoritative.\n'''
+    quality_doc = """# Quality policy\n\nThis repository uses **Agent Quality Gauntlet 2**. `quality/policy.toml` defines cumulative execution profiles and `quality/project.json` defines stack applicability, commands, paths, and thresholds. Exit 0 means checked and passed; exit 1 means the checker found a quality defect; exit 2 means policy or configuration is invalid; exit 3 means infrastructure failed or trustworthy evidence was not produced.\n\n## Required workflow\n\n1. Update `quality/change-risk.json` in observable product terms.\n2. Read `KEYSTONE.md` and applicable `feature-spec/` documents.\n3. Run `python3 quality/qg.py check fast` during implementation.\n4. Run `python3 quality/qg.py check-risk --keep-going` and `python3 quality/qg.py review --write` before review.\n5. A human reviews behavior contracts, QA procedures, expected-output changes, waivers, surviving mutations, and release controls according to the resolved risk profile.\n\nPolicy-plane files may change only during an explicit policy-maintenance task. A passing local hook is advisory; protected CI and code-owner review are authoritative.\n"""
     if not (root / "QUALITY.md").exists():
         atomic_write(root / "QUALITY.md", quality_doc)
-    keystone = '''# Keystone agent guidance\n\nThis project keeps durable product intent beside the code. Active specifications under `feature-spec/` describe implemented behavior that must remain true. Files prefixed with `TODO.` describe intended behavior that is not yet active. Before changing behavior, resolve the most specific applicable active specification and its parent requirements. A mismatch between an active specification, tests, and implementation is a defect; do not silently weaken the specification.\n\n## Feature context\n\nReplace this section with the product purpose, users, executable surfaces, shared behavior, and the natural dot-separated feature namespaces.\n'''
+    keystone = """# Keystone agent guidance\n\nThis project keeps durable product intent beside the code. Active specifications under `feature-spec/` describe implemented behavior that must remain true. Files prefixed with `TODO.` describe intended behavior that is not yet active. Before changing behavior, resolve the most specific applicable active specification and its parent requirements. A mismatch between an active specification, tests, and implementation is a defect; do not silently weaken the specification.\n\n## Feature context\n\nReplace this section with the product purpose, users, executable surfaces, shared behavior, and the natural dot-separated feature namespaces.\n"""
     if not (root / "KEYSTONE.md").exists():
         atomic_write(root / "KEYSTONE.md", keystone)
     (root / "feature-spec").mkdir(exist_ok=True)
@@ -415,20 +569,34 @@ def _write_docs(root: Path) -> None:
     (root / "qa" / "procedures").mkdir(parents=True, exist_ok=True)
 
 
-
 def _onboarding_state(root: Path, detection: Detection, project: dict[str, Any]) -> dict[str, Any]:
     feature_dir = root / "feature-spec"
-    active_specs = sorted(
-        path.relative_to(root).as_posix()
-        for path in feature_dir.glob("*.md")
-        if not path.name.startswith(("README", "EXAMPLE", "TODO."))
-    ) if feature_dir.exists() else []
-    todo_specs = sorted(
-        path.relative_to(root).as_posix()
-        for path in feature_dir.glob("TODO.*.md")
-    ) if feature_dir.exists() else []
-    feature_files = sorted(path.relative_to(root).as_posix() for path in (root / "features").glob("*.feature")) if (root / "features").exists() else []
-    qa_files = sorted(path.relative_to(root).as_posix() for path in (root / "qa" / "procedures").glob("*.md")) if (root / "qa" / "procedures").exists() else []
+    active_specs = (
+        sorted(
+            path.relative_to(root).as_posix()
+            for path in feature_dir.glob("*.md")
+            if not path.name.startswith(("README", "EXAMPLE", "TODO."))
+        )
+        if feature_dir.exists()
+        else []
+    )
+    todo_specs = (
+        sorted(path.relative_to(root).as_posix() for path in feature_dir.glob("TODO.*.md"))
+        if feature_dir.exists()
+        else []
+    )
+    feature_files = (
+        sorted(path.relative_to(root).as_posix() for path in (root / "features").glob("*.feature"))
+        if (root / "features").exists()
+        else []
+    )
+    qa_files = (
+        sorted(
+            path.relative_to(root).as_posix() for path in (root / "qa" / "procedures").glob("*.md")
+        )
+        if (root / "qa" / "procedures").exists()
+        else []
+    )
     return {
         "stacks": project.get("stacks", {}),
         "detected_stacks": {
@@ -443,15 +611,24 @@ def _onboarding_state(root: Path, detection: Detection, project: dict[str, Any])
         "todo_specs": todo_specs,
         "gherkin_features": feature_files,
         "qa_procedures": qa_files,
-        "contracts_present": any((root / value).exists() for value in ("tests/contracts", "test/contracts", "contracts")),
+        "contracts_present": any(
+            (root / value).exists() for value in ("tests/contracts", "test/contracts", "contracts")
+        ),
         "golden_configured": _golden_configured(root),
         "acceptance_present": _acceptance_files_exist(root),
-        "keystone_placeholder": (root / "KEYSTONE.md").exists() and "Replace this section" in (root / "KEYSTONE.md").read_text(encoding="utf-8", errors="replace"),
-        "codeowners_placeholder": (root / ".github" / "CODEOWNERS").exists() and "@OWNER" in (root / ".github" / "CODEOWNERS").read_text(encoding="utf-8", errors="replace"),
+        "keystone_placeholder": (root / "KEYSTONE.md").exists()
+        and "Replace this section"
+        in (root / "KEYSTONE.md").read_text(encoding="utf-8", errors="replace"),
+        "codeowners_placeholder": (root / ".github" / "CODEOWNERS").exists()
+        and "@OWNER"
+        in (root / ".github" / "CODEOWNERS").read_text(encoding="utf-8", errors="replace"),
         "js_lock": (root / "quality" / "tools" / "js" / "package-lock.json").exists(),
         "python_lock": (root / "quality" / "tools" / "python" / "requirements.lock.txt").exists(),
         "ci_present": (root / ".github" / "workflows" / "quality-gauntlet.yml").exists(),
-        "agent_integrations": all((root / value).exists() for value in ("AGENTS.md", "CLAUDE.md", ".claude/settings.json", ".codex/hooks.json")),
+        "agent_integrations": all(
+            (root / value).exists()
+            for value in ("AGENTS.md", "CLAUDE.md", ".claude/settings.json", ".codex/hooks.json")
+        ),
     }
 
 
@@ -465,125 +642,219 @@ def build_onboarding(root: Path, detection: Detection, project: dict[str, Any]) 
     gaps: list[dict[str, str]] = []
 
     configured_stacks = project.get("stacks", {})
-    drifted_stacks = [name for name, enabled in state["detected_stacks"].items() if enabled and not configured_stacks.get(name)]
+    drifted_stacks = [
+        name
+        for name, enabled in state["detected_stacks"].items()
+        if enabled and not configured_stacks.get(name)
+    ]
     if drifted_stacks:
-        gaps.append({
-            "code": "project-model-stack-drift",
-            "severity": "blocker",
-            "message": f"New supported stacks are present but absent from the protected project model: {', '.join(drifted_stacks)}.",
-            "next_step": "During explicit policy maintenance, run `AQG_POLICY_MAINTENANCE=1 python3 quality/qg.py detect --write`, review every applicability and threshold change, then rerun conformance.",
-        })
+        gaps.append(
+            {
+                "code": "project-model-stack-drift",
+                "severity": "blocker",
+                "message": f"New supported stacks are present but absent from the protected project model: {', '.join(drifted_stacks)}.",
+                "next_step": "During explicit policy maintenance, run `AQG_POLICY_MAINTENANCE=1 python3 quality/qg.py detect --write`, review every applicability and threshold change, then rerun conformance.",
+            }
+        )
     if (detection.javascript or detection.python) and not detection.test_paths:
-        gaps.append({
-            "code": "missing-tests",
-            "severity": "blocker",
-            "message": "Production source exists but no executable unit-test location was detected.",
-            "next_step": "Use `qg guidance unit-tests` and add characterization tests before relying on agent-written changes.",
-        })
+        gaps.append(
+            {
+                "code": "missing-tests",
+                "severity": "blocker",
+                "message": "Production source exists but no executable unit-test location was detected.",
+                "next_step": "Use `qg guidance unit-tests` and add characterization tests before relying on agent-written changes.",
+            }
+        )
     if state["keystone_placeholder"]:
-        gaps.append({
-            "code": "product-context-placeholder",
-            "severity": "review",
-            "message": "KEYSTONE.md still contains generated product-context instructions rather than the actual product boundaries.",
-            "next_step": "Define purpose, users, executable surfaces, shared behavior, and natural feature namespaces; have the product owner review the result.",
-        })
+        gaps.append(
+            {
+                "code": "product-context-placeholder",
+                "severity": "review",
+                "message": "KEYSTONE.md still contains generated product-context instructions rather than the actual product boundaries.",
+                "next_step": "Define purpose, users, executable surfaces, shared behavior, and natural feature namespaces; have the product owner review the result.",
+            }
+        )
     if not state["active_specs"]:
-        gaps.append({
-            "code": "missing-product-contract",
-            "severity": "review",
-            "message": "No project-specific active feature specification exists yet.",
-            "next_step": "Create the smallest durable behavior contract with `qg new spec Product.Feature` and review it before implementation.",
-        })
+        gaps.append(
+            {
+                "code": "missing-product-contract",
+                "severity": "review",
+                "message": "No project-specific active feature specification exists yet.",
+                "next_step": "Create the smallest durable behavior contract with `qg new spec Product.Feature` and review it before implementation.",
+            }
+        )
     if project["gates"]["acceptance"]["applicable"] and not state["acceptance_present"]:
-        gaps.append({
-            "code": "acceptance-bootstrap",
-            "severity": "review",
-            "message": "A behavioral surface is configured but no project-specific acceptance test was detected.",
-            "next_step": "Use `qg new feature Product.Feature`, implement narrow step adapters or Playwright journeys through the real application boundary, and connect each scenario to an active feature specification.",
-        })
+        gaps.append(
+            {
+                "code": "acceptance-bootstrap",
+                "severity": "review",
+                "message": "A behavioral surface is configured but no project-specific acceptance test was detected.",
+                "next_step": "Use `qg new feature Product.Feature`, implement narrow step adapters or Playwright journeys through the real application boundary, and connect each scenario to an active feature specification.",
+            }
+        )
     if state["gherkin_features"] and not project["gates"]["mutation_acceptance"]["applicable"]:
-        gaps.append({
-            "code": "acceptance-applicability-drift",
-            "severity": "blocker",
-            "message": "Gherkin features now exist but acceptance mutation remains marked not applicable in quality/project.json.",
-            "next_step": "Refresh the protected project model during policy maintenance, then run `qg acceptance lint` and `qg acceptance mutate`.",
-        })
+        gaps.append(
+            {
+                "code": "acceptance-applicability-drift",
+                "severity": "blocker",
+                "message": "Gherkin features now exist but acceptance mutation remains marked not applicable in quality/project.json.",
+                "next_step": "Refresh the protected project model during policy maintenance, then run `qg acceptance lint` and `qg acceptance mutate`.",
+            }
+        )
     if state["contracts_present"] and not project["gates"]["contracts"]["applicable"]:
-        gaps.append({
-            "code": "contract-applicability-drift",
-            "severity": "blocker",
-            "message": "A contract-test directory now exists but the contracts gate remains not applicable.",
-            "next_step": "Refresh quality/project.json during policy maintenance and bind the contracts gate to the real command.",
-        })
+        gaps.append(
+            {
+                "code": "contract-applicability-drift",
+                "severity": "blocker",
+                "message": "A contract-test directory now exists but the contracts gate remains not applicable.",
+                "next_step": "Refresh quality/project.json during policy maintenance and bind the contracts gate to the real command.",
+            }
+        )
     if state["golden_configured"] and not project["gates"]["golden"]["applicable"]:
-        gaps.append({
-            "code": "golden-applicability-drift",
-            "severity": "blocker",
-            "message": "Golden scenarios are configured but the protected project model still marks the golden gate not applicable.",
-            "next_step": "Refresh quality/project.json during policy maintenance, verify normalization rules, and require explicit reviewed updates.",
-        })
+        gaps.append(
+            {
+                "code": "golden-applicability-drift",
+                "severity": "blocker",
+                "message": "Golden scenarios are configured but the protected project model still marks the golden gate not applicable.",
+                "next_step": "Refresh quality/project.json during policy maintenance, verify normalization rules, and require explicit reviewed updates.",
+            }
+        )
     if not state["golden_configured"]:
-        gaps.append({
-            "code": "golden-not-configured",
-            "severity": "info",
-            "message": "Golden sessions are not enabled because no scenarios.json is configured.",
-            "next_step": "Enable them only for complex stable traces; copy quality/golden/scenarios.example.json after reading `qg guidance golden-session-testing`.",
-        })
+        gaps.append(
+            {
+                "code": "golden-not-configured",
+                "severity": "info",
+                "message": "Golden sessions are not enabled because no scenarios.json is configured.",
+                "next_step": "Enable them only for complex stable traces; copy quality/golden/scenarios.example.json after reading `qg guidance golden-session-testing`.",
+            }
+        )
     if not state["contracts_present"]:
-        gaps.append({
-            "code": "contracts-not-configured",
-            "severity": "info",
-            "message": "No contract-test directory was detected.",
-            "next_step": "Add tests/contracts when the project owns an API, event, file format, database, or third-party boundary.",
-        })
+        gaps.append(
+            {
+                "code": "contracts-not-configured",
+                "severity": "info",
+                "message": "No contract-test directory was detected.",
+                "next_step": "Add tests/contracts when the project owns an API, event, file format, database, or third-party boundary.",
+            }
+        )
     stacks = project.get("stacks", {})
-    if (stacks.get("javascript") or stacks.get("html") or stacks.get("css")) and not state["js_lock"]:
-        gaps.append({
-            "code": "javascript-tools-unlocked",
-            "severity": "blocker",
-            "message": "The isolated JavaScript/web checker environment has no committed package-lock.json.",
-            "next_step": "Run `qg tools install`, commit the exact protected lock, and run tool conformance before trusting JavaScript/web gates.",
-        })
+    if (stacks.get("javascript") or stacks.get("html") or stacks.get("css")) and not state[
+        "js_lock"
+    ]:
+        gaps.append(
+            {
+                "code": "javascript-tools-unlocked",
+                "severity": "blocker",
+                "message": "The isolated JavaScript/web checker environment has no committed package-lock.json.",
+                "next_step": "Run `qg tools install`, commit the exact protected lock, and run tool conformance before trusting JavaScript/web gates.",
+            }
+        )
     if stacks.get("python") and not state["python_lock"]:
-        gaps.append({
-            "code": "python-tools-unlocked",
-            "severity": "blocker",
-            "message": "The isolated Python checker environment has no hash-locked requirements.lock.txt.",
-            "next_step": "Run `qg tools install`, commit the hash lock, and run tool conformance before trusting Python gates.",
-        })
+        gaps.append(
+            {
+                "code": "python-tools-unlocked",
+                "severity": "blocker",
+                "message": "The isolated Python checker environment has no hash-locked requirements.lock.txt.",
+                "next_step": "Run `qg tools install`, commit the hash lock, and run tool conformance before trusting Python gates.",
+            }
+        )
     if not state["ci_present"]:
-        gaps.append({
-            "code": "authoritative-ci-missing",
-            "severity": "blocker",
-            "message": "The repository has no generated authoritative quality workflow.",
-            "next_step": "Install and protect .github/workflows/quality-gauntlet.yml, or implement an equivalent clean-CI workflow on the hosting platform.",
-        })
+        gaps.append(
+            {
+                "code": "authoritative-ci-missing",
+                "severity": "blocker",
+                "message": "The repository has no generated authoritative quality workflow.",
+                "next_step": "Install and protect .github/workflows/quality-gauntlet.yml, or implement an equivalent clean-CI workflow on the hosting platform.",
+            }
+        )
     if not state["agent_integrations"]:
-        gaps.append({
-            "code": "agent-integrations-missing",
-            "severity": "review",
-            "message": "Codex/Claude working agreements or hooks are incomplete.",
-            "next_step": "Run `qg upgrade` during policy maintenance and verify the installed hook schema against the current agent clients.",
-        })
+        gaps.append(
+            {
+                "code": "agent-integrations-missing",
+                "severity": "review",
+                "message": "Codex/Claude working agreements or hooks are incomplete.",
+                "next_step": "Run `qg upgrade` during policy maintenance and verify the installed hook schema against the current agent clients.",
+            }
+        )
     if state["codeowners_placeholder"]:
-        gaps.append({
-            "code": "codeowners-placeholder",
-            "severity": "blocker",
-            "message": "CODEOWNERS still contains @OWNER and cannot identify the human authority for policy and behavioral changes.",
-            "next_step": "Replace @OWNER with real GitHub users or teams and require their approval in branch protection.",
-        })
+        gaps.append(
+            {
+                "code": "codeowners-placeholder",
+                "severity": "blocker",
+                "message": "CODEOWNERS still contains @OWNER and cannot identify the human authority for policy and behavioral changes.",
+                "next_step": "Replace @OWNER with real GitHub users or teams and require their approval in branch protection.",
+            }
+        )
 
     severity_rank = {"blocker": 0, "review": 1, "info": 2}
     gaps.sort(key=lambda item: (severity_rank.get(item["severity"], 9), item["code"]))
     stages = [
-        {"id": "toolchains", "title": "Lock checker toolchains", "status": "blocked" if any(g["code"] in {"javascript-tools-unlocked", "python-tools-unlocked"} for g in gaps) else "complete", "command": "python3 quality/qg.py tools install"},
-        {"id": "intent", "title": "Define product intent", "status": "needs_review" if any(g["code"] in {"product-context-placeholder", "missing-product-contract"} for g in gaps) else "complete", "command": "python3 quality/qg.py new spec Product.Feature"},
-        {"id": "tests", "title": "Establish executable tests", "status": "blocked" if any(g["code"] == "missing-tests" for g in gaps) else "complete", "command": "python3 quality/qg.py guidance test-strategy"},
-        {"id": "acceptance", "title": "Connect observable behavior", "status": "needs_review" if any(g["code"] in {"acceptance-bootstrap", "acceptance-applicability-drift"} for g in gaps) else "complete", "command": "python3 quality/qg.py new feature Product.Feature"},
-        {"id": "governance", "title": "Protect the control plane", "status": "blocked" if any(g["code"] in {"authoritative-ci-missing", "codeowners-placeholder"} for g in gaps) else "complete", "command": "python3 quality/qg.py doctor --strict-tools"},
-        {"id": "proof", "title": "Prove the gauntlet", "status": "pending", "command": "python3 quality/qg.py conformance --tools"},
-        {"id": "first-run", "title": "Generate current evidence", "status": "pending", "command": "python3 quality/qg.py check-risk --keep-going"},
-        {"id": "review", "title": "Generate review packet", "status": "pending", "command": "python3 quality/qg.py review --write"},
+        {
+            "id": "toolchains",
+            "title": "Lock checker toolchains",
+            "status": "blocked"
+            if any(
+                g["code"] in {"javascript-tools-unlocked", "python-tools-unlocked"} for g in gaps
+            )
+            else "complete",
+            "command": "python3 quality/qg.py tools install",
+        },
+        {
+            "id": "intent",
+            "title": "Define product intent",
+            "status": "needs_review"
+            if any(
+                g["code"] in {"product-context-placeholder", "missing-product-contract"}
+                for g in gaps
+            )
+            else "complete",
+            "command": "python3 quality/qg.py new spec Product.Feature",
+        },
+        {
+            "id": "tests",
+            "title": "Establish executable tests",
+            "status": "blocked" if any(g["code"] == "missing-tests" for g in gaps) else "complete",
+            "command": "python3 quality/qg.py guidance test-strategy",
+        },
+        {
+            "id": "acceptance",
+            "title": "Connect observable behavior",
+            "status": "needs_review"
+            if any(
+                g["code"] in {"acceptance-bootstrap", "acceptance-applicability-drift"}
+                for g in gaps
+            )
+            else "complete",
+            "command": "python3 quality/qg.py new feature Product.Feature",
+        },
+        {
+            "id": "governance",
+            "title": "Protect the control plane",
+            "status": "blocked"
+            if any(
+                g["code"] in {"authoritative-ci-missing", "codeowners-placeholder"} for g in gaps
+            )
+            else "complete",
+            "command": "python3 quality/qg.py doctor --strict-tools",
+        },
+        {
+            "id": "proof",
+            "title": "Prove the gauntlet",
+            "status": "pending",
+            "command": "python3 quality/qg.py conformance --tools",
+        },
+        {
+            "id": "first-run",
+            "title": "Generate current evidence",
+            "status": "pending",
+            "command": "python3 quality/qg.py check-risk --keep-going",
+        },
+        {
+            "id": "review",
+            "title": "Generate review packet",
+            "status": "pending",
+            "command": "python3 quality/qg.py review --write",
+        },
     ]
     first = next((gap for gap in gaps if gap["severity"] in {"blocker", "review"}), None)
     return {
@@ -602,7 +873,13 @@ def build_onboarding(root: Path, detection: Detection, project: dict[str, Any]) 
         },
         "gaps": gaps,
         "stages": stages,
-        "next_action": first or {"code": "run-proof", "severity": "info", "message": "No setup blocker remains.", "next_step": "Run conformance, check-risk, and review against the final change."},
+        "next_action": first
+        or {
+            "code": "run-proof",
+            "severity": "info",
+            "message": "No setup blocker remains.",
+            "next_step": "Run conformance, check-risk, and review against the final change.",
+        },
         "required_human_input": [
             "Confirm the real product context and active behavior contracts.",
             "Review Gherkin scenarios and QA procedures for critical user journeys.",
@@ -642,12 +919,27 @@ def initialize_project(
     ci: bool = True,
     base_url: str | None = None,
     start_command: str | None = None,
-    mode: str = "adopt",
+    mode: str = "auto",
+    browsers: bool = False,
 ) -> dict[str, Any]:
     root = root.resolve()
     root.mkdir(parents=True, exist_ok=True)
+    if mode == "auto":
+        if (root / ".git").exists():
+            history = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD"],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            mode = "adopt" if history.returncode == 0 else "greenfield"
+        else:
+            mode = "greenfield" if not any(root.iterdir()) else "adopt"
     detection = detect_project(root)
-    project = build_project_config(root, detection, base_url=base_url, start_command=start_command, mode=mode)
+    project = build_project_config(
+        root, detection, base_url=base_url, start_command=start_command, mode=mode
+    )
     quality = root / "quality"
     quality.mkdir(exist_ok=True)
     _copy_runtime(root)
@@ -671,7 +963,11 @@ def initialize_project(
         ):
             _copy_text(template, root / destination, force=True)
         if project["gates"]["acceptance"]["applicable"] and not _acceptance_files_exist(root):
-            _copy_text("js/aqg-smoke.spec.mjs", root / "tests" / "aqg-browser" / "aqg-smoke.spec.mjs", force=False)
+            _copy_text(
+                "js/aqg-smoke.spec.mjs",
+                root / "tests" / "aqg-browser" / "aqg-smoke.spec.mjs",
+                force=False,
+            )
     if detection.python:
         for template, destination in (
             ("python/requirements.in", "quality/tools/python/requirements.in"),
@@ -681,18 +977,26 @@ def initialize_project(
             ("python/bandit.yaml", "quality/config/python/bandit.yaml"),
         ):
             _copy_text(template, root / destination, force=True)
-    _copy_text("common/golden-scenarios.json", quality / "golden" / "scenarios.example.json", force=False)
+    _copy_text(
+        "common/golden-scenarios.json", quality / "golden" / "scenarios.example.json", force=False
+    )
     _copy_text("common/golden-readme.md", quality / "golden" / "README.md", force=False)
     _copy_text("common/acceptance-adapter.md", quality / "acceptance-adapter.md", force=False)
     if project["gates"]["performance"]["applicable"]:
-        _copy_text("web/qa-procedure.md", root / "qa" / "procedures" / "web-primary-journey.md", force=False)
+        _copy_text(
+            "web/qa-procedure.md",
+            root / "qa" / "procedures" / "web-primary-journey.md",
+            force=False,
+        )
     _write_docs(root)
-    guides_src = PACKAGE_ROOT / "guides"
-    if guides_src.exists():
-        for guide in guides_src.glob("*.md"):
-            destination = quality / "guidance" / guide.name
-            if force or not destination.exists():
-                shutil.copy2(guide, destination)
+    guides_src = _resource("guides")
+    if guides_src.is_dir():
+        for guide in guides_src.iterdir():
+            if not guide.name.endswith(".md"):
+                continue
+            guide_destination = quality / "guidance" / guide.name
+            if force or not guide_destination.exists():
+                guide_destination.write_bytes(guide.read_bytes())
     _write_agent_integrations(root)
     if ci:
         _write_ci(root, owner, project)
@@ -700,6 +1004,7 @@ def initialize_project(
         root,
         [
             ".aqg/",
+            ".coverage",
             "quality/tools/js/node_modules/",
             "quality/tools/python/.venv/",
             "playwright-report/",
@@ -709,9 +1014,14 @@ def initialize_project(
             "mutants/",
         ],
     )
-    result = {"root": str(root), "detection": detection.as_dict(), "project": project, "installed": False}
+    result = {
+        "root": str(root),
+        "detection": detection.as_dict(),
+        "project": project,
+        "installed": False,
+    }
     if install:
-        install_toolchains(root, ci=False)
+        install_toolchains(root, ci=False, browsers=browsers)
         result["installed"] = True
     result["onboarding"] = refresh_onboarding(root)
     return result
@@ -740,58 +1050,130 @@ def _pin_js_manifest_from_lock(tool_dir: Path) -> bool:
             dependencies[name] = version
             changed = True
     if changed:
-        package_path.write_text(json.dumps(package, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        package_path.write_text(
+            json.dumps(package, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     return changed
 
 
-def _compile_python_lock(root: Path, python: Path, requirements_in: Path, requirements_lock: Path) -> None:
+def _compile_python_lock(
+    root: Path, python: Path, requirements_in: Path, requirements_lock: Path
+) -> None:
     if command_exists("uv"):
-        command = ["uv", "pip", "compile", str(requirements_in), "--generate-hashes", "--output-file", str(requirements_lock)]
+        command = [
+            "uv",
+            "pip",
+            "compile",
+            str(requirements_in),
+            "--generate-hashes",
+            "--output-file",
+            str(requirements_lock),
+        ]
     else:
-        bootstrap = run_command([str(python), "-m", "pip", "install", "pip-tools"], cwd=root, timeout=900, stream=True)
+        bootstrap = run_command(
+            [str(python), "-m", "pip", "install", "pip-tools"], cwd=root, timeout=900, stream=True
+        )
         if bootstrap.code != 0:
-            raise InfrastructureError("pip-tools bootstrap failed while creating the protected Python tool lock")
-        command = [str(python), "-m", "piptools", "compile", str(requirements_in), "--generate-hashes", "--output-file", str(requirements_lock)]
+            raise InfrastructureError(
+                "pip-tools bootstrap failed while creating the protected Python tool lock"
+            )
+        command = [
+            str(python),
+            "-m",
+            "piptools",
+            "compile",
+            str(requirements_in),
+            "--generate-hashes",
+            "--output-file",
+            str(requirements_lock),
+        ]
     result = run_command(command, cwd=root, timeout=1800, stream=True)
     if result.code != 0 or not requirements_lock.exists():
-        raise InfrastructureError("failed to generate quality/tools/python/requirements.lock.txt with hashes")
+        raise InfrastructureError(
+            "failed to generate quality/tools/python/requirements.lock.txt with hashes"
+        )
 
 
-def install_toolchains(root: Path, *, ci: bool = False) -> dict[str, Any]:
+def install_toolchains(root: Path, *, ci: bool = False, browsers: bool = False) -> dict[str, Any]:
     from .project import load_project
 
     project = load_project(root)
     results: dict[str, Any] = {}
-    if project["stacks"].get("javascript") or project["stacks"].get("html") or project["stacks"].get("css"):
+    if (
+        project["stacks"].get("javascript")
+        or project["stacks"].get("html")
+        or project["stacks"].get("css")
+    ):
         tool_dir = root / "quality" / "tools" / "js"
         if not command_exists("npm"):
-            raise ConfigurationError("Node.js/npm is required for the JavaScript and web adapter pack")
-        npm_command = ["npm", "ci", "--ignore-scripts", "--no-audit", "--fund=false"] if (tool_dir / "package-lock.json").exists() else ["npm", "install", "--ignore-scripts", "--no-audit", "--fund=false"]
+            raise ConfigurationError(
+                "Node.js/npm is required for the JavaScript and web adapter pack"
+            )
+        npm_command = (
+            ["npm", "ci", "--ignore-scripts", "--no-audit", "--fund=false"]
+            if (tool_dir / "package-lock.json").exists()
+            else ["npm", "install", "--ignore-scripts", "--no-audit", "--fund=false"]
+        )
         result = run_command(npm_command, cwd=tool_dir, timeout=1800, stream=True)
         if result.code != 0:
-            raise InfrastructureError(f"JavaScript quality tool installation failed with exit {result.code}")
+            raise InfrastructureError(
+                f"JavaScript quality tool installation failed with exit {result.code}"
+            )
         if _pin_js_manifest_from_lock(tool_dir):
-            relock = run_command(["npm", "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--fund=false"], cwd=tool_dir, timeout=900, stream=True)
+            relock = run_command(
+                [
+                    "npm",
+                    "install",
+                    "--package-lock-only",
+                    "--ignore-scripts",
+                    "--no-audit",
+                    "--fund=false",
+                ],
+                cwd=tool_dir,
+                timeout=900,
+                stream=True,
+            )
             if relock.code != 0:
-                raise InfrastructureError("failed to rewrite the JavaScript quality lock after exact-version pinning")
+                raise InfrastructureError(
+                    "failed to rewrite the JavaScript quality lock after exact-version pinning"
+                )
         results["javascript_tools"] = "installed_and_exactly_locked"
         root_package = root / "package.json"
         if root_package.exists() and not (root / "node_modules").exists():
             manager = project.get("javascript", {}).get("package_manager") or "npm"
             lock_commands = {
-                "npm": ["npm", "ci"] if (root / "package-lock.json").exists() else ["npm", "install"],
-                "pnpm": ["pnpm", "install", "--frozen-lockfile"] if (root / "pnpm-lock.yaml").exists() else ["pnpm", "install"],
-                "yarn": ["yarn", "install", "--immutable"] if (root / "yarn.lock").exists() else ["yarn", "install"],
-                "bun": ["bun", "install", "--frozen-lockfile"] if (root / "bun.lock").exists() else ["bun", "install"],
+                "npm": ["npm", "ci"]
+                if (root / "package-lock.json").exists()
+                else ["npm", "install"],
+                "pnpm": ["pnpm", "install", "--frozen-lockfile"]
+                if (root / "pnpm-lock.yaml").exists()
+                else ["pnpm", "install"],
+                "yarn": ["yarn", "install", "--immutable"]
+                if (root / "yarn.lock").exists()
+                else ["yarn", "install"],
+                "bun": ["bun", "install", "--frozen-lockfile"]
+                if (root / "bun.lock").exists()
+                else ["bun", "install"],
             }
             command = lock_commands.get(manager, ["npm", "install"])
             app_result = run_command(command, cwd=root, timeout=1800, stream=True)
             if app_result.code != 0:
-                raise InfrastructureError(f"project dependency installation failed with exit {app_result.code}")
+                raise InfrastructureError(
+                    f"project dependency installation failed with exit {app_result.code}"
+                )
             results["project_javascript_dependencies"] = "installed"
-        if project["gates"].get("acceptance", {}).get("applicable"):
-            playwright = tool_dir / "node_modules" / ".bin" / ("playwright.cmd" if os.name == "nt" else "playwright")
-            browser_command = [str(playwright), "install", "--with-deps", "chromium"] if ci else [str(playwright), "install", "chromium"]
+        if browsers and project["gates"].get("acceptance", {}).get("applicable"):
+            playwright = (
+                tool_dir
+                / "node_modules"
+                / ".bin"
+                / ("playwright.cmd" if os.name == "nt" else "playwright")
+            )
+            browser_command = (
+                [str(playwright), "install", "--with-deps", "chromium"]
+                if ci
+                else [str(playwright), "install", "chromium"]
+            )
             browser_result = run_command(browser_command, cwd=root, timeout=1800, stream=True)
             if browser_result.code != 0:
                 raise InfrastructureError("Playwright Chromium installation failed")
@@ -803,24 +1185,66 @@ def install_toolchains(root: Path, *, ci: bool = False) -> dict[str, Any]:
             if command_exists("uv"):
                 result = run_command(["uv", "venv", str(venv)], cwd=root, timeout=300, stream=True)
             else:
-                result = run_command([sys.executable, "-m", "venv", str(venv)], cwd=root, timeout=300, stream=True)
+                result = run_command(
+                    [sys.executable, "-m", "venv", str(venv)], cwd=root, timeout=300, stream=True
+                )
             if result.code != 0:
                 raise InfrastructureError("Python quality virtual environment creation failed")
         python = _venv_python(root)
         requirements_in = root / "quality" / "tools" / "python" / "requirements.in"
         requirements_lock = root / "quality" / "tools" / "python" / "requirements.lock.txt"
         if ci and not requirements_lock.exists():
-            raise ConfigurationError("CI requires quality/tools/python/requirements.lock.txt; run `qg tools install` locally and commit it")
+            raise ConfigurationError(
+                "CI requires quality/tools/python/requirements.lock.txt; run `qg tools install` locally and commit it"
+            )
         if not requirements_lock.exists():
             _compile_python_lock(root, python, requirements_in, requirements_lock)
         if command_exists("uv"):
-            install_result = run_command(["uv", "pip", "install", "--python", str(python), "--require-hashes", "-r", str(requirements_lock)], cwd=root, timeout=1800, stream=True)
+            install_result = run_command(
+                [
+                    "uv",
+                    "pip",
+                    "install",
+                    "--python",
+                    str(python),
+                    "--require-hashes",
+                    "-r",
+                    str(requirements_lock),
+                ],
+                cwd=root,
+                timeout=1800,
+                stream=True,
+            )
         else:
-            install_result = run_command([str(python), "-m", "pip", "install", "--require-hashes", "-r", str(requirements_lock)], cwd=root, timeout=1800, stream=True)
+            install_result = run_command(
+                [
+                    str(python),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--require-hashes",
+                    "-r",
+                    str(requirements_lock),
+                ],
+                cwd=root,
+                timeout=1800,
+                stream=True,
+            )
         if install_result.code != 0:
-            raise InfrastructureError("Python quality tool installation from the protected hash lock failed")
-        if (root / "pyproject.toml").exists() or (root / "setup.py").exists() or (root / "setup.cfg").exists():
-            editable = run_command([str(python), "-m", "pip", "install", "-e", "."], cwd=root, timeout=1800, stream=True)
+            raise InfrastructureError(
+                "Python quality tool installation from the protected hash lock failed"
+            )
+        if (
+            (root / "pyproject.toml").exists()
+            or (root / "setup.py").exists()
+            or (root / "setup.cfg").exists()
+        ):
+            editable = run_command(
+                [str(python), "-m", "pip", "install", "-e", "."],
+                cwd=root,
+                timeout=1800,
+                stream=True,
+            )
             if editable.code != 0:
                 raise InfrastructureError("editable project installation for tests failed")
         results["python_tools"] = "installed_from_hash_lock"

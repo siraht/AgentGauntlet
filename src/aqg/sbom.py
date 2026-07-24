@@ -8,16 +8,16 @@ separate gate because an SBOM is an inventory, not a security verdict.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import re
 import tomllib
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 from .util import read_json, sha256_file, utc_now, write_json
-
 
 _PYPI_NAME = re.compile(r"[-_.]+")
 _EXACT_REQUIREMENT = re.compile(
@@ -99,7 +99,10 @@ def _project_identity(root: Path, ecosystem: str) -> tuple[str, str, str]:
 
 def _has_js_dependencies(root: Path) -> bool:
     payload = read_json(root / "package.json", default={})
-    return any(isinstance(payload.get(key), dict) and payload[key] for key in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"))
+    return any(
+        isinstance(payload.get(key), dict) and payload[key]
+        for key in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies")
+    )
 
 
 def _has_python_dependencies(root: Path) -> bool:
@@ -118,7 +121,12 @@ def _has_python_dependencies(root: Path) -> bool:
         return True
     project = payload.get("project", {}) if isinstance(payload, dict) else {}
     poetry = payload.get("tool", {}).get("poetry", {}) if isinstance(payload, dict) else {}
-    return bool(project.get("dependencies") or project.get("optional-dependencies") or poetry.get("dependencies") or poetry.get("group"))
+    return bool(
+        project.get("dependencies")
+        or project.get("optional-dependencies")
+        or poetry.get("dependencies")
+        or poetry.get("group")
+    )
 
 
 def _npm_name_from_package_path(path: str, entry: dict[str, Any]) -> str | None:
@@ -148,6 +156,7 @@ def _parse_package_lock(path: Path) -> list[dict[str, Any]]:
             if name and isinstance(version, str) and version:
                 components.append(_component(name, version, "npm"))
     elif isinstance(payload, dict):
+
         def walk(dependencies: dict[str, Any]) -> None:
             for name, entry in dependencies.items():
                 if not isinstance(entry, dict):
@@ -158,6 +167,7 @@ def _parse_package_lock(path: Path) -> list[dict[str, Any]]:
                 nested = entry.get("dependencies")
                 if isinstance(nested, dict):
                     walk(nested)
+
         dependencies = payload.get("dependencies")
         if isinstance(dependencies, dict):
             walk(dependencies)
@@ -314,14 +324,34 @@ def javascript_inventory(root: Path) -> Inventory:
         try:
             components = parser(path)
         except (OSError, ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
-            return Inventory("javascript", path, [], False, f"could not parse {path.name}: {exc}", dependencies)
+            return Inventory(
+                "javascript", path, [], False, f"could not parse {path.name}: {exc}", dependencies
+            )
         if dependencies and not components:
-            return Inventory("javascript", path, [], False, f"{path.name} contained no resolvable dependency components", True)
-        return Inventory("javascript", path, components, True, dependency_input_present=dependencies)
+            return Inventory(
+                "javascript",
+                path,
+                [],
+                False,
+                f"{path.name} contained no resolvable dependency components",
+                True,
+            )
+        return Inventory(
+            "javascript", path, components, True, dependency_input_present=dependencies
+        )
     if dependencies:
-        return Inventory("javascript", None, [], False, "package.json declares dependencies but no supported committed lockfile exists", True)
+        return Inventory(
+            "javascript",
+            None,
+            [],
+            False,
+            "package.json declares dependencies but no supported committed lockfile exists",
+            True,
+        )
     if (root / "package.json").exists():
-        return Inventory("javascript", None, [], True, "package.json declares no external dependencies", False)
+        return Inventory(
+            "javascript", None, [], True, "package.json declares no external dependencies", False
+        )
     return Inventory("javascript", None, [], True, "no JavaScript package manifest", False)
 
 
@@ -447,20 +477,44 @@ def python_inventory(root: Path) -> Inventory:
             else:
                 components, complete = parsed, True
         except (OSError, ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
-            return Inventory("python", path, [], False, f"could not parse {path.name}: {exc}", dependencies)
+            return Inventory(
+                "python", path, [], False, f"could not parse {path.name}: {exc}", dependencies
+            )
         if dependencies and not components:
-            return Inventory("python", path, [], False, f"{path.name} contained no exact dependency components", True)
-        reason = "" if complete else f"{path.name} contains unpinned, editable, VCS, local, or otherwise unresolved requirements"
+            return Inventory(
+                "python",
+                path,
+                [],
+                False,
+                f"{path.name} contained no exact dependency components",
+                True,
+            )
+        reason = (
+            ""
+            if complete
+            else f"{path.name} contains unpinned, editable, VCS, local, or otherwise unresolved requirements"
+        )
         return Inventory("python", path, components, complete, reason, dependencies)
     if dependencies:
-        return Inventory("python", None, [], False, "Python dependencies are declared but no supported exact lock or pinned requirements file exists", True)
+        return Inventory(
+            "python",
+            None,
+            [],
+            False,
+            "Python dependencies are declared but no supported exact lock or pinned requirements file exists",
+            True,
+        )
     if (root / "pyproject.toml").exists() or any(root.glob("requirements*.txt")):
-        return Inventory("python", None, [], True, "Python project declares no external dependencies", False)
+        return Inventory(
+            "python", None, [], True, "Python project declares no external dependencies", False
+        )
     return Inventory("python", None, [], True, "no Python dependency manifest", False)
 
 
 def cyclonedx_document(root: Path, inventory: Inventory) -> dict[str, Any]:
-    name, version, kind = _project_identity(root, "npm" if inventory.ecosystem == "javascript" else "pypi")
+    name, version, kind = _project_identity(
+        root, "npm" if inventory.ecosystem == "javascript" else "pypi"
+    )
     source_properties: list[dict[str, str]] = [
         {"name": "aqg:ecosystem", "value": inventory.ecosystem},
         {"name": "aqg:inventory-complete", "value": str(inventory.complete).lower()},
@@ -480,7 +534,11 @@ def cyclonedx_document(root: Path, inventory: Inventory) -> dict[str, Any]:
         "specVersion": "1.6",
         "version": 1,
         "metadata": {
-            "tools": {"components": [{"type": "application", "name": "agent-quality-gauntlet", "version": "2.0.0"}]},
+            "tools": {
+                "components": [
+                    {"type": "application", "name": "agent-quality-gauntlet", "version": "2.0.0"}
+                ]
+            },
             "component": {"type": kind, "name": name, "version": version},
             "properties": source_properties,
         },
@@ -501,15 +559,55 @@ def _write_inventory(root: Path, inventory: Inventory, output: Path) -> dict[str
     }
 
 
-def generate_sboms(root: Path, project: dict[str, Any], *, output_dir: Path | None = None, include_toolchains: bool = True) -> dict[str, Any]:
-    output_dir = output_dir or root / ".aqg" / "work" / "security_deep" / "sbom"
+def validate_cyclonedx_document(document: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if document.get("bomFormat") != "CycloneDX":
+        errors.append("bomFormat must be CycloneDX")
+    if document.get("specVersion") != "1.6":
+        errors.append("specVersion must be 1.6")
+    if document.get("version") != 1:
+        errors.append("version must be 1")
+    metadata = document.get("metadata")
+    if not isinstance(metadata, dict) or not isinstance(metadata.get("component"), dict):
+        errors.append("metadata.component is required")
+    components = document.get("components")
+    if not isinstance(components, list):
+        errors.append("components must be an array")
+        return errors
+    refs: list[str] = []
+    for index, component in enumerate(components):
+        if not isinstance(component, dict):
+            errors.append(f"components[{index}] must be an object")
+            continue
+        for key in ("type", "name", "version", "bom-ref", "purl"):
+            if not isinstance(component.get(key), str) or not component[key]:
+                errors.append(f"components[{index}].{key} must be a non-empty string")
+        if isinstance(component.get("bom-ref"), str):
+            refs.append(component["bom-ref"])
+    if len(refs) != len(set(refs)):
+        errors.append("component bom-ref values must be unique")
+    if refs != sorted(refs):
+        errors.append("components must be sorted by bom-ref")
+    return errors
+
+
+def generate_sboms(
+    root: Path,
+    project: dict[str, Any],
+    *,
+    output_dir: Path | None = None,
+    include_toolchains: bool = True,
+) -> dict[str, Any]:
+    output_dir = output_dir or root / ".aqg" / "work" / "supply_chain" / "sbom"
     output_dir.mkdir(parents=True, exist_ok=True)
     artifacts: list[dict[str, Any]] = []
     errors: list[str] = []
 
     if project.get("stacks", {}).get("javascript"):
         inventory = javascript_inventory(root)
-        artifacts.append(_write_inventory(root, inventory, output_dir / "project-javascript.cdx.json"))
+        artifacts.append(
+            _write_inventory(root, inventory, output_dir / "project-javascript.cdx.json")
+        )
         if not inventory.complete:
             errors.append(f"JavaScript SBOM incomplete: {inventory.reason}")
     if project.get("stacks", {}).get("python"):
@@ -541,12 +639,29 @@ def generate_sboms(root: Path, project: dict[str, Any], *, output_dir: Path | No
         py_lock = root / "quality" / "tools" / "python" / "requirements.lock.txt"
         if py_lock.exists():
             components, complete = _parse_requirements(py_lock)
-            inventory = Inventory("python", py_lock, components, complete, "" if complete else "quality Python lock was not fully exact", True)
+            inventory = Inventory(
+                "python",
+                py_lock,
+                components,
+                complete,
+                "" if complete else "quality Python lock was not fully exact",
+                True,
+            )
             target = output_dir / "aqg-python-toolchain.cdx.json"
             # The root identity remains the repository; scope makes the artifact's purpose explicit.
-            artifacts.append(_write_inventory(root, inventory, target) | {"scope": "quality_toolchain"})
+            artifacts.append(
+                _write_inventory(root, inventory, target) | {"scope": "quality_toolchain"}
+            )
             if not complete:
                 errors.append("AQG Python toolchain SBOM incomplete")
+
+    for artifact in artifacts:
+        artifact_path = root / artifact["artifact"]
+        document = read_json(artifact_path)
+        validation_errors = validate_cyclonedx_document(document)
+        artifact["validation_errors"] = validation_errors
+        if validation_errors:
+            errors.extend(f"{artifact['artifact']}: {message}" for message in validation_errors)
 
     payload = {
         "schema_version": 1,

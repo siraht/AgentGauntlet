@@ -1,61 +1,154 @@
 # Agent Quality Gauntlet
 
-This starter kit implements a **constraint-first quality system for coding agents**. It is intentionally language-agnostic: the repository owns one policy and one evidence format, while project-specific adapters call the native formatter, compiler, test runner, coverage tool, mutation tool, security scanner, and acceptance runner for the detected stack.
+Agent Quality Gauntlet (AQG) is a constraint-first control plane for agentic coding. It installs a protected quality policy, stack-native checks, evidence storage, automated diff review, a guided TUI, and a local web dashboard into JavaScript, TypeScript, HTML, CSS, and Python projects.
 
-The scaffold is deliberately **fail-closed**. `quality/policy.toml` starts with `initialized = false`, and placeholder commands are treated as configuration errors. A coding agent must inspect the target repository, propose the risk profile and behavioral contracts, configure real commands, and prove the gates work before the system can report green.
+The design goal is not “more tests.” It is a set of independent, fail-closed oracles that make it difficult for the same coding agent to change the implementation, weaken the rubric, and certify its own result.
 
-## Start here
+## Quick start
 
-1. Read [`BLUEPRINT.md`](BLUEPRINT.md) for the complete design and adoption plan.
-2. Give [`BOOTSTRAP_PROMPT.md`](BOOTSTRAP_PROMPT.md) to Codex or Claude Code from the repository root.
-3. Review the proposed product behavior, risk profile, Gherkin examples, and QA procedures. You do not need to review implementation code to do this.
-4. Let the agent configure `quality/policy.toml`, language adapters, CI, and conformance fixtures.
-5. Run:
+AQG requires Python 3.11 or newer.
+
+From a source checkout:
 
 ```sh
-python3 quality/qg.py doctor
-python3 quality/qg.py risk-card --card quality/change-risk.json
-python3 quality/qg.py check fast
-python3 quality/qg.py check-risk --card quality/change-risk.json
+./qg setup /path/to/project \
+  --owner @your-org/quality \
+  --mode auto
 ```
 
-6. Enable branch protection and code-owner review for the policy and human-review planes before relying on the gauntlet.
+Add `--browsers` when the project needs Playwright browser checks installed immediately. Without that flag, browser binaries are not downloaded.
+
+From an extracted portable release:
+
+```sh
+./install-aqg.sh /path/to/project \
+  --owner @your-org/quality \
+  --mode auto \
+  --browsers
+```
+
+To install the global `qg` command instead:
+
+```sh
+./install.sh
+qg setup /path/to/project --owner @your-org/quality
+```
+
+`--mode auto` selects full-tree enforcement for a new Git repository without history and changed-code ratcheting for an existing repository. Use `--mode greenfield` or `--mode adopt` to override that choice.
+
+## Daily control surface
+
+The project-local launcher is authoritative after setup:
+
+```sh
+python3 quality/qg.py status
+python3 quality/qg.py doctor
+python3 quality/qg.py risk-card
+python3 quality/qg.py check fast
+python3 quality/qg.py check-risk --keep-going
+python3 quality/qg.py review --write --sarif
+python3 quality/qg.py tui
+python3 quality/qg.py dashboard --open
+```
+
+The CLI, TUI, dashboard, Markdown review packet, SARIF, JSON evidence, and SQLite run history use the same project and policy model.
+
+## What setup installs
+
+AQG detects the repository and writes:
+
+- `quality/policy.toml`: protected gates, profiles, risk escalation, and command guards;
+- `quality/project.json`: detected stacks, applicability, paths, thresholds, and enforcement mode;
+- `quality/qg.py` and `quality/_aqg/`: a project-vendored runtime;
+- isolated JavaScript/web and Python quality-tool definitions;
+- a change-risk card, onboarding state, guidance library, and evidence directories;
+- Codex and Claude Code working agreements, hooks, skills, and verifier definitions;
+- GitHub Actions and CODEOWNERS governance files;
+- feature-specification, Gherkin, golden-session, approval, and QA templates.
+
+The source repository itself uses the source runtime; installed target projects receive a vendored runtime so their checks do not depend on a mutable global AQG installation.
+
+## Supported adapters
+
+| Surface                   | Included controls                                                                                                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JavaScript and TypeScript | Prettier, ESLint, `tsc`, Vitest/Jest/Mocha/AVA/Node runner integration, Istanbul/c8 coverage, structural metrics, Stryker, fast-check guidance, dependency audit        |
+| HTML and CSS              | HTML-Validate, Stylelint, Playwright, axe-core, Lighthouse budgets, browser artifacts, manual QA templates                                                              |
+| Python                    | Ruff, mypy, pytest/tox/custom runners, coverage.py, Radon/Xenon, mutmut, Hypothesis guidance, Bandit, pip-audit, reproducible package checks                            |
+| Cross-stack               | strict test discovery, Gherkin lint and acceptance mutation, goldens, secret scanning, diff review, approvals, release readiness, deterministic CycloneDX 1.6 inventory |
+
+Tool versions are resolved into protected project-local lockfiles. Missing tools, reports, locks, or discoverable tests never become a pass.
+
+## Profiles and status codes
+
+Profiles are cumulative:
+
+| Profile   | Intended use                                                               |
+| --------- | -------------------------------------------------------------------------- |
+| `fast`    | tight implementation loop                                                  |
+| `pr`      | routine production pull requests                                           |
+| `deep`    | High-assurance changes, mutation, SBOM, security, and broader behavior     |
+| `release` | Critical/release checks, reproducibility, approvals, and release readiness |
+
+Every gate uses four outcomes:
+
+| Exit | Meaning                                                       |
+| ---: | ------------------------------------------------------------- |
+|  `0` | measurement ran and passed                                    |
+|  `1` | measurement ran and found a quality defect                    |
+|  `2` | policy, configuration, or input is invalid                    |
+|  `3` | checker, environment, timeout, or trustworthy evidence failed |
+
+## Automated review
+
+`qg review` classifies the actual Git diff. It detects policy-plane changes, weakened tests, new skips/focus markers, broad suppressions, golden and schema changes, migrations, authorization and dependency changes, likely secrets, dangerous execution primitives, under-classified risk, missing current evidence, and stale human approvals.
+
+It writes:
+
+- `.aqg/review/review.md`;
+- `.aqg/review/review.json`;
+- `.aqg/review/review.sarif`;
+- a normalized finding set used by the dashboard and release gate.
+
+AQG routes decisions; it does not let a builder auto-approve policies, goldens, waivers, or release evidence.
+
+## Build a portable release
+
+```sh
+python3 scripts/build_release.py
+sha256sum -c dist/SHA256SUMS
+python3 dist/aqg.pyz --version
+```
+
+The builder fixes archive timestamps, path order, file modes, and compression settings. It produces:
+
+- `dist/aqg.pyz`;
+- `dist/agent-quality-gauntlet-2.0.0-portable.zip`;
+- checksum sidecars and `dist/SHA256SUMS`.
 
 ## Repository map
 
 ```text
-AGENTS.md                              Codex and generic-agent working contract
-CLAUDE.md                              Thin Claude Code entry point
-QUALITY.md                             Normative quality policy
-KEYSTONE.md                            Product-context and feature-contract template
-feature-spec/                          Durable active and TODO behavior contracts
-features/                              Gherkin acceptance specifications
-qa/procedures/                         Human-readable manual QA procedures
-quality/
-  policy.toml                          Risk profiles, gates, protected paths
-  qg.py                                Deterministic gate orchestrator and hook guard
-  schemas/                             Stable evidence and risk-card schemas
-  adapters/                            Adapter contract and examples
-  conformance/                         Fixtures that test the quality tools themselves
-  tests/                               Self-tests for the orchestrator
-.claude/                               Claude Code hooks, skill, and verifier agent
-.codex/                                Codex hooks and verifier agent
-.agents/skills/                        Codex-compatible reusable skill
-ci/                                    CI and CODEOWNERS templates
-docs/                                  Owner playbook, source synthesis, rollout, adapters, and threat model
-global/                                Optional user-level Codex and Claude defaults
+src/aqg/                         v2 control-plane implementation
+src/aqg/templates/               installed stack and governance templates
+src/aqg/guides/                  embedded agent test/QA playbooks
+src/aqg/static/                  local dashboard application
+tests/                           source-level test suite
+scripts/build_release.py         deterministic portable builder
+ARCHITECTURE.md                  planes, trust boundaries, and data flow
+IMPLEMENTATION_STATUS.md         recovered/validated/missing status
+docs/CONTROL_SURFACE.md          CLI, TUI, and dashboard workflows
+docs/RESEARCH_REPORT_2026.md     research-to-control synthesis
+BLUEPRINT.md                     full design and adoption model
+docs/SOURCE_SYNTHESIS.md         source-by-source mechanism analysis
 ```
 
-For a multi-repository deployment, read `docs/PORTFOLIO_ROLLOUT.md`; it describes a centrally versioned core, ecosystem adapter packs, pinned reusable CI, repository onboarding, and upgrade governance. `docs/OWNER_OPERATING_PLAYBOOK.md` gives the nontechnical day-to-day workflow, and `docs/SOURCE_SYNTHESIS.md` maps every supplied source to the mechanism retained, its failure modes, and the framework adaptation.
+## Trust boundaries
 
-## What this kit does and does not do
+Local hooks are fast feedback, not the final security boundary. Authoritative enforcement requires clean CI, protected branches, required checks, CODEOWNERS, and separate release authority. Reduced human code review is earned gradually for routine work; Critical changes retain independent human code and behavior review.
 
-It gives every project the same control architecture, command surface, evidence model, agent workflow, and human-review boundaries. The bootstrap agent still has to select and configure stack-native tools because cyclomatic complexity, coverage, mutation testing, package auditing, and test discovery are language-specific.
+See [ARCHITECTURE.md](ARCHITECTURE.md), [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md), and [docs/OWNER_OPERATING_PLAYBOOK.md](docs/OWNER_OPERATING_PLAYBOOK.md) before organization-wide rollout.
 
-The system is strongest when the policy plane is protected outside the agent’s control. Local hooks reduce accidental or opportunistic edits, but the authoritative enforcement boundary is a clean CI runner plus branch protection or a centrally managed reusable workflow.
+## License
 
-The risk card cannot select a profile below the deterministic minimum implied by production scope, reversibility, blast radius, and sensitive risk factors. A human may always select a stricter profile.
-
-The policy model is language-agnostic, but this reference orchestrator requires **Python 3.11+** because it uses the standard-library TOML parser. For repositories that cannot guarantee that runtime, publish the same core as a pinned standalone binary or container; do not maintain divergent rewrites of the policy in each project.
-
-The kit reimplements the control architecture rather than copying the referenced repositories. Before vendoring or redistributing any external checker, verify its current license and pin its version; an adapter may call an installed tool without making that tool part of this kit.
+Apache-2.0. External tools are invoked through adapters and keep their own licenses; verify current provenance and licensing before organization-wide approval.

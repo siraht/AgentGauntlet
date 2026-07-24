@@ -1,99 +1,95 @@
 # Owner operating playbook
 
-This is the day-to-day procedure for a project owner who does not review implementation code.
+This is the day-to-day AQG v2 workflow for a product owner who does not normally review implementation code.
 
-## One-time setup for a repository
+## Install once
 
-1. Copy this kit into the repository root.
-2. Start Codex or Claude Code from that root and provide `BOOTSTRAP_PROMPT.md` as the task.
-3. The agent inventories the stack and proposes product namespaces, risk boundaries, native quality tools, thresholds, protected files, and expected runtimes before it changes product contracts.
-4. Review the proposal in plain language. Correct what the product does, what it must never do, which failures are serious, and what rollback is possible.
-5. Let the agent provision adapters and deliberately break fixtures to prove each gate catches its intended fault.
-6. Require `doctor`, `check fast`, and the example risk-card tests to pass after maintenance overrides are unset.
-7. Install the CI and CODEOWNERS templates, then enable branch protection so required checks and policy-owner review cannot be bypassed by the builder.
-
-Do not accept a setup report that says a gate is “planned,” “skipped for now,” or green with missing output. The initial scaffold is intentionally red until each active gate is real.
-
-## Starting a normal change
-
-Give the agent the outcome you need, then require these artifacts before implementation:
-
-- a one-paragraph change summary;
-- the change-risk card and its computed minimum profile;
-- changed and preserved behavior;
-- proposed active/TODO feature-spec changes;
-- Gherkin examples for success, failure, boundary, retry, and recovery where relevant;
-- a QA and rollback plan for High assurance or Critical work.
-
-A useful task preamble is:
-
-```text
-Use the repository's Agent Quality Gauntlet. Before implementation, show me the
-plain-language risk card, applicable feature requirements, proposed acceptance
-examples, behavior that must remain unchanged, and rollback. Do not modify the
-protected policy plane. Run the profile resolved by check-risk and report every
-survivor, skip, waiver, infrastructure error, and human-review-plane change.
+```sh
+./install-aqg.sh /path/to/project --owner @your-org/quality --mode auto
 ```
 
-## What to approve before coding
+Use `--browsers` for a web project when browser checks should be installed now. Setup detects stacks, installs a protected project model, creates isolated toolchain definitions, generates agent/CI integrations, and writes `quality/onboarding.json`.
 
-You are approving intent, not implementation technique. Check that:
+Then have an agent work through:
 
-- the examples describe what a user or external system can observe;
-- permissions, data deletion, privacy, money, migrations, concurrency, and irreversible actions are classified honestly;
-- invalid and boundary cases are concrete rather than “handle errors correctly”;
-- the rollback restores a safe state and accounts for data changes;
-- the selected profile is no weaker than the computed minimum;
-- a TODO document is not being treated as permission to implement unrelated work.
+```sh
+python3 quality/qg.py onboarding show
+python3 quality/qg.py doctor --strict-tools
+python3 quality/qg.py conformance --tools
+```
 
-For routine Standard changes, this review can be a focused spot check. For High assurance and Critical changes, inspect every behavioral example and QA step.
+You personally confirm the product context, current behavior, serious failure modes, rollback, real CODEOWNERS, and which workflows are authoritative.
 
-## What the agent may change
+## Start a change
 
-During normal work, the builder may change source code and ordinary implementation tests. It may propose changes to feature specifications, Gherkin, QA procedures, migrations, API schemas, and goldens, but those changes are listed separately for your review.
+Ask for these before implementation:
 
-The builder may not change gate commands, thresholds, exclusions, baselines, waivers, quality scripts, agent hooks, CI quality workflows, or aliases that determine what a gate runs. Those require a separate policy-maintenance task and owner approval.
+- plain-language summary;
+- deterministic risk minimum and selected profile;
+- behavior changing and behavior preserved;
+- active/TODO feature changes;
+- valid, invalid, boundary, permission, retry, and recovery examples where relevant;
+- QA, failure detection, and rollback for High-assurance/Critical work.
 
-## Reading the completion report
+A useful task preamble:
 
-A valid report answers these questions directly:
+```text
+Use this repository's Agent Quality Gauntlet. Show me the change-risk card,
+applicable behavior contracts, proposed acceptance examples, preserved behavior,
+and rollback before implementation. Do not weaken the policy or tests. Run
+check-risk and report every survivor, skip, waiver, stale approval, and
+infrastructure error.
+```
 
-1. Which risk profile was selected, what minimum did the resolver calculate, and why?
-2. Which required gates ran from a clean environment?
-3. Did any tool crash, time out, use stale data, find no tests, or fail to produce a report?
-4. Did any source or acceptance mutation survive, and what behavior could that missing assertion allow?
-5. Were tests deleted, skipped, relaxed, broadly mocked, or rewritten with weaker expectations?
-6. Did a golden, feature specification, Gherkin file, QA procedure, migration, or public schema change?
-7. What manual QA was run, what was observed, and who performed it?
-8. How will production failure be detected, and what exact rollback is available?
+## Monitor work
 
-A green summary is insufficient when one of these answers is unknown.
+The agent uses:
 
-## Merge decision by profile
+```sh
+python3 quality/qg.py check fast
+python3 quality/qg.py status
+python3 quality/qg.py review --write
+```
 
-**Experiment:** Merge only into disposable or isolated environments. Never use the label to avoid production checks.
+You can open:
 
-**Standard:** A clean PR profile plus your review of behavioral changes is normally sufficient after the repository has earned trust. Keep implementation code review while the gauntlet is new or unstable.
+```sh
+python3 quality/qg.py dashboard --open
+```
 
-**High assurance:** Require the independent verifier, complete human review of behavior and QA artifacts, manual QA, mutation triage, and operational rollback evidence.
+The dashboard is read-only unless explicitly started with `--allow-actions`.
 
-**Critical:** Require independent human code and specification review, adversarial review where applicable, production-like rehearsal, staged rollout, telemetry, a kill switch, and a release approver separate from the builder.
+## Review before merge
 
-## Handling a failure
+Read `.aqg/review/review.md` and ask:
 
-- **Quality failure:** The checker ran and found a real violation. The agent fixes the code or strengthens evidence; it does not lower the bar.
-- **Configuration error:** The policy, input, or gate is invalid. Stop and repair the quality system through a policy-maintenance task.
-- **Infrastructure error:** The checker could not establish a result. Rerun only after fixing the environment; never count it as a pass or a killed mutant.
-- **Mutation survivor:** Ask what plausible defect survived, then require a stronger assertion or a narrowly justified equivalent-mutant classification.
-- **Golden diff:** Decide whether the behavior change is intended from the raw diff. Do not let the builder bulk-approve it.
-- **Waiver request:** Require exact scope, owner, rationale, compensating control, issue reference, and expiration. Broad or permanent waivers should be rejected.
+1. What changed for a user or external system?
+2. What invalid, boundary, permission, retry, and recovery behavior was exercised?
+3. Which required profile ran against the final diff?
+4. Did any tool crash, time out, find no tests, or miss a report?
+5. Which source or acceptance mutants survived?
+6. Were tests, expectations, mocks, goldens, thresholds, or suppressions weakened?
+7. Which feature specs, Gherkin, QA, schema, migration, auth, dependency, policy, waiver, or approval files changed?
+8. What detects failure and what exact rollback is available?
 
-## Earning reduced code review
+A green summary is insufficient if any required answer is unknown.
 
-Do not stop reading agent-authored implementation immediately after installation. First collect evidence across representative changes: stable clean CI, no silent skips, low flake, trustworthy coverage provenance, consistently triaged mutants, successful rollback rehearsal, and an acceptable escaped-defect record. The blueprint recommends a pilot across roughly 20–30 successful changes and at least one representative release cycle before reducing implementation review for Standard work.
+## Decision by risk
 
-Critical work and any area where the controls have not proved reliable retain human code review.
+- **Experiment:** isolated/disposable work only.
+- **Standard:** clean PR profile plus behavior review after the repository has earned trust.
+- **High assurance:** deep profile, independent read-only verifier, complete behavior review, mutation triage, manual QA, and rollback evidence.
+- **Critical:** release profile, independent human code/specification review, adversarial review as applicable, production-like rehearsal, staged rollout, telemetry, kill switch, and separate release approval.
 
-## Portfolio routine
+## Handle failures
 
-For multiple projects, keep the core and adapter packs in a central versioned repository. Track each project's pinned version, onboarding phase, risk classification, last deep/release run, open waivers, mutation survivors, flaky tests, and rollback rehearsal. Roll out core upgrades through conformance repositories and canary projects rather than asking one agent to rewrite every repository at once.
+- Exit 1: fix the quality defect or make an explicit reviewed product decision.
+- Exit 2: repair invalid policy/configuration/input through policy maintenance.
+- Exit 3: repair the environment or checker; never call it green.
+- Survivor: strengthen the oracle or narrowly justify an equivalent mutant.
+- Golden diff: review the raw behavior change; never bulk-approve it.
+- Waiver: require exact scope, owner, rationale, compensating control, decision link, and expiration.
+
+## Earn reduced implementation review
+
+Keep normal code review while AQG is new. Consider reducing it only after roughly 20–30 representative Standard changes and a release cycle demonstrate stable clean CI, trustworthy discovery/coverage, low flake, consistently triaged mutants, working approvals, acceptable escaped defects, and successful rollback rehearsal. Critical work retains human code review.

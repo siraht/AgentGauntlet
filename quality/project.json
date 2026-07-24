@@ -1,0 +1,248 @@
+{
+  "enforcement": {
+    "base_ref": "HEAD",
+    "existing_debt_must_not_increase": true,
+    "mode": "adopt",
+    "new_code_must_meet_current_policy": true,
+    "scope": "changed"
+  },
+  "acceptance_mutation": {
+    "command": ["python3", "tests/test_acceptance.py"],
+    "timeout_seconds": 120
+  },
+  "build_command": ["python3", "scripts/build_release.py", "--output", "dist"],
+  "build_outputs": ["dist"],
+  "frameworks": ["pytest"],
+  "gates": {
+    "acceptance": {
+      "applicable": true,
+      "reason": "Executable pytest acceptance tests exercise the public setup contract."
+    },
+    "contracts": {
+      "applicable": false,
+      "reason": "No contract-test directory was detected; add tests/contracts or mark a project command."
+    },
+    "coverage": {
+      "applicable": true,
+      "reason": "No coverable production source was detected."
+    },
+    "format": {
+      "applicable": true,
+      "reason": "No supported source files were detected."
+    },
+    "golden": {
+      "applicable": false,
+      "reason": "No quality/golden/scenarios.json is configured."
+    },
+    "lint": {
+      "applicable": true,
+      "reason": "No supported source files were detected."
+    },
+    "mutation_acceptance": {
+      "applicable": true,
+      "reason": "The setup Examples table is connected to tests/test_acceptance.py."
+    },
+    "mutation_changed": {
+      "applicable": true,
+      "reason": "No mutable production source was detected."
+    },
+    "performance": {
+      "applicable": true,
+      "reason": "The dependency-free dashboard is a public web control surface."
+    },
+    "release_readiness": {
+      "applicable": true,
+      "reason": "Release evidence is always applicable."
+    },
+    "reproducible_build": {
+      "applicable": true,
+      "reason": "scripts/build_release.py produces the portable release and checksum set deterministically."
+    },
+    "review": {
+      "applicable": true,
+      "reason": "Review analysis is always applicable."
+    },
+    "secrets": {
+      "applicable": true,
+      "reason": "Secret scanning is always applicable."
+    },
+    "security_deep": {
+      "applicable": true,
+      "reason": "No supported dependency or source ecosystem was detected."
+    },
+    "security_fast": {
+      "applicable": true,
+      "reason": "No supported dependency or source ecosystem was detected."
+    },
+    "structure": {
+      "applicable": true,
+      "reason": "No JavaScript/TypeScript/Python production source was detected."
+    },
+    "supply_chain": {
+      "applicable": true,
+      "reason": "The Python package and pinned checker toolchains require deterministic CycloneDX inventory."
+    },
+    "test_integrity": {
+      "applicable": true,
+      "reason": "No JavaScript/TypeScript/Python production source was detected."
+    },
+    "typecheck": {
+      "applicable": true,
+      "reason": "No TypeScript or Python source was detected."
+    },
+    "unit": {
+      "applicable": true,
+      "reason": "No JavaScript/TypeScript/Python production source was detected."
+    }
+  },
+  "generated_by": "agent-quality-gauntlet/2.0.0",
+  "javascript": {
+    "build_command": null,
+    "package_manager": null,
+    "test_runner": "vitest",
+    "unit_command": [
+      "$AQG_JS_BIN/vitest",
+      "run",
+      "--config",
+      "quality/tools/js/config/vitest.config.mjs"
+    ]
+  },
+  "name": "AgentGauntlet",
+  "notes": [
+    "JavaScript/TypeScript files found without a root package.json; AQG will use its isolated quality toolchain."
+  ],
+  "paths": {
+    "css": ["src"],
+    "exclude": [
+      ".git/**",
+      ".aqg/**",
+      ".venv/**",
+      "venv/**",
+      "node_modules/**",
+      "quality/tools/**",
+      "quality/_aqg/**",
+      "dist/**",
+      "build/**",
+      "coverage/**",
+      "htmlcov/**",
+      ".pytest_cache/**",
+      ".mypy_cache/**",
+      ".ruff_cache/**",
+      ".next/**",
+      ".nuxt/**",
+      ".svelte-kit/**",
+      "playwright-report/**",
+      "test-results/**",
+      "mutants/**"
+    ],
+    "html": ["src"],
+    "source": ["scripts", "src"],
+    "tests": ["quality", "src", "tests"]
+  },
+  "profile_thresholds": {
+    "deep": {
+      "coverage": {
+        "branches": 85,
+        "changed_lines": 95,
+        "functions": 90,
+        "lines": 90,
+        "statements": 90
+      },
+      "mutation": {
+        "maximum_survivors": 0,
+        "minimum_score": 85
+      },
+      "performance": {
+        "lighthouse_accessibility": 0.98,
+        "lighthouse_performance": 0.9
+      },
+      "structure": {
+        "max_crap": 8,
+        "max_cyclomatic_complexity": 8,
+        "max_function_lines": 40,
+        "max_nesting_depth": 4
+      }
+    },
+    "fast": {},
+    "pr": {},
+    "release": {
+      "coverage": {
+        "branches": 90,
+        "changed_lines": 95,
+        "functions": 95,
+        "lines": 95,
+        "statements": 95
+      },
+      "mutation": {
+        "maximum_survivors": 0,
+        "minimum_score": 90
+      },
+      "performance": {
+        "lighthouse_accessibility": 0.99,
+        "lighthouse_performance": 0.95
+      },
+      "structure": {
+        "max_crap": 5,
+        "max_cyclomatic_complexity": 5,
+        "max_function_lines": 30,
+        "max_nesting_depth": 3
+      }
+    }
+  },
+  "python": {
+    "manager": "uv",
+    "pytest_args": ["--strict-config", "--strict-markers", "-ra"],
+    "source_paths": ["scripts", "src"],
+    "test_paths": ["quality", "src", "tests"]
+  },
+  "schema_version": 2,
+  "stacks": {
+    "css": true,
+    "html": true,
+    "javascript": true,
+    "python": true,
+    "typescript": false
+  },
+  "thresholds": {
+    "coverage": {
+      "allow_missing": false,
+      "branches": 75,
+      "changed_lines": 90,
+      "functions": 80,
+      "lines": 85,
+      "statements": 85
+    },
+    "mutation": {
+      "changed_only": true,
+      "maximum_survivors": 0,
+      "minimum_score": 70
+    },
+    "performance": {
+      "lighthouse_accessibility": 0.95,
+      "lighthouse_performance": 0.8
+    },
+    "security": {
+      "allow_unreviewed_ignores": false,
+      "audit_level": "high"
+    },
+    "structure": {
+      "max_crap": 15,
+      "max_cyclomatic_complexity": 10,
+      "max_function_lines": 50,
+      "max_nesting_depth": 4
+    }
+  },
+  "web": {
+    "base_url": "http://127.0.0.1:48731",
+    "start_command": [
+      "/usr/bin/python3",
+      "-m",
+      "http.server",
+      "48731",
+      "--bind",
+      "127.0.0.1",
+      "--directory",
+      "src/aqg/static"
+    ]
+  }
+}

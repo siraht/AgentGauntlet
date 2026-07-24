@@ -6,9 +6,9 @@ import contextlib
 import io
 import json
 import os
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 from typing import Any
 
 from .constants import CONFIGURATION_ERROR, PASS
@@ -44,10 +44,30 @@ def _patch_paths(patch: str) -> list[str]:
 def _direct_write_paths(tool_name: str, tool_input: Any) -> list[str]:
     canonical = tool_name.lower()
     paths: list[str] = []
-    verbs = ("write", "edit", "update", "create", "delete", "remove", "move", "rename", "patch", "put", "upload")
-    if canonical in {"edit", "write", "multiedit", "notebookedit", "apply_patch"} or any(verb in canonical for verb in verbs):
+    verbs = (
+        "write",
+        "edit",
+        "update",
+        "create",
+        "delete",
+        "remove",
+        "move",
+        "rename",
+        "patch",
+        "put",
+        "upload",
+    )
+    if canonical in {"edit", "write", "multiedit", "notebookedit", "apply_patch"} or any(
+        verb in canonical for verb in verbs
+    ):
         for key, value in _collect_strings(tool_input):
-            if key.lower().rsplit(".", 1)[-1] in {"file_path", "filepath", "path", "filename", "file"}:
+            if key.lower().rsplit(".", 1)[-1] in {
+                "file_path",
+                "filepath",
+                "path",
+                "filename",
+                "file",
+            }:
                 paths.append(value)
     if isinstance(tool_input, dict):
         for key in ("patch", "command", "diff"):
@@ -94,7 +114,8 @@ def hook_pretool(root: Path) -> int:
     tool_input = payload.get("tool_input") or payload.get("input") or payload.get("arguments") or {}
     protected = protected_patterns(policy)
     expected_output_patterns = [
-        pattern for pattern in human_review_patterns(policy)
+        pattern
+        for pattern in human_review_patterns(policy)
         if any(token in pattern.lower() for token in ("golden", "snapshot", "__snapshots__"))
     ]
     golden_env = str(policy.get("policy", {}).get("golden_update_env", "AQG_ALLOW_GOLDEN_UPDATE"))

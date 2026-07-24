@@ -1,0 +1,42 @@
+# Recovered input and local agent/browser artifacts
+/AgentGauntlet-recovered-source.tar.gz
+/.playwright-mcp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# JavaScript and browser tooling
+node_modules/
+playwright-report/
+test-results/
+coverage/
+
+# AQG runtime evidence and installed tools
+/.aqg/
+/quality/_aqg/
+/quality/tools/js/node_modules/
+
+# Build outputs
+/build/
+/dist/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Agent Quality Gauntlet
+.aqg/
+.coverage
+quality/tools/js/node_modules/
+quality/tools/python/.venv/
+htmlcov/
+mutants/

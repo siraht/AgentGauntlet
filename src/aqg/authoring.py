@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 from .errors import ConfigurationError
 from .util import atomic_write, slugify
-
 
 FEATURE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*$")
 
@@ -15,7 +14,9 @@ FEATURE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)
 def validate_feature_name(name: str) -> str:
     value = name.strip()
     if not FEATURE_NAME_RE.fullmatch(value):
-        raise ConfigurationError("feature name must use dot-separated ASCII segments beginning with a letter")
+        raise ConfigurationError(
+            "feature name must use dot-separated ASCII segments beginning with a letter"
+        )
     return value
 
 
@@ -27,13 +28,17 @@ def create_feature_spec(root: Path, name: str, *, todo: bool = False, force: boo
     path = root / "feature-spec" / filename
     if path.exists() and not force:
         raise ConfigurationError(f"feature specification already exists: {path}")
-    state = "intended behavior that is not implemented yet" if todo else "implemented, supported behavior that must remain true"
+    state = (
+        "intended behavior that is not implemented yet"
+        if todo
+        else "implemented, supported behavior that must remain true"
+    )
     implementation_note = (
         "Before removing the `TODO.` prefix, implement every applicable requirement, connect executable evidence, and reconcile any active specification with the same feature name."
         if todo
         else "A mismatch between this active specification and the product is a defect; do not weaken this document merely to make an implementation pass."
     )
-    content = f'''# {name}
+    content = f"""# {name}
 
 This document defines **{state}**. Replace every bracketed instruction with concrete, observable product language before treating the specification as approved.
 
@@ -153,7 +158,7 @@ Rationale: [why the inherited rule cannot be satisfied and how risk is bounded]
 ## Related specifications
 
 - Add only non-parent behavior contracts that must be read before changing this feature.
-'''
+"""
     atomic_write(path, content)
     return path
 
@@ -166,7 +171,7 @@ def create_gherkin_feature(root: Path, name: str, *, force: bool = False) -> Pat
     if path.exists() and not force:
         raise ConfigurationError(f"Gherkin feature already exists: {path}")
     title = name.replace(".", " ")
-    content = f'''# Feature-Spec: {name}
+    content = f"""# Feature-Spec: {name}
 # Replace the vocabulary and values below with domain terms. Every Examples column
 # must be consumed by a step so acceptance mutation can prove that the data matters.
 Feature: {title}
@@ -246,7 +251,7 @@ Feature: {title}
     Examples:
       | actor_role | starting_state | dependency_name | failure_point | operation      | input_value | failure_outcome | failure_state | recovery_outcome | recovery_state | expected_side_effect_count |
       | permitted  | ready          | required-service | before-commit | primary-action | normal      | retryable       | ready         | accepted         | completed      | 1                          |
-'''
+"""
     atomic_write(path, content)
     return path
 
@@ -258,13 +263,13 @@ def create_qa_procedure(root: Path, name: str, *, force: bool = False) -> Path:
     path = root / "qa" / "procedures" / f"{slug}.md"
     if path.exists() and not force:
         raise ConfigurationError(f"QA procedure already exists: {path}")
-    content = f'''# QA procedure: {name}
+    content = f"""# QA procedure: {name}
 
 This is a controlled test method, not a free-form checklist. Replace every bracketed field, assign stable case IDs, and preserve the completed execution record as release evidence.
 
 ## Procedure metadata
 
-- **Procedure ID:** `QA-{slug.upper().replace('-', '_')}-001`
+- **Procedure ID:** `QA-{slug.upper().replace("-", "_")}-001`
 - **Version:** 1
 - **Status:** draft
 - **Owner:** [named human or accountable team]
@@ -414,6 +419,6 @@ The reviewer confirms that the procedure was applicable, the environment and dat
 - **Reviewed at:**
 - **Decision:** pending
 - **Rationale / residual risk:**
-'''
+"""
     atomic_write(path, content)
     return path

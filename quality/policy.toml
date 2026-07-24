@@ -1,10 +1,10 @@
-version = 1
-initialized = false
+version = 2
+initialized = true
 default_risk_profile = "standard"
 default_execution_profile = "fast"
 
 [policy]
-owner = "REPLACE_WITH_OWNER"
+owner = "@siraht"
 policy_maintenance_env = "AQG_POLICY_MAINTENANCE"
 golden_update_env = "AQG_ALLOW_GOLDEN_UPDATE"
 
@@ -12,14 +12,23 @@ protected_paths = [
   "AGENTS.md",
   "CLAUDE.md",
   "QUALITY.md",
+  "KEYSTONE.md",
   "quality/policy.toml",
+  "quality/project.json",
+  "quality/onboarding.json",
   "quality/qg.py",
+  "quality/_aqg/**",
+  "quality/config/**",
+  "quality/tools/**/package.json",
+  "quality/tools/**/package-lock.json",
+  "quality/tools/**/requirements.lock.txt",
+  "quality/tools/**/requirements*.txt",
   "quality/adapters/**",
-  "quality/bin/**",
   "quality/baselines/**",
   "quality/waivers/**",
-  "quality/tests/**",
-  "quality/hooks/**",
+  "quality/approvals/**",
+  "quality/guidance/**",
+  "quality/golden/expected/**",
   "quality/schemas/**",
   "quality/conformance/**",
   ".agents/skills/quality-gauntlet/**",
@@ -28,7 +37,6 @@ protected_paths = [
   ".claude/agents/quality-verifier.md",
   ".codex/hooks.json",
   ".codex/agents/quality-verifier.toml",
-  "ci/**",
   ".github/workflows/**",
   ".github/CODEOWNERS",
 ]
@@ -42,14 +50,16 @@ human_review_paths = [
   "**/golden/**",
   "**/goldens/**",
   "**/snapshots/**",
+  "**/__snapshots__/**",
   "**/migrations/**",
   "**/schema/**",
   "**/openapi/**",
+  "**/package-lock.json",
+  "**/pnpm-lock.yaml",
+  "**/yarn.lock",
+  "**/uv.lock",
+  "**/requirements*.txt",
 ]
-
-# The bootstrap task MUST add every stack-native file that can weaken a gate
-# (for example linter/test/coverage/mutation config or package-script aliases)
-# to protected_paths or enforce an equivalent code-owner review.
 
 blocked_command_regex = [
   "\\bAQG_POLICY_MAINTENANCE\\s*=",
@@ -73,6 +83,7 @@ external_contract = "high_assurance"
 migration = "high_assurance"
 concurrency = "high_assurance"
 irreversible_action = "high_assurance"
+supply_chain = "high_assurance"
 safety = "critical"
 
 [hooks]
@@ -108,123 +119,136 @@ requires_human_code_review = true
 requires_manual_qa = true
 
 [profiles.fast]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure"]
-max_total_seconds = 180
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "secrets"]
+max_total_seconds = 600
 
 [profiles.pr]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "mutation_changed", "security_fast"]
-max_total_seconds = 1200
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "review", "security_fast"]
+max_total_seconds = 1800
 
 [profiles.deep]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "security_fast", "security_deep", "performance"]
-max_total_seconds = 7200
-
-[profiles.release]
-gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "security_fast", "security_deep", "performance", "release_readiness"]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance"]
 max_total_seconds = 10800
 
-# The bootstrap agent MUST replace every __CONFIGURE__ command with a real,
-# repository-native command or remove the gate from all active profiles with a
-# documented reason. Placeholder commands are configuration errors.
+[profiles.release]
+gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "release_readiness"]
+max_total_seconds = 14400
 
 [gates.format]
-command = "__CONFIGURE__"
-timeout_seconds = 120
-clean_paths = []
-quality_failure_exit_codes = [1]
-
-[gates.lint]
-command = "__CONFIGURE__"
+command = "python3 quality/qg.py adapter format"
 timeout_seconds = 180
-clean_paths = []
+clean_paths = [".aqg/work/format"]
+quality_failure_exit_codes = [1]
+[gates.lint]
+command = "python3 quality/qg.py adapter lint"
+timeout_seconds = 300
+clean_paths = [".aqg/work/lint"]
 quality_failure_exit_codes = [1]
 
 [gates.typecheck]
-command = "__CONFIGURE__"
-timeout_seconds = 300
-clean_paths = []
+command = "python3 quality/qg.py adapter typecheck"
+timeout_seconds = 600
+clean_paths = [".aqg/work/typecheck"]
 quality_failure_exit_codes = [1]
 
 [gates.test_integrity]
-command = "__CONFIGURE__"
-timeout_seconds = 180
-clean_paths = ["build/quality/test-discovery"]
+command = "python3 quality/qg.py adapter test_integrity"
+timeout_seconds = 300
+clean_paths = [".aqg/work/test_integrity"]
 quality_failure_exit_codes = [1]
 
 [gates.unit]
-command = "__CONFIGURE__"
-timeout_seconds = 900
-clean_paths = ["build/quality/unit"]
+command = "python3 quality/qg.py adapter unit"
+timeout_seconds = 1200
+clean_paths = [".aqg/work/unit"]
 quality_failure_exit_codes = [1]
 
 [gates.structure]
-command = "__CONFIGURE__"
-timeout_seconds = 300
-clean_paths = ["build/quality/structure"]
+command = "python3 quality/qg.py adapter structure"
+timeout_seconds = 600
+clean_paths = [".aqg/work/structure"]
 quality_failure_exit_codes = [1]
 
 [gates.coverage]
-command = "__CONFIGURE__"
-timeout_seconds = 1200
-clean_paths = ["build/quality/coverage"]
+command = "python3 quality/qg.py adapter coverage"
+timeout_seconds = 1800
+clean_paths = [".aqg/work/coverage"]
 quality_failure_exit_codes = [1]
 
 [gates.contracts]
-command = "__CONFIGURE__"
-timeout_seconds = 900
-clean_paths = ["build/quality/contracts"]
+command = "python3 quality/qg.py adapter contracts"
+timeout_seconds = 1200
+clean_paths = [".aqg/work/contracts"]
 quality_failure_exit_codes = [1]
 
 [gates.acceptance]
-command = "__CONFIGURE__"
-timeout_seconds = 1800
-clean_paths = ["build/acceptance"]
+command = "python3 quality/qg.py adapter acceptance"
+timeout_seconds = 2400
+clean_paths = [".aqg/work/acceptance"]
 quality_failure_exit_codes = [1]
 
 [gates.golden]
-command = "__CONFIGURE__"
-timeout_seconds = 1800
-clean_paths = ["build/quality/golden"]
+command = "python3 quality/qg.py adapter golden"
+timeout_seconds = 2400
+clean_paths = [".aqg/work/golden"]
 quality_failure_exit_codes = [1]
 
 [gates.mutation_changed]
-command = "__CONFIGURE__"
-timeout_seconds = 3600
-clean_paths = ["build/quality/mutation-changed"]
+command = "python3 quality/qg.py adapter mutation_changed"
+timeout_seconds = 7200
+clean_paths = [".aqg/work/mutation_changed"]
 quality_failure_exit_codes = [1]
 
 [gates.mutation_acceptance]
-command = "__CONFIGURE__"
-timeout_seconds = 3600
-clean_paths = ["build/acceptance-mutation"]
+command = "python3 quality/qg.py adapter mutation_acceptance"
+timeout_seconds = 7200
+clean_paths = [".aqg/work/mutation_acceptance"]
+quality_failure_exit_codes = [1]
+
+[gates.review]
+command = "python3 quality/qg.py adapter review"
+timeout_seconds = 300
+clean_paths = [".aqg/work/review"]
+quality_failure_exit_codes = [1]
+
+[gates.secrets]
+command = "python3 quality/qg.py adapter secrets"
+timeout_seconds = 300
+clean_paths = [".aqg/work/secrets"]
 quality_failure_exit_codes = [1]
 
 [gates.security_fast]
-command = "__CONFIGURE__"
-timeout_seconds = 600
-clean_paths = ["build/quality/security-fast"]
+command = "python3 quality/qg.py adapter security_fast"
+timeout_seconds = 900
+clean_paths = [".aqg/work/security_fast"]
 quality_failure_exit_codes = [1]
 
 [gates.security_deep]
-command = "__CONFIGURE__"
+command = "python3 quality/qg.py adapter security_deep"
 timeout_seconds = 3600
-clean_paths = ["build/quality/security-deep"]
+clean_paths = [".aqg/work/security_deep"]
+quality_failure_exit_codes = [1]
+
+[gates.supply_chain]
+command = "python3 quality/qg.py adapter supply_chain"
+timeout_seconds = 900
+clean_paths = [".aqg/work/supply_chain"]
 quality_failure_exit_codes = [1]
 
 [gates.performance]
-command = "__CONFIGURE__"
+command = "python3 quality/qg.py adapter performance"
 timeout_seconds = 3600
-clean_paths = ["build/quality/performance"]
+clean_paths = [".aqg/work/performance"]
 quality_failure_exit_codes = [1]
 
 [gates.reproducible_build]
-command = "__CONFIGURE__"
+command = "python3 quality/qg.py adapter reproducible_build"
 timeout_seconds = 3600
-clean_paths = ["build/quality/reproducible-build"]
+clean_paths = [".aqg/work/reproducible_build"]
 quality_failure_exit_codes = [1]
 
 [gates.release_readiness]
-command = "__CONFIGURE__"
+command = "python3 quality/qg.py adapter release_readiness"
 timeout_seconds = 1800
-clean_paths = ["build/quality/release"]
+clean_paths = [".aqg/work/release_readiness"]
 quality_failure_exit_codes = [1]

@@ -1,0 +1,12 @@
+# AQG policy, release, and human-review planes
+/.github/ @siraht
+/src/aqg/ @siraht
+/scripts/ @siraht
+/quality/ @siraht
+/AGENTS.md @siraht
+/CLAUDE.md @siraht
+/QUALITY.md @siraht
+/KEYSTONE.md @siraht
+/feature-spec/ @siraht
+/features/ @siraht
+/qa/procedures/ @siraht

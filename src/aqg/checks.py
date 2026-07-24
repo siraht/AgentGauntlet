@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-import math
-from pathlib import Path
+import contextlib
 import re
-from typing import Any, Iterable
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
 
-from .constants import DEFAULT_EXCLUDES
-from .project import excludes, source_paths, test_paths
-from .util import git_diff, iter_files, matches_any, read_json, sha256_file, write_json
-
+from .project import excludes
+from .util import git_diff, iter_files, read_json, write_json
 
 TEST_SUFFIXES = {".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
 CODE_SUFFIXES = TEST_SUFFIXES
@@ -36,7 +34,10 @@ def _is_test_path(rel: str) -> bool:
     name = Path(rel).name.lower()
     parts = [part.lower() for part in Path(rel).parts]
     return (
-        any(part in {"test", "tests", "spec", "specs", "__tests__", "e2e", "acceptance"} for part in parts)
+        any(
+            part in {"test", "tests", "spec", "specs", "__tests__", "e2e", "acceptance"}
+            for part in parts
+        )
         or bool(re.search(r"(?:^|[._-])(test|spec)(?:[._-]|$)", name))
         or lower.endswith("_test.py")
         or name.startswith("test_")
@@ -75,15 +76,39 @@ def scan_test_integrity(root: Path, project: dict[str, Any]) -> dict[str, Any]:
     findings: list[Finding] = []
     tests = 0
     focused_patterns = [
-        (re.compile(r"\b(?:describe|context|it|test)\.only\s*\("), "focused-test", "Focused JavaScript test marker is committed."),
-        (re.compile(r"\b(?:fdescribe|fit)\s*\("), "focused-test", "Focused JavaScript test alias is committed."),
+        (
+            re.compile(r"\b(?:describe|context|it|test)\.only\s*\("),
+            "focused-test",
+            "Focused JavaScript test marker is committed.",
+        ),
+        (
+            re.compile(r"\b(?:fdescribe|fit)\s*\("),
+            "focused-test",
+            "Focused JavaScript test alias is committed.",
+        ),
     ]
     skip_patterns = [
-        (re.compile(r"\b(?:describe|context|it|test)\.skip\s*\("), "skipped-test", "Skipped JavaScript test is committed."),
+        (
+            re.compile(r"\b(?:describe|context|it|test)\.skip\s*\("),
+            "skipped-test",
+            "Skipped JavaScript test is committed.",
+        ),
         (re.compile(r"\btest\.todo\s*\("), "todo-test", "A TODO JavaScript test does not execute."),
-        (re.compile(r"@pytest\.mark\.(?:skip|skipif|xfail)\b"), "skipped-test", "Skipped or expected-failure pytest marker is committed."),
-        (re.compile(r"@(?:unittest\.)?skip(?:If|Unless)?\b"), "skipped-test", "Skipped unittest is committed."),
-        (re.compile(r"pytest\.(?:skip|xfail)\s*\("), "runtime-skip", "A runtime pytest skip or xfail can hide unexecuted behavior."),
+        (
+            re.compile(r"@pytest\.mark\.(?:skip|skipif|xfail)\b"),
+            "skipped-test",
+            "Skipped or expected-failure pytest marker is committed.",
+        ),
+        (
+            re.compile(r"@(?:unittest\.)?skip(?:If|Unless)?\b"),
+            "skipped-test",
+            "Skipped unittest is committed.",
+        ),
+        (
+            re.compile(r"pytest\.(?:skip|xfail)\s*\("),
+            "runtime-skip",
+            "A runtime pytest skip or xfail can hide unexecuted behavior.",
+        ),
     ]
     test_patterns = [
         re.compile(r"\b(?:it|test)\s*\("),
@@ -176,11 +201,18 @@ SECRET_PATTERNS = [
     ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b")),
     ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
-    ("generic-secret-assignment", re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password|passwd)\s*[:=]\s*['\"]([A-Za-z0-9_./+=:-]{16,})['\"]")),
+    (
+        "generic-secret-assignment",
+        re.compile(
+            r"(?i)\b(?:api[_-]?key|secret|token|password|passwd)\s*[:=]\s*['\"]([A-Za-z0-9_./+=:-]{16,})['\"]"
+        ),
+    ),
 ]
 
 
-def scan_secrets(root: Path, project: dict[str, Any], *, changed_only: bool = False) -> dict[str, Any]:
+def scan_secrets(
+    root: Path, project: dict[str, Any], *, changed_only: bool = False
+) -> dict[str, Any]:
     findings: list[Finding] = []
     if changed_only:
         content_by_file: dict[str, list[tuple[int, str]]] = {}
@@ -197,18 +229,41 @@ def scan_secrets(root: Path, project: dict[str, Any], *, changed_only: bool = Fa
                 current_line += 1
             elif not line.startswith("-"):
                 current_line += 1
-        candidates = [(path, line_no, line) for path, lines in content_by_file.items() for line_no, line in lines]
+        candidates = [
+            (path, line_no, line)
+            for path, lines in content_by_file.items()
+            for line_no, line in lines
+        ]
     else:
         suffixes = {
-            ".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".toml", ".yaml", ".yml",
-            ".env", ".ini", ".cfg", ".conf", ".html", ".css", ".md", ".sh",
+            ".py",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs",
+            ".ts",
+            ".tsx",
+            ".json",
+            ".toml",
+            ".yaml",
+            ".yml",
+            ".env",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".html",
+            ".css",
+            ".md",
+            ".sh",
         }
         candidates = []
         for path in iter_files(root, suffixes, excludes(project)):
             rel = path.relative_to(root).as_posix()
             if rel.startswith("quality/baselines/") or rel.startswith("docs/"):
                 continue
-            for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            for line_no, line in enumerate(
+                path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+            ):
                 candidates.append((rel, line_no, line))
     allowlist_path = root / "quality" / "waivers" / "secrets.json"
     allowlist = read_json(allowlist_path, default={}) if allowlist_path.exists() else {}
@@ -259,7 +314,15 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
             continue
         if line.startswith("Feature:"):
             if feature["name"]:
-                findings.append(Finding("multiple-features", "error", "One file must contain exactly one Feature declaration.", str(path), line_no))
+                findings.append(
+                    Finding(
+                        "multiple-features",
+                        "error",
+                        "One file must contain exactly one Feature declaration.",
+                        str(path),
+                        line_no,
+                    )
+                )
             feature["name"] = line.removeprefix("Feature:").strip()
             section = "feature"
             continue
@@ -276,33 +339,78 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
             continue
         if line == "Examples:":
             if scenario is None:
-                findings.append(Finding("examples-outside-scenario", "error", "Examples must be inside a scenario.", str(path), line_no))
+                findings.append(
+                    Finding(
+                        "examples-outside-scenario",
+                        "error",
+                        "Examples must be inside a scenario.",
+                        str(path),
+                        line_no,
+                    )
+                )
             section = "examples"
             headers = None
             continue
         if line.startswith("|"):
             if section != "examples" or scenario is None:
-                findings.append(Finding("table-outside-examples", "error", "Table rows are allowed only inside Examples.", str(path), line_no))
+                findings.append(
+                    Finding(
+                        "table-outside-examples",
+                        "error",
+                        "Table rows are allowed only inside Examples.",
+                        str(path),
+                        line_no,
+                    )
+                )
                 continue
             cells = [cell.strip() for cell in line.strip("|").split("|")]
             if headers is None:
                 headers = cells
                 if len(set(headers)) != len(headers):
-                    findings.append(Finding("duplicate-example-header", "error", "Examples headers must be unique.", str(path), line_no))
+                    findings.append(
+                        Finding(
+                            "duplicate-example-header",
+                            "error",
+                            "Examples headers must be unique.",
+                            str(path),
+                            line_no,
+                        )
+                    )
             elif len(cells) != len(headers):
-                findings.append(Finding("example-width", "error", "Examples row width does not match the header.", str(path), line_no))
+                findings.append(
+                    Finding(
+                        "example-width",
+                        "error",
+                        "Examples row width does not match the header.",
+                        str(path),
+                        line_no,
+                    )
+                )
             else:
                 scenario["examples"].append(dict(zip(headers, cells, strict=True)))
             continue
         step = STEP_RE.match(line)
         if step:
-            payload = {"keyword": step.group(1), "text": step.group(2), "line": line_no, "parameters": PLACEHOLDER_RE.findall(step.group(2))}
+            payload = {
+                "keyword": step.group(1),
+                "text": step.group(2),
+                "line": line_no,
+                "parameters": PLACEHOLDER_RE.findall(step.group(2)),
+            }
             if section == "background":
                 feature["background"].append(payload)
             elif scenario is not None:
                 scenario["steps"].append(payload)
             else:
-                findings.append(Finding("step-outside-scenario", "error", "Step is outside Background or Scenario.", str(path), line_no))
+                findings.append(
+                    Finding(
+                        "step-outside-scenario",
+                        "error",
+                        "Step is outside Background or Scenario.",
+                        str(path),
+                        line_no,
+                    )
+                )
             continue
         findings.append(
             Finding(
@@ -315,21 +423,54 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
             )
         )
     if not feature["name"]:
-        findings.append(Finding("missing-feature", "error", "Feature declaration is required.", str(path), 1))
+        findings.append(
+            Finding("missing-feature", "error", "Feature declaration is required.", str(path), 1)
+        )
     if not feature["scenarios"]:
-        findings.append(Finding("missing-scenario", "error", "At least one scenario is required.", str(path), 1))
+        findings.append(
+            Finding("missing-scenario", "error", "At least one scenario is required.", str(path), 1)
+        )
     for scenario in feature["scenarios"]:
         keywords = [step["keyword"] for step in scenario["steps"]]
         if "When" not in keywords or "Then" not in keywords:
-            findings.append(Finding("incomplete-scenario", "error", f"Scenario {scenario['name']!r} needs at least one When and Then.", str(path)))
-        placeholders = {parameter for step in [*feature["background"], *scenario["steps"]] for parameter in step["parameters"]}
-        example_keys = set().union(*(row.keys() for row in scenario["examples"])) if scenario["examples"] else set()
+            findings.append(
+                Finding(
+                    "incomplete-scenario",
+                    "error",
+                    f"Scenario {scenario['name']!r} needs at least one When and Then.",
+                    str(path),
+                )
+            )
+        placeholders = {
+            parameter
+            for step in [*feature["background"], *scenario["steps"]]
+            for parameter in step["parameters"]
+        }
+        example_keys = (
+            set().union(*(row.keys() for row in scenario["examples"]))
+            if scenario["examples"]
+            else set()
+        )
         missing = placeholders - example_keys
         unused = example_keys - placeholders
         for key in sorted(missing):
-            findings.append(Finding("missing-example-value", "error", f"Placeholder <{key}> has no Examples column in scenario {scenario['name']!r}.", str(path)))
+            findings.append(
+                Finding(
+                    "missing-example-value",
+                    "error",
+                    f"Placeholder <{key}> has no Examples column in scenario {scenario['name']!r}.",
+                    str(path),
+                )
+            )
         for key in sorted(unused):
-            findings.append(Finding("unused-example-value", "error", f"Examples column {key!r} is not connected to a step in scenario {scenario['name']!r}.", str(path)))
+            findings.append(
+                Finding(
+                    "unused-example-value",
+                    "error",
+                    f"Examples column {key!r} is not connected to a step in scenario {scenario['name']!r}.",
+                    str(path),
+                )
+            )
     return feature, findings
 
 
@@ -343,18 +484,18 @@ def lint_features(root: Path) -> dict[str, Any]:
         feature, file_findings = parse_feature(path)
         for finding in file_findings:
             if finding.path:
-                try:
+                with contextlib.suppress(ValueError):
                     finding.path = Path(finding.path).relative_to(root).as_posix()
-                except ValueError:
-                    pass
         findings.extend(file_findings)
         if feature:
             parsed.append({"path": path.relative_to(root).as_posix(), "feature": feature})
             for scenario in feature["scenarios"]:
                 for step in [*feature["background"], *scenario["steps"]]:
                     normalized = PLACEHOLDER_RE.sub("<_>", step["text"].lower())
-                    normalized_steps.setdefault(normalized, []).append(f"{path.relative_to(root)}:{step['line']}")
-    for text, locations in normalized_steps.items():
+                    normalized_steps.setdefault(normalized, []).append(
+                        f"{path.relative_to(root)}:{step['line']}"
+                    )
+    for _text, locations in normalized_steps.items():
         if len(locations) > 1 and len(set(locations)) > 1:
             # Reuse is normal; only repeated locations inside one file/scenario are actionable elsewhere.
             pass
@@ -369,8 +510,14 @@ def lint_features(root: Path) -> dict[str, Any]:
 
 
 def test_feature_traceability(root: Path, project: dict[str, Any]) -> dict[str, Any]:
-    active_specs = [path for path in (root / "feature-spec").glob("*.md") if not path.name.startswith("TODO.")] if (root / "feature-spec").exists() else []
-    test_content = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in _test_files(root, project))
+    active_specs = (
+        [path for path in (root / "feature-spec").glob("*.md") if not path.name.startswith("TODO.")]
+        if (root / "feature-spec").exists()
+        else []
+    )
+    test_content = "\n".join(
+        path.read_text(encoding="utf-8", errors="ignore") for path in _test_files(root, project)
+    )
     findings: list[Finding] = []
     for spec in active_specs:
         name = spec.stem

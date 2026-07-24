@@ -1,18 +1,14 @@
 ---
 name: quality-gauntlet
-description: Use for any implementation, bug fix, refactor, test change, migration, or release work in a repository that contains quality/policy.toml. Do not use it to modify the quality policy unless the user explicitly requests policy maintenance.
+description: Run and interpret the repository's deterministic quality gauntlet, create test and QA evidence, and prepare review packets.
 ---
 
-# Quality Gauntlet workflow
+# Quality Gauntlet
 
-1. Read `AGENTS.md`, `QUALITY.md`, `KEYSTONE.md`, and applicable `feature-spec/` files.
-2. Run `python3 quality/qg.py doctor` and the existing fast profile before editing.
-3. Create or update `quality/change-risk.json`, then run `python3 quality/qg.py risk-card`; select a profile at or above its deterministic minimum.
-4. State observable behavior changes and preserved behavior.
-5. Draft required feature, Gherkin, golden, contract, and QA evidence. Obtain human approval before High assurance implementation.
-6. Implement in small slices and run `python3 quality/qg.py check fast` frequently.
-7. Run `python3 quality/qg.py check-risk` to execute the profile required by the risk card.
-8. Treat survivors, skips, stale/missing reports, and tool crashes as unresolved.
-9. Do not alter the protected policy plane during normal work.
-10. For High assurance or Critical work, delegate final verification to the read-only quality verifier.
-11. Report changed human-review-plane files and provide a plain-language evidence summary.
+1. Read `QUALITY.md`, `KEYSTONE.md`, applicable `feature-spec/` files, and `quality/change-risk.json`.
+2. Run `python3 quality/qg.py status` before editing.
+3. Keep product behavior and tests aligned; do not weaken policy or approve expected-output changes.
+4. Use `python3 quality/qg.py guidance <topic>` for test-writing instructions.
+5. Run `python3 quality/qg.py check fast` during work and `python3 quality/qg.py check-risk --keep-going` before completion.
+6. Generate the review packet with `python3 quality/qg.py review --write`.
+7. Report every failed, skipped, stale, or inapplicable gate explicitly.

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import html
-import json
-from pathlib import Path
+import io
 import re
+import token
+import tokenize
+from pathlib import Path
 from typing import Any
 
 from .approvals import validate_required_approvals
@@ -14,20 +16,54 @@ from .constants import PASS, QUALITY_FAILURE
 from .policy import human_review_patterns, protected_patterns, risk_summary
 from .project import load_project
 from .runner import list_runs
-from .util import change_fingerprint, control_fingerprint, git_changed_files, git_diff, git_revision, matches_any, utc_now, write_json
+from .util import (
+    change_fingerprint,
+    control_fingerprint,
+    git_changed_files,
+    git_diff,
+    git_revision,
+    matches_any,
+    utc_now,
+    write_json,
+)
 
-
-PRODUCTION_EXTENSIONS = {".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".html", ".css", ".scss"}
+PRODUCTION_EXTENSIONS = {
+    ".py",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".html",
+    ".css",
+    ".scss",
+}
 TEST_TOKENS = {"test", "tests", "spec", "specs", "__tests__", "e2e", "acceptance"}
 
 
 def _is_test(path: str) -> bool:
     rel = Path(path)
     name = rel.name.lower()
-    return any(part.lower() in TEST_TOKENS for part in rel.parts) or bool(re.search(r"(?:^|[._-])(test|spec)(?:[._-]|$)", name)) or name.startswith("test_") or name.endswith("_test.py")
+    return (
+        any(part.lower() in TEST_TOKENS for part in rel.parts)
+        or bool(re.search(r"(?:^|[._-])(test|spec)(?:[._-]|$)", name))
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+    )
 
 
-def _finding(code: str, severity: str, title: str, detail: str, paths: list[str], action: str, automated: bool = True) -> dict[str, Any]:
+def _finding(
+    code: str,
+    severity: str,
+    title: str,
+    detail: str,
+    paths: list[str],
+    action: str,
+    automated: bool = True,
+) -> dict[str, Any]:
     return {
         "code": code,
         "severity": severity,
@@ -75,7 +111,9 @@ def _deleted_lines(diff: str) -> list[tuple[str, int, str]]:
     return output
 
 
-def _line_locations(lines: list[tuple[str, int, str]], pattern: re.Pattern[str], *, predicate: Any | None = None) -> list[str]:
+def _line_locations(
+    lines: list[tuple[str, int, str]], pattern: re.Pattern[str], *, predicate: Any | None = None
+) -> list[str]:
     locations: list[str] = []
     for path, line_no, line in lines:
         if predicate is not None and not predicate(path):
@@ -86,25 +124,70 @@ def _line_locations(lines: list[tuple[str, int, str]], pattern: re.Pattern[str],
 
 
 def _is_production_path(path: str) -> bool:
-    return Path(path).suffix.lower() in PRODUCTION_EXTENSIONS and not _is_test(path) and not path.startswith(("quality/", ".aqg/"))
+    return (
+        Path(path).suffix.lower() in PRODUCTION_EXTENSIONS
+        and not _is_test(path)
+        and not path.startswith(("quality/", ".aqg/"))
+    )
+
+
+def _match_is_inside_python_string(root: Path, path: str, line_no: int, column: int) -> bool:
+    if Path(path).suffix.lower() not in {".py", ".pyi"}:
+        return False
+    source = root / path
+    if not source.is_file():
+        return False
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source.read_text(encoding="utf-8")).readline)
+        return any(
+            item.type == token.STRING
+            and item.start <= (line_no, column)
+            and (line_no, column) < item.end
+            for item in tokens
+        )
+    except (OSError, UnicodeError, tokenize.TokenError):
+        return False
 
 
 def _risk_factor_path_hints(changed: list[str]) -> dict[str, list[str]]:
     rules = {
-        "authentication": re.compile(r"(?i)(auth|login|logout|session|password|credential|oauth|sso|jwt)"),
+        "authentication": re.compile(
+            r"(?i)(auth|login|logout|session|password|credential|oauth|sso|jwt)"
+        ),
         "authorization": re.compile(r"(?i)(permission|policy|role|acl|rbac|authorize|entitlement)"),
-        "privacy": re.compile(r"(?i)(privacy|pii|personal[_-]?data|tracking|analytics|consent|cookie)"),
+        "privacy": re.compile(
+            r"(?i)(privacy|pii|personal[_-]?data|tracking|analytics|consent|cookie)"
+        ),
         "money": re.compile(r"(?i)(payment|billing|invoice|price|checkout|refund|credit|currency)"),
         "migration": re.compile(r"(?i)(migration|alembic|schema|ddl|prisma|knex)"),
         "external_contract": re.compile(r"(?i)(openapi|swagger|graphql|proto|api|contract|schema)"),
-        "concurrency": re.compile(r"(?i)(lock|mutex|semaphore|queue|worker|thread|async|concurrent|race)"),
-        "supply_chain": re.compile(r"(?i)(package-lock|pnpm-lock|yarn.lock|uv.lock|requirements|dockerfile|workflow|action)"),
+        "concurrency": re.compile(
+            r"(?i)(lock|mutex|semaphore|queue|worker|thread|async|concurrent|race)"
+        ),
+        "supply_chain": re.compile(
+            r"(?i)(package-lock|pnpm-lock|yarn.lock|uv.lock|requirements|dockerfile|workflow|action)"
+        ),
         "data_loss": re.compile(r"(?i)(delete|purge|drop|truncate|destroy|erase|overwrite)"),
     }
-    return {factor: [path for path in changed if pattern.search(path)] for factor, pattern in rules.items()}
+    product_surface = [
+        path
+        for path in changed
+        if _is_production_path(path)
+        or Path(path).suffix.lower() in {".sql", ".graphql", ".proto"}
+        or path.startswith(("api/", "migrations/", "schemas/"))
+    ]
+    output = {
+        factor: [path for path in product_surface if pattern.search(path)]
+        for factor, pattern in rules.items()
+        if factor != "supply_chain"
+    }
+    output["supply_chain"] = [path for path in changed if rules["supply_chain"].search(path)]
+    return output
 
 
-def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True) -> dict[str, Any]:
+def analyze_review(
+    root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
+) -> dict[str, Any]:
     project = load_project(root)
     changed = git_changed_files(root, base)
     diff = git_diff(root, base, unified=1)
@@ -158,9 +241,13 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
     for line in diff.splitlines():
         if line.startswith("--- a/"):
             current_path = line[6:]
-        elif line.startswith("-") and not line.startswith("---") and _is_test(current_path):
-            if re.search(r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)", line[1:]):
-                deleted_tests.append(current_path)
+        elif (
+            line.startswith("-")
+            and not line.startswith("---")
+            and _is_test(current_path)
+            and re.search(r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)", line[1:])
+        ):
+            deleted_tests.append(current_path)
     if deleted_tests:
         findings.append(
             _finding(
@@ -175,14 +262,23 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
 
     weak_markers: dict[str, list[str]] = {}
     patterns = {
-        "focused-or-skipped-test": re.compile(r"\b(?:describe|it|test)\.(?:only|skip|todo)\b|@pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail)\s*\("),
-        "coverage-suppression": re.compile(r"(?i)(pragma:\s*no\s*cover|istanbul\s+ignore|c8\s+ignore|coverage:\s*ignore)"),
-        "mutation-suppression": re.compile(r"(?i)(pragma:\s*no\s+mutate|stryker\s+disable|mutmut)"),
-        "lint-or-type-suppression": re.compile(r"(?i)(eslint-disable|stylelint-disable|type:\s*ignore|noqa|mypy:\s*ignore-errors|ts-ignore|ts-nocheck)"),
+        "focused-or-skipped-test": re.compile(
+            r"\b(?:describe|it|test)\.(?:only|skip|todo)\b|@pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail)\s*\("
+        ),
+        "coverage-suppression": re.compile(
+            r"(?i)(pragma:\s*no\s*cover|istanbul\s+ignore|c8\s+ignore|coverage:\s*ignore)"
+        ),
+        "mutation-suppression": re.compile(r"(?i)(pragma:\s*no\s+mutate|stryker\s+disable)"),
+        "lint-or-type-suppression": re.compile(
+            r"(?i)(eslint-disable|stylelint-disable|type:\s*ignore|noqa|mypy:\s*ignore-errors|ts-ignore|ts-nocheck)"
+        ),
     }
     for path, line_no, line in added:
+        if Path(path).suffix.lower() in {".md", ".feature", ".txt"}:
+            continue
         for code, pattern in patterns.items():
-            if pattern.search(line):
+            match = pattern.search(line)
+            if match and not _match_is_inside_python_string(root, path, line_no, match.start()):
                 weak_markers.setdefault(code, []).append(f"{path}:{line_no}")
     for code, paths in weak_markers.items():
         findings.append(
@@ -209,7 +305,9 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
             continue
         ordered = sorted(lines)
         for index, (line_no, line) in enumerate(ordered):
-            if not re.search(r"^\s*except\s+(?:BaseException|Exception)(?:\s+as\s+\w+)?\s*:\s*$", line):
+            if not re.search(
+                r"^\s*except\s+(?:BaseException|Exception)(?:\s+as\s+\w+)?\s*:\s*$", line
+            ):
                 continue
             following = "\n".join(value for _, value in ordered[index + 1 : index + 4])
             if re.search(r"(?m)^\s*(?:pass|return\s+None)\s*(?:#.*)?$", following):
@@ -246,7 +344,9 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
     nondeterministic_test_patterns = re.compile(
         r"(?i)(?:\b(?:time\.sleep|asyncio\.sleep|setTimeout|setInterval|Date\.now|datetime\.(?:now|utcnow)|time\.time|Math\.random|random\.(?:random|randint|choice)|uuid\.uuid4)\s*\(|\b(?:fetch|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch)|urllib\.request\.urlopen)\s*\()"
     )
-    nondeterministic_tests = _line_locations(added, nondeterministic_test_patterns, predicate=_is_test)
+    nondeterministic_tests = _line_locations(
+        added, nondeterministic_test_patterns, predicate=_is_test
+    )
     if nondeterministic_tests:
         findings.append(
             _finding(
@@ -261,7 +361,9 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
 
     weak_assertions = _line_locations(
         added,
-        re.compile(r"(?:\.toBeTruthy\s*\(\s*\)|\.toBeDefined\s*\(\s*\)|\.toBe(?:GreaterThan|GreaterThanOrEqual)\s*\(\s*0\s*\)|^\s*assert\s+[A-Za-z_][A-Za-z0-9_.]*\s*(?:#.*)?$)"),
+        re.compile(
+            r"(?:\.toBeTruthy\s*\(\s*\)|\.toBeDefined\s*\(\s*\)|\.toBe(?:GreaterThan|GreaterThanOrEqual)\s*\(\s*0\s*\)|^\s*assert\s+[A-Za-z_][A-Za-z0-9_.]*\s*(?:#.*)?$)"
+        ),
         predicate=_is_test,
     )
     if weak_assertions:
@@ -279,11 +381,18 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
     public_contracts = [
         path
         for path in changed
-        if re.search(r"(?i)(?:^|/)(?:api|routes?|schemas?|contracts?|openapi|swagger|graphql|proto)(?:/|\.|$)", path)
+        if re.search(
+            r"(?i)(?:^|/)(?:api|routes?|schemas?|contracts?|openapi|swagger|graphql|proto)(?:/|\.|$)",
+            path,
+        )
         or Path(path).suffix.lower() in {".proto", ".graphql", ".gql"}
         or re.search(r"(?i)(openapi|swagger).*(?:json|ya?ml)$", path)
     ]
-    contract_evidence = [path for path in tests if re.search(r"(?i)(contract|schema|api|route|openapi|graphql|proto)", path)]
+    contract_evidence = [
+        path
+        for path in tests
+        if re.search(r"(?i)(contract|schema|api|route|openapi|graphql|proto)", path)
+    ]
     if public_contracts and not contract_evidence:
         findings.append(
             _finding(
@@ -338,7 +447,11 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
             )
         )
 
-    snapshots = [path for path in changed if re.search(r"(?i)(golden|snapshot|__snapshots__|fixture|cassette)", path)]
+    snapshots = [
+        path
+        for path in changed
+        if re.search(r"(?i)(golden|snapshot|__snapshots__|fixture|cassette)", path)
+    ]
     if snapshots:
         findings.append(
             _finding(
@@ -352,7 +465,24 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
             )
         )
 
-    dependencies = [path for path in changed if Path(path).name in {"package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "pyproject.toml", "uv.lock", "Pipfile", "Pipfile.lock"} or re.match(r"requirements.*\.txt", Path(path).name)]
+    dependencies = [
+        path
+        for path in changed
+        if Path(path).name
+        in {
+            "package.json",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "bun.lock",
+            "bun.lockb",
+            "pyproject.toml",
+            "uv.lock",
+            "Pipfile",
+            "Pipfile.lock",
+        }
+        or re.match(r"requirements.*\.txt", Path(path).name)
+    ]
     if dependencies:
         findings.append(
             _finding(
@@ -416,7 +546,9 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
     current_change_fingerprint = change_fingerprint(root, base)
     current_control_fingerprint = control_fingerprint(root)
     evidence_matrix: list[dict[str, Any]] = []
-    required_profiles = list(risk_payload.get("required_execution_profiles", [])) if risk_payload else []
+    required_profiles = (
+        list(risk_payload.get("required_execution_profiles", [])) if risk_payload else []
+    )
     for profile in required_profiles:
         matching = next(
             (
@@ -462,7 +594,9 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
             )
     approvals: dict[str, Any] = {"required": [], "results": {}, "errors": [], "exit_code": 0}
     if risk_payload:
-        approvals = validate_required_approvals(root, str(risk_payload.get("selected_risk_profile") or "standard"))
+        approvals = validate_required_approvals(
+            root, str(risk_payload.get("selected_risk_profile") or "standard")
+        )
     if require_evidence:
         for message in approvals.get("errors", []):
             findings.append(
@@ -508,7 +642,9 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
             "blockers": sum(item["severity"] == "blocker" for item in findings),
             "human_review": sum(item["severity"] == "review" for item in findings),
             "warnings": sum(item["severity"] == "warning" for item in findings),
-            "evidence_status": "current" if evidence_matrix and all(item["status"] == "current_pass" for item in evidence_matrix) else "missing_or_stale",
+            "evidence_status": "current"
+            if evidence_matrix and all(item["status"] == "current_pass" for item in evidence_matrix)
+            else "missing_or_stale",
             "approval_status": "current" if not approvals.get("errors") else "missing_or_stale",
         },
         "risk": risk_payload,
@@ -521,7 +657,13 @@ def analyze_review(root: Path, policy: dict[str, Any], *, base: str = "HEAD", re
 
 def _markdown(packet: dict[str, Any]) -> str:
     summary = packet["summary"]
-    decision = "BLOCKED" if summary["blockers"] else "HUMAN REVIEW REQUIRED" if summary["human_review"] else "AUTOMATED REVIEW CLEAR"
+    decision = (
+        "BLOCKED"
+        if summary["blockers"]
+        else "HUMAN REVIEW REQUIRED"
+        if summary["human_review"]
+        else "AUTOMATED REVIEW CLEAR"
+    )
     lines = [
         "# AQG review packet",
         "",
@@ -552,10 +694,14 @@ def _markdown(packet: dict[str, Any]) -> str:
     lines.extend(["## Evidence matrix", "", "| Profile | Status | Run |", "|---|---|---|"])
     if packet.get("evidence"):
         for item in packet["evidence"]:
-            lines.append(f"| `{item['profile']}` | {item['status']} | `{item.get('run_id') or '—'}` |")
+            lines.append(
+                f"| `{item['profile']}` | {item['status']} | `{item.get('run_id') or '—'}` |"
+            )
     else:
         lines.append("| — | No required profile resolved | — |")
-    lines.extend(["", "## Human approval matrix", "", "| Approval | Status | Detail |", "|---|---|---|"])
+    lines.extend(
+        ["", "## Human approval matrix", "", "| Approval | Status | Detail |", "|---|---|---|"]
+    )
     approvals = packet.get("approvals", {})
     required = approvals.get("required", [])
     results = approvals.get("results", {})
@@ -564,13 +710,18 @@ def _markdown(packet: dict[str, Any]) -> str:
             result = results.get(kind, {}) if isinstance(results, dict) else {}
             errors = result.get("errors", []) if isinstance(result, dict) else []
             status = "current" if not errors else "missing_or_stale"
-            detail = "; ".join(str(value) for value in errors[:3]) or "fingerprints match current review surface"
+            detail = (
+                "; ".join(str(value) for value in errors[:3])
+                or "fingerprints match current review surface"
+            )
             lines.append(f"| `{kind}` | {status} | {detail} |")
     else:
         lines.append("| — | none required | — |")
     lines.extend(["", "## Findings", ""])
     if not packet["findings"]:
-        lines.append("No automated findings. Human review is still required wherever the risk profile or behavior artifacts require it.")
+        lines.append(
+            "No automated findings. Human review is still required wherever the risk profile or behavior artifacts require it."
+        )
     for finding in packet["findings"]:
         origin = "deterministic/heuristic" if finding.get("automated", True) else "human decision"
         lines.extend(
@@ -609,50 +760,81 @@ def _markdown(packet: dict[str, Any]) -> str:
 
 def _html(packet: dict[str, Any]) -> str:
     summary = packet["summary"]
-    decision_class = "blocker" if summary["blockers"] else "review" if summary["human_review"] else "pass"
-    decision = "Blocked" if summary["blockers"] else "Human review required" if summary["human_review"] else "Automated review clear"
+    decision_class = (
+        "blocker" if summary["blockers"] else "review" if summary["human_review"] else "pass"
+    )
+    decision = (
+        "Blocked"
+        if summary["blockers"]
+        else "Human review required"
+        if summary["human_review"]
+        else "Automated review clear"
+    )
     cards = []
     for finding in packet["findings"]:
         paths = "".join(f"<li><code>{html.escape(path)}</code></li>" for path in finding["paths"])
         origin = "Automated signal" if finding.get("automated", True) else "Human decision"
-        cards.append(
-            f'''<article class="finding {html.escape(finding['severity'])}">
-              <div class="finding-head"><span class="severity">{html.escape(finding['severity'].upper())}</span><div><h3>{html.escape(finding['title'])}</h3><code>{html.escape(finding['code'])}</code> · <small>{origin}</small></div></div>
-              <p>{html.escape(finding['detail'])}</p>
-              <div class="action"><strong>Required action</strong><p>{html.escape(finding['action'])}</p></div>
-              {f'<details><summary>{len(finding["paths"])} affected location(s)</summary><ul>{paths}</ul></details>' if paths else ''}
-            </article>'''
+        locations = (
+            f"<details><summary>{len(finding['paths'])} affected location(s)</summary>"
+            f"<ul>{paths}</ul></details>"
+            if paths
+            else ""
         )
-    changed = "".join(f"<li><code>{html.escape(path)}</code></li>" for path in packet["changed_files"])
+        cards.append(
+            f"""<article class="finding {html.escape(finding["severity"])}">
+              <div class="finding-head"><span class="severity">{html.escape(finding["severity"].upper())}</span><div><h3>{html.escape(finding["title"])}</h3><code>{html.escape(finding["code"])}</code> · <small>{origin}</small></div></div>
+              <p>{html.escape(finding["detail"])}</p>
+              <div class="action"><strong>Required action</strong><p>{html.escape(finding["action"])}</p></div>
+              {locations}
+            </article>"""
+        )
+    changed = "".join(
+        f"<li><code>{html.escape(path)}</code></li>" for path in packet["changed_files"]
+    )
     risk = packet.get("risk") or {}
-    evidence_rows = "".join(
-        f"<tr><td><code>{html.escape(str(item['profile']))}</code></td><td><span class=\"status {html.escape(str(item['status']))}\">{html.escape(str(item['status']).replace('_',' '))}</span></td><td><code>{html.escape(str(item.get('run_id') or '—'))}</code></td></tr>"
-        for item in packet.get("evidence", [])
-    ) or '<tr><td colspan="3" class="muted">No required execution profile resolved.</td></tr>'
+    evidence_rows = (
+        "".join(
+            f'<tr><td><code>{html.escape(str(item["profile"]))}</code></td><td><span class="status {html.escape(str(item["status"]))}">{html.escape(str(item["status"]).replace("_", " "))}</span></td><td><code>{html.escape(str(item.get("run_id") or "—"))}</code></td></tr>'
+            for item in packet.get("evidence", [])
+        )
+        or '<tr><td colspan="3" class="muted">No required execution profile resolved.</td></tr>'
+    )
     approvals = packet.get("approvals", {})
     approval_rows = []
     for kind in approvals.get("required", []):
-        result = approvals.get("results", {}).get(kind, {}) if isinstance(approvals.get("results"), dict) else {}
+        result = (
+            approvals.get("results", {}).get(kind, {})
+            if isinstance(approvals.get("results"), dict)
+            else {}
+        )
         errors = result.get("errors", []) if isinstance(result, dict) else []
         status = "current" if not errors else "missing_or_stale"
-        detail = "; ".join(str(value) for value in errors[:3]) or "Fingerprints match the current review surface."
-        approval_rows.append(f"<tr><td><code>{html.escape(str(kind))}</code></td><td><span class=\"status {status}\">{status.replace('_',' ')}</span></td><td>{html.escape(detail)}</td></tr>")
-    approval_rows_html = "".join(approval_rows) or '<tr><td colspan="3" class="muted">No human approval record is required at this risk profile.</td></tr>'
+        detail = (
+            "; ".join(str(value) for value in errors[:3])
+            or "Fingerprints match the current review surface."
+        )
+        approval_rows.append(
+            f'<tr><td><code>{html.escape(str(kind))}</code></td><td><span class="status {status}">{status.replace("_", " ")}</span></td><td>{html.escape(detail)}</td></tr>'
+        )
+    approval_rows_html = (
+        "".join(approval_rows)
+        or '<tr><td colspan="3" class="muted">No human approval record is required at this risk profile.</td></tr>'
+    )
     generated = html.escape(str(packet["generated_at"]))
-    return f'''<!doctype html>
+    return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AQG review packet</title>
 <style>
 :root{{--bg:#080b10;--panel:#111722;--panel2:#0d121b;--muted:#9ba9bb;--text:#edf4fb;--line:#263246;--red:#ff7182;--amber:#ffd166;--blue:#78b7ff;--green:#5ee0a0;--cyan:#67e6dc;--shadow:0 18px 55px rgba(0,0,0,.24)}}
 *{{box-sizing:border-box}}html{{color-scheme:dark}}body{{margin:0;background:radial-gradient(circle at 12% 0%,#172338 0,transparent 31%),var(--bg);color:var(--text);font:15px/1.58 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}main{{max-width:1180px;margin:auto;padding:44px 24px 96px}}h1{{font-size:clamp(34px,5vw,58px);letter-spacing:-.045em;margin:4px 0 10px}}h2{{font-size:22px;margin:0 0 16px}}h3{{margin:0 0 2px;font-size:17px}}p{{max-width:88ch}}code{{font-family:"SFMono-Regular",Consolas,monospace;color:#c5ddff;overflow-wrap:anywhere}}.eyebrow{{color:var(--cyan);text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:800}}.muted,small{{color:var(--muted)}}.hero{{display:grid;grid-template-columns:1.5fr .8fr;gap:22px;align-items:stretch;margin-bottom:24px}}.hero-copy,.decision,.panel,.finding{{background:linear-gradient(180deg,rgba(18,24,35,.96),rgba(13,18,27,.96));border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}}.hero-copy{{padding:28px}}.decision{{padding:28px;display:flex;flex-direction:column;justify-content:space-between;border-top:4px solid var(--green)}}.decision.blocker{{border-top-color:var(--red)}}.decision.review{{border-top-color:var(--amber)}}.decision strong{{font-size:26px;line-height:1.15}}.fingerprints{{display:grid;gap:6px;margin-top:18px;font-size:12px}}.metrics{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:18px 0 26px}}.metric{{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:15px}}.metric b{{display:block;font-size:27px;line-height:1.1;margin-bottom:6px}}.metric span{{color:var(--muted);font-size:12px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}}.panel{{padding:22px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:11px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}}th{{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}}.status{{display:inline-flex;padding:3px 8px;border-radius:999px;background:#263246;font-size:11px}}.status.current,.status.current_pass{{background:rgba(94,224,160,.13);color:var(--green)}}.status.missing_or_stale{{background:rgba(255,113,130,.13);color:var(--red)}}.finding{{padding:22px;margin:14px 0;border-left:5px solid var(--blue)}}.finding.blocker{{border-left-color:var(--red)}}.finding.review{{border-left-color:var(--amber)}}.finding.warning{{border-left-color:var(--blue)}}.finding-head{{display:flex;gap:13px;align-items:flex-start}}.severity{{font-size:10px;letter-spacing:.12em;padding:4px 7px;border:1px solid var(--line);border-radius:6px;color:var(--muted)}}.action{{background:#0a0f17;border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-top:14px}}.action p{{margin:3px 0 0}}details{{margin-top:12px}}summary{{cursor:pointer;color:var(--blue)}}ul{{padding-left:22px}}.changed{{columns:2;column-gap:28px}}.changed li{{break-inside:avoid;margin:3px 0}}.review-record li{{margin:8px 0}}@media(max-width:900px){{.hero,.grid{{grid-template-columns:1fr}}.metrics{{grid-template-columns:repeat(3,1fr)}}.changed{{columns:1}}}}@media(max-width:560px){{main{{padding:24px 14px 70px}}.metrics{{grid-template-columns:repeat(2,1fr)}}.hero-copy,.decision,.panel,.finding{{border-radius:13px;padding:17px}}}}@media print{{:root{{--bg:#fff;--panel:#fff;--panel2:#fff;--muted:#4a5565;--text:#10141a;--line:#ccd3dc}}body{{background:#fff}}main{{max-width:none;padding:0}}.hero-copy,.decision,.panel,.finding,.metric{{box-shadow:none;break-inside:avoid}}code{{color:#173b66}}}}
 </style></head><body><main>
-<section class="hero"><div class="hero-copy"><div class="eyebrow">Agent Quality Gauntlet · review evidence</div><h1>AQG review packet</h1><p class="muted">Generated {generated} from the exact current revision, diff surface, and protected control plane.</p><div class="fingerprints"><span>Revision <code>{html.escape(str(packet['revision']))}</code></span><span>Base <code>{html.escape(str(packet['base']))}</code></span><span>Change <code>{html.escape(str(packet['change_fingerprint']))}</code></span><span>Controls <code>{html.escape(str(packet['control_fingerprint']))}</code></span></div></div><aside class="decision {decision_class}"><div class="eyebrow">Current decision</div><strong>{decision}</strong><p class="muted">{summary['blockers']} blocker(s), {summary['human_review']} human prompt(s), {summary['warnings']} warning(s).</p></aside></section>
-<section class="metrics"><div class="metric"><b>{summary['changed']}</b><span>changed files</span></div><div class="metric"><b>{summary['production']}</b><span>production</span></div><div class="metric"><b>{summary['tests']}</b><span>tests</span></div><div class="metric"><b>{summary['blockers']}</b><span>blockers</span></div><div class="metric"><b>{summary['human_review']}</b><span>human prompts</span></div><div class="metric"><b>{summary['warnings']}</b><span>warnings</span></div></section>
-<section class="grid"><article class="panel"><div class="eyebrow">Risk</div><h2>{html.escape(str(risk.get('selected_risk_profile','unresolved')).replace('_',' ')).title()}</h2><p>Deterministic minimum: <strong>{html.escape(str(risk.get('minimum_risk_profile','unresolved')).replace('_',' '))}</strong></p><p>Required profiles: <code>{html.escape(', '.join(str(value) for value in risk.get('required_execution_profiles', [])) or 'none')}</code></p></article><article class="panel"><div class="eyebrow">Evidence validity</div><h2>{html.escape(summary['evidence_status'].replace('_',' ')).title()}</h2><p>Human approvals: <strong>{html.escape(summary['approval_status'].replace('_',' '))}</strong></p><p class="muted">Evidence is reusable only while revision, change fingerprint, and control fingerprint remain unchanged.</p></article></section>
+<section class="hero"><div class="hero-copy"><div class="eyebrow">Agent Quality Gauntlet · review evidence</div><h1>AQG review packet</h1><p class="muted">Generated {generated} from the exact current revision, diff surface, and protected control plane.</p><div class="fingerprints"><span>Revision <code>{html.escape(str(packet["revision"]))}</code></span><span>Base <code>{html.escape(str(packet["base"]))}</code></span><span>Change <code>{html.escape(str(packet["change_fingerprint"]))}</code></span><span>Controls <code>{html.escape(str(packet["control_fingerprint"]))}</code></span></div></div><aside class="decision {decision_class}"><div class="eyebrow">Current decision</div><strong>{decision}</strong><p class="muted">{summary["blockers"]} blocker(s), {summary["human_review"]} human prompt(s), {summary["warnings"]} warning(s).</p></aside></section>
+<section class="metrics"><div class="metric"><b>{summary["changed"]}</b><span>changed files</span></div><div class="metric"><b>{summary["production"]}</b><span>production</span></div><div class="metric"><b>{summary["tests"]}</b><span>tests</span></div><div class="metric"><b>{summary["blockers"]}</b><span>blockers</span></div><div class="metric"><b>{summary["human_review"]}</b><span>human prompts</span></div><div class="metric"><b>{summary["warnings"]}</b><span>warnings</span></div></section>
+<section class="grid"><article class="panel"><div class="eyebrow">Risk</div><h2>{html.escape(str(risk.get("selected_risk_profile", "unresolved")).replace("_", " ")).title()}</h2><p>Deterministic minimum: <strong>{html.escape(str(risk.get("minimum_risk_profile", "unresolved")).replace("_", " "))}</strong></p><p>Required profiles: <code>{html.escape(", ".join(str(value) for value in risk.get("required_execution_profiles", [])) or "none")}</code></p></article><article class="panel"><div class="eyebrow">Evidence validity</div><h2>{html.escape(summary["evidence_status"].replace("_", " ")).title()}</h2><p>Human approvals: <strong>{html.escape(summary["approval_status"].replace("_", " "))}</strong></p><p class="muted">Evidence is reusable only while revision, change fingerprint, and control fingerprint remain unchanged.</p></article></section>
 <section class="grid"><article class="panel"><div class="eyebrow">Deterministic profiles</div><h2>Evidence matrix</h2><table><thead><tr><th>Profile</th><th>Status</th><th>Run</th></tr></thead><tbody>{evidence_rows}</tbody></table></article><article class="panel"><div class="eyebrow">Human authority</div><h2>Approval matrix</h2><table><thead><tr><th>Approval</th><th>Status</th><th>Detail</th></tr></thead><tbody>{approval_rows_html}</tbody></table></article></section>
-<section><div class="eyebrow">Review intelligence</div><h2>Findings</h2>{''.join(cards) or '<article class="panel"><p>No automated findings. Complete any risk-required human review before release.</p></article>'}</section>
+<section><div class="eyebrow">Review intelligence</div><h2>Findings</h2>{"".join(cards) or '<article class="panel"><p>No automated findings. Complete any risk-required human review before release.</p></article>'}</section>
 <section class="panel review-record"><div class="eyebrow">Human decision</div><h2>Reviewer record</h2><ul><li>Reviewer:</li><li>Decision:</li><li>Behavior and expected-output diffs reviewed:</li><li>Residual risk and rollback:</li><li>Evidence / approval links:</li></ul></section>
-<section class="panel"><div class="eyebrow">Scope</div><h2>Changed files</h2><ul class="changed">{changed or '<li>None</li>'}</ul></section>
-</main></body></html>'''
+<section class="panel"><div class="eyebrow">Scope</div><h2>Changed files</h2><ul class="changed">{changed or "<li>None</li>"}</ul></section>
+</main></body></html>"""
 
 
 def write_review_packet(root: Path, packet: dict[str, Any]) -> dict[str, str]:

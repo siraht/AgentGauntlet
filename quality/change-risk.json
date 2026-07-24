@@ -1,0 +1,40 @@
+{
+  "schema_version": "1",
+  "summary": "Recover, complete, validate, and publicly publish the Agent Quality Gauntlet v2 source distribution.",
+  "risk_profile": "high_assurance",
+  "production_scope": true,
+  "reversible": true,
+  "blast_radius": "public",
+  "behavior_changes": [
+    "The public repository presents one coherent v2 CLI, installer, documentation set, and reproducible release build.",
+    "High-assurance and release profiles generate and validate deterministic CycloneDX dependency inventories.",
+    "Automatic setup distinguishes existing repositories from greenfield repositories and installs browsers only when explicitly requested."
+  ],
+  "behavior_preserved": [
+    "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",
+    "Missing, stale, malformed, or untrustworthy evidence fails closed.",
+    "Existing JavaScript, TypeScript, HTML, CSS, and Python adapter behavior remains supported.",
+    "Policy, expected-output, waiver, and approval changes remain protected and reviewable."
+  ],
+  "risk_factors": {
+    "data_loss": false,
+    "authentication": false,
+    "authorization": false,
+    "privacy": false,
+    "money": false,
+    "external_contract": true,
+    "migration": false,
+    "concurrency": false,
+    "irreversible_action": false,
+    "supply_chain": true,
+    "safety": false
+  },
+  "failure_detection": "Unit tests, internal conformance fixtures, package builds, deterministic release rebuild comparison, disposable-project setup smoke tests, and GitHub remote verification.",
+  "rollback": "Revert the initial public commit or delete the newly created GitHub repository before external adoption; no existing remote or production deployment is modified.",
+  "human_review": [
+    "Public CLI and setup behavior",
+    "CycloneDX gate behavior",
+    "Release contents and checksums",
+    "Repository visibility and governance guidance"
+  ]
+}

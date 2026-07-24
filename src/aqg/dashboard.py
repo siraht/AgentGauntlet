@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 import os
-from pathlib import Path
 import secrets
 import threading
 import urllib.parse
 import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 from .approvals import validate_required_approvals
@@ -19,11 +19,10 @@ from .constants import CONFIGURATION_ERROR, PASS
 from .errors import ConfigurationError
 from .policy import load_policy, risk_summary
 from .project import load_project
-from .scaffold import current_onboarding
 from .review import analyze_review, write_review_packet
 from .runner import list_runs, run_profile
+from .scaffold import current_onboarding
 from .util import read_json, utc_now
-
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 
@@ -37,7 +36,16 @@ def project_status(root: Path) -> dict[str, Any]:
     review = read_json(review_path, default=None) if review_path.exists() else None
     risk_errors, risk = risk_summary(root, policy, "quality/change-risk.json")
     selected = str(risk.get("selected_risk_profile") or "standard")
-    approvals = validate_required_approvals(root, selected) if not risk_errors else {"required": [], "results": {}, "errors": risk_errors, "exit_code": CONFIGURATION_ERROR}
+    approvals = (
+        validate_required_approvals(root, selected)
+        if not risk_errors
+        else {
+            "required": [],
+            "results": {},
+            "errors": risk_errors,
+            "exit_code": CONFIGURATION_ERROR,
+        }
+    )
     onboarding = current_onboarding(root)
     return {
         "generated_at": utc_now(),
@@ -59,7 +67,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "AQGDashboard/2"
 
     @property
-    def aqg_server(self) -> "DashboardServer":
+    def aqg_server(self) -> DashboardServer:
         return self.server  # type: ignore[return-value]
 
     def log_message(self, format: str, *args: object) -> None:
@@ -71,7 +79,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+        )
 
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(payload, indent=2, sort_keys=True).encode()
@@ -99,6 +110,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:  # noqa: N802
+        payload: Any
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/api/status":
@@ -117,7 +129,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json(payload)
             return
         if path == "/api/config":
-            self._send_json({"actions_enabled": self.aqg_server.allow_actions, "portfolio": self.aqg_server.portfolio})
+            self._send_json(
+                {
+                    "actions_enabled": self.aqg_server.allow_actions,
+                    "portfolio": self.aqg_server.portfolio,
+                }
+            )
             return
         relative = "index.html" if path in {"", "/"} else path.lstrip("/")
         if ".." in Path(relative).parts:
@@ -134,7 +151,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         length = int(self.headers.get("Content-Length", "0"))
         if length < 0 or length > 65536:
-            self._send_json({"error": "request body too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            self._send_json(
+                {"error": "request body too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+            )
             return
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -146,7 +165,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if profile == "risk":
                 thread = threading.Thread(target=self.aqg_server.run_risk_check, daemon=True)
             else:
-                thread = threading.Thread(target=self.aqg_server.run_check, args=(profile,), daemon=True)
+                thread = threading.Thread(
+                    target=self.aqg_server.run_check, args=(profile,), daemon=True
+                )
             thread.start()
             self._send_json({"accepted": True, "profile": profile}, HTTPStatus.ACCEPTED)
             return
@@ -188,7 +209,9 @@ class DashboardServer(ThreadingHTTPServer):
             return {"error": "select a project; portfolio review aggregation is read-only"}
         root = self.roots[0]
         project = load_project(root)
-        base = os.environ.get("AQG_DIFF_BASE") or str(project.get("enforcement", {}).get("base_ref", "HEAD"))
+        base = os.environ.get("AQG_DIFF_BASE") or str(
+            project.get("enforcement", {}).get("base_ref", "HEAD")
+        )
         packet = analyze_review(root, load_policy(root), base=base, require_evidence=True)
         if write:
             packet["artifacts"] = write_review_packet(root, packet)
@@ -201,7 +224,9 @@ class DashboardServer(ThreadingHTTPServer):
             if not summary.exists():
                 continue
             gates: dict[str, Any] = {}
-            for path in sorted((run_dir / "gates").glob("*.json")) if (run_dir / "gates").exists() else []:
+            for path in (
+                sorted((run_dir / "gates").glob("*.json")) if (run_dir / "gates").exists() else []
+            ):
                 gates[path.stem] = read_json(path)
             return {"root": str(root), "summary": read_json(summary), "gates": gates}
         return None
@@ -243,7 +268,12 @@ class DashboardServer(ThreadingHTTPServer):
             for profile in risk.get("required_execution_profiles", []):
                 code, _ = run_profile(root, policy, str(profile), keep_going=True, quiet=True)
                 final = max(final, code)
-            self.active_actions[key] = {0: "pass", 1: "quality_failure", 2: "configuration_error", 3: "infrastructure_error"}.get(final, "error")
+            self.active_actions[key] = {
+                0: "pass",
+                1: "quality_failure",
+                2: "configuration_error",
+                3: "infrastructure_error",
+            }.get(final, "error")
         except Exception as exc:
             self.active_actions[key] = f"error: {exc}"
 
@@ -258,13 +288,19 @@ def serve_dashboard(
     verbose: bool = False,
 ) -> None:
     if allow_actions and host not in {"127.0.0.1", "localhost", "::1"}:
-        raise ConfigurationError("dashboard actions may bind only to a loopback address; use read-only mode for remote dashboards")
+        raise ConfigurationError(
+            "dashboard actions may bind only to a loopback address; use read-only mode for remote dashboards"
+        )
     effective_actions = allow_actions and len(roots) == 1
     token = secrets.token_urlsafe(24) if effective_actions else ""
-    server = DashboardServer((host, port), roots, allow_actions=effective_actions, token=token, verbose=verbose)
+    server = DashboardServer(
+        (host, port), roots, allow_actions=effective_actions, token=token, verbose=verbose
+    )
     url = f"http://{host}:{server.server_address[1]}"
     print(f"AQG dashboard: {url}")
-    print("Read-only mode." if not effective_actions else f"Actions enabled. Browser token: {token}")
+    print(
+        "Read-only mode." if not effective_actions else f"Actions enabled. Browser token: {token}"
+    )
     if open_browser:
         webbrowser.open(url)
     try:

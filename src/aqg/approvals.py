@@ -10,8 +10,14 @@ from typing import Any
 from .constants import PASS, QUALITY_FAILURE
 from .errors import ConfigurationError
 from .project import load_project
-from .util import change_fingerprint, control_fingerprint, git_revision, read_json, utc_now, write_json
-
+from .util import (
+    change_fingerprint,
+    control_fingerprint,
+    git_revision,
+    read_json,
+    utc_now,
+    write_json,
+)
 
 KINDS = {
     "behavior-review": {
@@ -37,16 +43,19 @@ KINDS = {
 }
 
 
-
 def _approval_provenance(root: Path) -> dict[str, str]:
     try:
-        base = os.environ.get("AQG_DIFF_BASE") or str(load_project(root).get("enforcement", {}).get("base_ref", "HEAD"))
+        base = os.environ.get("AQG_DIFF_BASE") or str(
+            load_project(root).get("enforcement", {}).get("base_ref", "HEAD")
+        )
     except Exception:
         base = os.environ.get("AQG_DIFF_BASE") or "HEAD"
     return {
         "revision": git_revision(root),
         "base_ref": base,
-        "change_fingerprint": change_fingerprint(root, base, exclude_patterns=["quality/approvals/**"]),
+        "change_fingerprint": change_fingerprint(
+            root, base, exclude_patterns=["quality/approvals/**"]
+        ),
         "control_fingerprint": control_fingerprint(root),
     }
 
@@ -81,15 +90,21 @@ def template(root: Path, kind: str, *, reviewer: str | None = None) -> dict[str,
     }
 
 
-def write_template(root: Path, kind: str, *, reviewer: str | None = None, force: bool = False) -> Path:
+def write_template(
+    root: Path, kind: str, *, reviewer: str | None = None, force: bool = False
+) -> Path:
     path = approval_path(root, kind)
     if path.exists() and not force:
-        raise ConfigurationError(f"approval record already exists: {path}; use --force only for an explicit human review task")
+        raise ConfigurationError(
+            f"approval record already exists: {path}; use --force only for an explicit human review task"
+        )
     write_json(path, template(root, kind, reviewer=reviewer))
     return path
 
 
-def validate_approval(root: Path, kind: str, *, require_pass: bool = True, require_current_revision: bool = True) -> list[str]:
+def validate_approval(
+    root: Path, kind: str, *, require_pass: bool = True, require_current_revision: bool = True
+) -> list[str]:
     path = approval_path(root, kind)
     if not path.exists():
         return [f"missing {path.relative_to(root)}"]
@@ -104,7 +119,10 @@ def validate_approval(root: Path, kind: str, *, require_pass: bool = True, requi
     reviewer = payload.get("reviewer")
     if not isinstance(reviewer, str) or not reviewer.strip():
         errors.append("reviewer must be a non-empty human identity")
-    if not isinstance(payload.get("reviewed_at"), str) or not payload.get("reviewed_at", "").strip():
+    if (
+        not isinstance(payload.get("reviewed_at"), str)
+        or not payload.get("reviewed_at", "").strip()
+    ):
         errors.append("reviewed_at must be an ISO timestamp")
     if require_pass and payload.get("result") != "pass":
         errors.append("result must be 'pass'")
@@ -115,9 +133,13 @@ def validate_approval(root: Path, kind: str, *, require_pass: bool = True, requi
         if payload.get("base_ref") != current["base_ref"]:
             errors.append(f"base_ref must match current comparison base {current['base_ref']!r}")
         if payload.get("change_fingerprint") != current["change_fingerprint"]:
-            errors.append("change_fingerprint is stale; the reviewed source/test/spec surface changed after approval")
+            errors.append(
+                "change_fingerprint is stale; the reviewed source/test/spec surface changed after approval"
+            )
         if payload.get("control_fingerprint") != current["control_fingerprint"]:
-            errors.append("control_fingerprint is stale; policy, commands, or toolchain inputs changed after approval")
+            errors.append(
+                "control_fingerprint is stale; policy, commands, or toolchain inputs changed after approval"
+            )
     for key in ("scope", "procedure", "evidence", "findings"):
         if not isinstance(payload.get(key), list):
             errors.append(f"{key} must be an array")
@@ -125,9 +147,13 @@ def validate_approval(root: Path, kind: str, *, require_pass: bool = True, requi
         for key in ("scope", "procedure", "evidence"):
             value = payload.get(key)
             if isinstance(value, list) and not any(str(item).strip() for item in value):
-                errors.append(f"{key} must contain concrete reviewed items before result can be 'pass'")
+                errors.append(
+                    f"{key} must contain concrete reviewed items before result can be 'pass'"
+                )
         if kind == "rollback-rehearsal" and not str(payload.get("notes", "")).strip():
-            errors.append("rollback-rehearsal notes must record the observed recovery result and timing")
+            errors.append(
+                "rollback-rehearsal notes must record the observed recovery result and timing"
+            )
     independence = payload.get("independence")
     if kind in {"human-code-review", "release-approval"}:
         if not isinstance(independence, dict):
@@ -143,4 +169,9 @@ def validate_required_approvals(root: Path, risk_profile: str) -> dict[str, Any]
     required = [kind for kind, info in KINDS.items() if risk_profile in info["required_for"]]
     results: dict[str, list[str]] = {kind: validate_approval(root, kind) for kind in required}
     errors = [f"{kind}: {message}" for kind, messages in results.items() for message in messages]
-    return {"required": required, "results": results, "errors": errors, "exit_code": QUALITY_FAILURE if errors else PASS}
+    return {
+        "required": required,
+        "results": results,
+        "errors": errors,
+        "exit_code": QUALITY_FAILURE if errors else PASS,
+    }
