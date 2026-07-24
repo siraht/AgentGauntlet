@@ -1,0 +1,15 @@
+target-version = "py311"
+line-length = 100
+exclude = [".git", ".aqg", ".venv", "venv", "quality/tools", "quality/_aqg", "dist", "build", "mutants"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "A", "C4", "C90", "DTZ", "ERA", "FURB", "G", "LOG", "PIE", "PL", "PT", "RET", "RSE", "S", "SIM", "SLOT", "T10", "T20", "TRY"]
+ignore = ["S101", "PLR2004", "TRY003"]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "PLR2004", "S105", "S106"]
+"test/**/*.py" = ["S101", "PLR2004", "S105", "S106"]
+"**/test_*.py" = ["S101", "PLR2004", "S105", "S106"]

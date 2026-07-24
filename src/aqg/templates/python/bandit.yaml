@@ -1,0 +1,10 @@
+exclude_dirs:
+  - .aqg
+  - .venv
+  - venv
+  - quality/tools
+  - quality/_aqg
+  - tests
+  - test
+skips:
+  - B101

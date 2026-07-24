@@ -1,0 +1,32 @@
+{
+  "schema_version": "1",
+  "summary": "Replace with a plain-language description of the change.",
+  "risk_profile": "standard",
+  "production_scope": true,
+  "reversible": true,
+  "blast_radius": "single_service",
+  "behavior_changes": [
+    "Describe one observable behavior change."
+  ],
+  "behavior_preserved": [
+    "Describe important behavior that must remain unchanged."
+  ],
+  "risk_factors": {
+    "data_loss": false,
+    "authentication": false,
+    "authorization": false,
+    "privacy": false,
+    "money": false,
+    "external_contract": false,
+    "migration": false,
+    "concurrency": false,
+    "irreversible_action": false,
+    "safety": false
+  },
+  "failure_detection": "Describe tests, monitoring, or manual evidence.",
+  "rollback": "Describe how to restore the previous safe state.",
+  "human_review": [
+    "Feature requirements",
+    "Gherkin examples"
+  ]
+}

@@ -1,0 +1,51 @@
+# Copy and adapt this file to .github/workflows/quality.yml.
+# Add stack-specific setup before running qg; do not leave placeholder gates.
+
+name: quality-gauntlet
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Add pinned language/runtime setup and a locked dependency install here.
+
+      - name: Validate quality policy
+        run: python3 quality/qg.py doctor
+
+      - name: Validate change-risk card
+        run: python3 quality/qg.py risk-card --card quality/change-risk.json
+
+      - name: Run risk-selected quality profile
+        run: python3 quality/qg.py check-risk --card quality/change-risk.json --keep-going
+
+      - name: Identify human-review-plane changes
+        if: always() && github.event_name == 'pull_request'
+        env:
+          AQG_DIFF_BASE: origin/${{ github.base_ref }}
+        run: |
+          python3 quality/qg.py review-required --base "$AQG_DIFF_BASE" --json \
+            > build/quality/human-review.json || status=$?
+          # Exit 1 means review-plane files changed; do not treat that as a
+          # technical failure here. Enforce approval with CODEOWNERS.
+          test "${status:-0}" -le 1
+
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-evidence
+          path: build/quality/
+          if-no-files-found: error

@@ -1,0 +1,26 @@
+{
+  "schema_version": "1",
+  "summary": "Describe this change in observable product terms.",
+  "risk_profile": "standard",
+  "production_scope": true,
+  "reversible": true,
+  "blast_radius": "single_service",
+  "behavior_changes": [],
+  "behavior_preserved": [],
+  "risk_factors": {
+    "data_loss": false,
+    "authentication": false,
+    "authorization": false,
+    "privacy": false,
+    "money": false,
+    "external_contract": false,
+    "migration": false,
+    "concurrency": false,
+    "irreversible_action": false,
+    "supply_chain": false,
+    "safety": false
+  },
+  "failure_detection": "Name the automated signal or manual observation that detects failure.",
+  "rollback": "Name the tested rollback, kill switch, or forward-fix procedure.",
+  "human_review": ["behavior contract", "QA procedure", "review packet"]
+}

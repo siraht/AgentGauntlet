@@ -1,0 +1,31 @@
+{
+  "name": "aqg-project-toolchain",
+  "private": true,
+  "type": "module",
+  "description": "Project-local JavaScript/Web quality tools resolved and locked during setup managed by Agent Quality Gauntlet",
+  "devDependencies": {
+    "@axe-core/playwright": "latest",
+    "@eslint/js": "latest",
+    "@lhci/cli": "latest",
+    "@playwright/test": "latest",
+    "@stryker-mutator/core": "latest",
+    "@stryker-mutator/jest-runner": "latest",
+    "@stryker-mutator/typescript-checker": "latest",
+    "@stryker-mutator/vitest-runner": "latest",
+    "@types/node": "latest",
+    "@vitest/coverage-v8": "latest",
+    "dependency-cruiser": "latest",
+    "eslint": "latest",
+    "eslint-plugin-security": "latest",
+    "fast-check": "latest",
+    "globals": "latest",
+    "html-validate": "latest",
+    "knip": "latest",
+    "prettier": "latest",
+    "stylelint": "latest",
+    "stylelint-config-standard": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  }
+}

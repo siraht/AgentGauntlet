@@ -1,0 +1,31 @@
+# Replace @YOUR_GITHUB_USERNAME or team names before installing as .github/CODEOWNERS.
+
+# Policy plane: requires explicit policy-maintenance approval.
+QUALITY.md                              @YOUR_GITHUB_USERNAME
+/AGENTS.md                             @YOUR_GITHUB_USERNAME
+/CLAUDE.md                             @YOUR_GITHUB_USERNAME
+/quality/policy.toml                   @YOUR_GITHUB_USERNAME
+/quality/qg.py                         @YOUR_GITHUB_USERNAME
+/quality/adapters/                     @YOUR_GITHUB_USERNAME
+/quality/bin/                          @YOUR_GITHUB_USERNAME
+/quality/baselines/                    @YOUR_GITHUB_USERNAME
+/quality/waivers/                      @YOUR_GITHUB_USERNAME
+/quality/tests/                        @YOUR_GITHUB_USERNAME
+/quality/hooks/                        @YOUR_GITHUB_USERNAME
+/quality/schemas/                      @YOUR_GITHUB_USERNAME
+/quality/conformance/                  @YOUR_GITHUB_USERNAME
+/.agents/skills/quality-gauntlet/      @YOUR_GITHUB_USERNAME
+/.claude/settings.json                 @YOUR_GITHUB_USERNAME
+/.claude/skills/quality-gauntlet/      @YOUR_GITHUB_USERNAME
+/.claude/agents/quality-verifier.md    @YOUR_GITHUB_USERNAME
+/.codex/hooks.json                     @YOUR_GITHUB_USERNAME
+/.codex/agents/quality-verifier.toml   @YOUR_GITHUB_USERNAME
+/.github/workflows/                    @YOUR_GITHUB_USERNAME
+/.github/CODEOWNERS                    @YOUR_GITHUB_USERNAME
+
+# Human-review plane: product intent and approved behavior.
+/KEYSTONE.md                           @YOUR_GITHUB_USERNAME
+/quality/change-risk.json              @YOUR_GITHUB_USERNAME
+/feature-spec/                         @YOUR_GITHUB_USERNAME
+/features/                             @YOUR_GITHUB_USERNAME
+/qa/procedures/                        @YOUR_GITHUB_USERNAME

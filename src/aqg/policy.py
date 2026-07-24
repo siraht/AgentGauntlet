@@ -1,0 +1,409 @@
+"""Policy loading, validation, risk resolution, and path protection."""
+
+from __future__ import annotations
+
+import fnmatch
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+from typing import Any, Iterable
+
+try:
+    import tomllib
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise RuntimeError("AQG requires Python 3.11+") from exc
+
+from .constants import PLACEHOLDER, RISK_ORDER
+from .errors import ConfigurationError
+from .util import matches_any, read_json
+
+
+POLICY_TEMPLATE = r'''version = 2
+initialized = true
+default_risk_profile = "standard"
+default_execution_profile = "fast"
+
+[policy]
+owner = "{owner}"
+policy_maintenance_env = "AQG_POLICY_MAINTENANCE"
+golden_update_env = "AQG_ALLOW_GOLDEN_UPDATE"
+
+protected_paths = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "QUALITY.md",
+  "KEYSTONE.md",
+  "quality/policy.toml",
+  "quality/project.json",
+  "quality/onboarding.json",
+  "quality/qg.py",
+  "quality/_aqg/**",
+  "quality/config/**",
+  "quality/tools/**/package.json",
+  "quality/tools/**/package-lock.json",
+  "quality/tools/**/requirements.lock.txt",
+  "quality/tools/**/requirements*.txt",
+  "quality/adapters/**",
+  "quality/baselines/**",
+  "quality/waivers/**",
+  "quality/approvals/**",
+  "quality/guidance/**",
+  "quality/golden/expected/**",
+  "quality/schemas/**",
+  "quality/conformance/**",
+  ".agents/skills/quality-gauntlet/**",
+  ".claude/settings.json",
+  ".claude/skills/quality-gauntlet/**",
+  ".claude/agents/quality-verifier.md",
+  ".codex/hooks.json",
+  ".codex/agents/quality-verifier.toml",
+  ".github/workflows/**",
+  ".github/CODEOWNERS",
+]
+
+human_review_paths = [
+  "quality/change-risk.json",
+  "KEYSTONE.md",
+  "feature-spec/**",
+  "features/**",
+  "qa/procedures/**",
+  "**/golden/**",
+  "**/goldens/**",
+  "**/snapshots/**",
+  "**/__snapshots__/**",
+  "**/migrations/**",
+  "**/schema/**",
+  "**/openapi/**",
+  "**/package-lock.json",
+  "**/pnpm-lock.yaml",
+  "**/yarn.lock",
+  "**/uv.lock",
+  "**/requirements*.txt",
+]
+
+blocked_command_regex = [
+  "\\bAQG_POLICY_MAINTENANCE\\s*=",
+  "\\bAQG_ALLOW_GOLDEN_UPDATE\\s*=",
+  "(^|[;&|])\\s*rm\\s+-[^\\n]*r[^\\n]*f",
+  "\\bgit\\s+reset\\s+--hard\\b",
+  "\\bgit\\s+clean\\s+-[^\\n]*f",
+  "\\bgit\\s+(checkout|restore)\\s+--\\s+",
+  "\\b(drop\\s+database|drop\\s+table|truncate\\s+table)\\b",
+  "\\bcurl\\b[^\\n|]*\\|\\s*(sh|bash)\\b",
+  "\\bwget\\b[^\\n|]*\\|\\s*(sh|bash)\\b",
+]
+
+[risk_rules.minimum_profile_by_factor]
+data_loss = "high_assurance"
+authentication = "high_assurance"
+authorization = "high_assurance"
+privacy = "high_assurance"
+money = "high_assurance"
+external_contract = "high_assurance"
+migration = "high_assurance"
+concurrency = "high_assurance"
+irreversible_action = "high_assurance"
+supply_chain = "high_assurance"
+safety = "critical"
+
+[hooks]
+enforce_on_stop = false
+stop_profile = "fast"
+
+[risk_profiles.experiment]
+required_execution_profiles = ["fast"]
+requires_human_behavior_review = false
+requires_read_only_verifier = false
+requires_human_code_review = false
+requires_manual_qa = false
+
+[risk_profiles.standard]
+required_execution_profiles = ["pr"]
+requires_human_behavior_review = true
+requires_read_only_verifier = false
+requires_human_code_review = false
+requires_manual_qa = false
+
+[risk_profiles.high_assurance]
+required_execution_profiles = ["deep"]
+requires_human_behavior_review = true
+requires_read_only_verifier = true
+requires_human_code_review = false
+requires_manual_qa = true
+
+[risk_profiles.critical]
+required_execution_profiles = ["release"]
+requires_human_behavior_review = true
+requires_read_only_verifier = true
+requires_human_code_review = true
+requires_manual_qa = true
+
+[profiles.fast]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "secrets"]
+max_total_seconds = 600
+
+[profiles.pr]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "review", "security_fast"]
+max_total_seconds = 1800
+
+[profiles.deep]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "performance"]
+max_total_seconds = 10800
+
+[profiles.release]
+gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "performance", "release_readiness"]
+max_total_seconds = 14400
+
+{gates}
+'''
+
+GATE_NAMES = [
+    "format",
+    "lint",
+    "typecheck",
+    "test_integrity",
+    "unit",
+    "structure",
+    "coverage",
+    "contracts",
+    "acceptance",
+    "golden",
+    "mutation_changed",
+    "mutation_acceptance",
+    "review",
+    "secrets",
+    "security_fast",
+    "security_deep",
+    "performance",
+    "reproducible_build",
+    "release_readiness",
+]
+
+GATE_TIMEOUTS = {
+    "format": 180,
+    "lint": 300,
+    "typecheck": 600,
+    "test_integrity": 300,
+    "unit": 1200,
+    "structure": 600,
+    "coverage": 1800,
+    "contracts": 1200,
+    "acceptance": 2400,
+    "golden": 2400,
+    "mutation_changed": 7200,
+    "mutation_acceptance": 7200,
+    "review": 300,
+    "secrets": 300,
+    "security_fast": 900,
+    "security_deep": 3600,
+    "performance": 3600,
+    "reproducible_build": 3600,
+    "release_readiness": 1800,
+}
+
+
+def render_policy(owner: str) -> str:
+    blocks: list[str] = []
+    for name in GATE_NAMES:
+        clean = f'clean_paths = [".aqg/work/{name}"]'
+        blocks.append(
+            f'[gates.{name}]\n'
+            f'command = "python3 quality/qg.py adapter {name}"\n'
+            f'timeout_seconds = {GATE_TIMEOUTS[name]}\n'
+            f'{clean}\n'
+            'quality_failure_exit_codes = [1]\n'
+        )
+    return POLICY_TEMPLATE.format(owner=owner.replace('"', "'"), gates="\n".join(blocks))
+
+
+def load_policy(root: Path) -> dict[str, Any]:
+    path = root / "quality" / "policy.toml"
+    try:
+        with path.open("rb") as handle:
+            policy = tomllib.load(handle)
+    except FileNotFoundError as exc:
+        raise ConfigurationError(f"missing policy: {path}") from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigurationError(f"invalid TOML in {path}: {exc}") from exc
+    if policy.get("version") not in {1, 2}:
+        raise ConfigurationError("quality policy version must be 1 or 2")
+    return policy
+
+
+def validate_policy(policy: dict[str, Any], *, require_initialized: bool = True) -> list[str]:
+    errors: list[str] = []
+    if require_initialized and not policy.get("initialized", False):
+        errors.append("policy initialized=false; run qg init or qg bootstrap")
+    profiles = policy.get("profiles")
+    gates = policy.get("gates")
+    if not isinstance(profiles, dict) or not profiles:
+        errors.append("no execution profiles are configured")
+        profiles = {}
+    if not isinstance(gates, dict) or not gates:
+        errors.append("no gates are configured")
+        gates = {}
+    referenced: set[str] = set()
+    for profile_name, profile in profiles.items():
+        gate_names = profile.get("gates") if isinstance(profile, dict) else None
+        if not isinstance(gate_names, list) or not gate_names:
+            errors.append(f"profile {profile_name!r} has no gates")
+            continue
+        for gate_name in gate_names:
+            if not isinstance(gate_name, str):
+                errors.append(f"profile {profile_name!r} has a non-string gate")
+                continue
+            referenced.add(gate_name)
+            if gate_name not in gates:
+                errors.append(f"profile {profile_name!r} references missing gate {gate_name!r}")
+    for name in sorted(referenced):
+        gate = gates.get(name, {})
+        command = gate.get("command") if isinstance(gate, dict) else None
+        if not isinstance(command, str) or not command.strip() or PLACEHOLDER in command:
+            errors.append(f"gate {name!r} has an unconfigured command")
+        timeout = gate.get("timeout_seconds", 0) if isinstance(gate, dict) else 0
+        if not isinstance(timeout, int) or timeout <= 0:
+            errors.append(f"gate {name!r} needs a positive timeout_seconds")
+        clean_paths = gate.get("clean_paths", []) if isinstance(gate, dict) else []
+        if not isinstance(clean_paths, list) or not all(isinstance(value, str) for value in clean_paths):
+            errors.append(f"gate {name!r} clean_paths must be a string array")
+    policy_cfg = policy.get("policy", {})
+    for key in ("protected_paths", "human_review_paths", "blocked_command_regex"):
+        values = policy_cfg.get(key, []) if isinstance(policy_cfg, dict) else []
+        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+            errors.append(f"policy.{key} must be a string array")
+    for expression in policy_cfg.get("blocked_command_regex", []) if isinstance(policy_cfg, dict) else []:
+        try:
+            re.compile(expression, re.IGNORECASE)
+        except re.error as exc:
+            errors.append(f"invalid blocked command regex {expression!r}: {exc}")
+    risk_profiles = policy.get("risk_profiles", {})
+    for name in RISK_ORDER:
+        config = risk_profiles.get(name) if isinstance(risk_profiles, dict) else None
+        if not isinstance(config, dict):
+            errors.append(f"missing risk profile {name!r}")
+            continue
+        required = config.get("required_execution_profiles")
+        if not isinstance(required, list) or not required:
+            errors.append(f"risk profile {name!r} has no required execution profiles")
+        elif any(profile not in profiles for profile in required):
+            errors.append(f"risk profile {name!r} references a missing execution profile")
+    return errors
+
+
+def safe_remove(root: Path, configured_path: str) -> None:
+    target = (root / configured_path).resolve()
+    resolved = root.resolve()
+    try:
+        target.relative_to(resolved)
+    except ValueError as exc:
+        raise ConfigurationError(f"refusing to clean path outside repository: {configured_path}") from exc
+    if target == resolved:
+        raise ConfigurationError("refusing to clean repository root")
+    if target.is_symlink() or target.is_file():
+        target.unlink(missing_ok=True)
+    elif target.is_dir():
+        shutil.rmtree(target)
+
+
+def load_risk_card(root: Path, card_path: str) -> dict[str, Any]:
+    path = Path(card_path)
+    if not path.is_absolute():
+        path = root / path
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        raise ConfigurationError("change-risk card must be a JSON object")
+    return payload
+
+
+def risk_card_errors(card: dict[str, Any], policy: dict[str, Any]) -> list[str]:
+    required: dict[str, type] = {
+        "schema_version": str,
+        "summary": str,
+        "risk_profile": str,
+        "production_scope": bool,
+        "reversible": bool,
+        "blast_radius": str,
+        "behavior_changes": list,
+        "behavior_preserved": list,
+        "risk_factors": dict,
+        "failure_detection": str,
+        "rollback": str,
+        "human_review": list,
+    }
+    errors = [
+        f"risk card field {name!r} must be {expected.__name__}"
+        for name, expected in required.items()
+        if not isinstance(card.get(name), expected)
+    ]
+    if card.get("schema_version") != "1":
+        errors.append("risk card schema_version must be '1'")
+    if card.get("risk_profile") not in RISK_ORDER:
+        errors.append(f"risk_profile must be one of: {', '.join(RISK_ORDER)}")
+    if card.get("blast_radius") not in {"local", "single_service", "multi_service", "organization", "public"}:
+        errors.append("blast_radius has an invalid value")
+    for field in ("summary", "failure_detection", "rollback"):
+        if isinstance(card.get(field), str) and not card[field].strip():
+            errors.append(f"risk card field {field!r} must not be blank")
+    factors = card.get("risk_factors", {})
+    known = policy.get("risk_rules", {}).get("minimum_profile_by_factor", {})
+    if isinstance(factors, dict):
+        for name, value in factors.items():
+            if name not in known:
+                errors.append(f"unknown risk factor {name!r}")
+            if not isinstance(value, bool):
+                errors.append(f"risk factor {name!r} must be boolean")
+        for name in known:
+            if name not in factors:
+                errors.append(f"risk card is missing risk factor {name!r}")
+    return errors
+
+
+def minimum_risk_profile(card: dict[str, Any], policy: dict[str, Any]) -> str:
+    minimum = "experiment"
+    if card.get("production_scope"):
+        minimum = "standard"
+    blast = card.get("blast_radius")
+    if blast in {"multi_service", "organization", "public"}:
+        minimum = "high_assurance"
+    if card.get("reversible") is False:
+        minimum = "high_assurance"
+    factor_rules = policy.get("risk_rules", {}).get("minimum_profile_by_factor", {})
+    for factor, value in card.get("risk_factors", {}).items():
+        if value and factor in factor_rules:
+            candidate = factor_rules[factor]
+            if RISK_ORDER.index(candidate) > RISK_ORDER.index(minimum):
+                minimum = candidate
+    return minimum
+
+
+def risk_summary(root: Path, policy: dict[str, Any], card_path: str) -> tuple[list[str], dict[str, Any]]:
+    card = load_risk_card(root, card_path)
+    errors = risk_card_errors(card, policy)
+    selected = card.get("risk_profile", "experiment")
+    minimum = minimum_risk_profile(card, policy)
+    if selected in RISK_ORDER and RISK_ORDER.index(selected) < RISK_ORDER.index(minimum):
+        errors.append(f"selected profile {selected!r} is below deterministic minimum {minimum!r}")
+    risk_cfg = policy.get("risk_profiles", {}).get(selected, {}) if selected in RISK_ORDER else {}
+    return errors, {
+        "card": card,
+        "selected_risk_profile": selected,
+        "minimum_risk_profile": minimum,
+        "required_execution_profiles": risk_cfg.get("required_execution_profiles", []),
+        "required_controls": {key: value for key, value in risk_cfg.items() if key.startswith("requires_")},
+        "errors": errors,
+    }
+
+
+def policy_override_enabled(policy: dict[str, Any]) -> bool:
+    name = str(policy.get("policy", {}).get("policy_maintenance_env", "AQG_POLICY_MAINTENANCE"))
+    return os.environ.get(name) == "1"
+
+
+def protected_patterns(policy: dict[str, Any]) -> list[str]:
+    return [str(value) for value in policy.get("policy", {}).get("protected_paths", [])]
+
+
+def human_review_patterns(policy: dict[str, Any]) -> list[str]:
+    return [str(value) for value in policy.get("policy", {}).get("human_review_paths", [])]

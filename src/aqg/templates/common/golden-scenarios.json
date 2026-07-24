@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "scenarios": [
+    {
+      "name": "example-command-session",
+      "command": ["python3", "-c", "print('replace this with a real user journey')"],
+      "cwd": ".",
+      "timeout_seconds": 30,
+      "env": {"TZ": "UTC", "LC_ALL": "C"},
+      "normalize": [
+        {"pattern": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z", "replace": "[TIMESTAMP]"}
+      ],
+      "capture_files": [],
+      "max_capture_bytes": 200000
+    }
+  ]
+}

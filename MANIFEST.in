@@ -1,0 +1,5 @@
+recursive-include src/aqg/templates *
+recursive-include src/aqg/static *
+recursive-include src/aqg/guides *
+include README.md
+include LICENSE

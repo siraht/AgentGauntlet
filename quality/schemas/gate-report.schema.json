@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/agent-quality-gauntlet/gate-report.schema.json",
+  "title": "Agent Quality Gauntlet gate report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "gate",
+    "status",
+    "started_at",
+    "duration_ms",
+    "command",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "gate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail",
+        "configuration_error",
+        "infrastructure_error",
+        "skip"
+      ]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "command": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "string"
+    },
+    "input_hash": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule",
+          "message"
+        ],
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "column": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "help": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stdout_log": {
+      "type": "string"
+    },
+    "stderr_log": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

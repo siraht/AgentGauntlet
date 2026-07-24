@@ -1,0 +1,230 @@
+version = 1
+initialized = false
+default_risk_profile = "standard"
+default_execution_profile = "fast"
+
+[policy]
+owner = "REPLACE_WITH_OWNER"
+policy_maintenance_env = "AQG_POLICY_MAINTENANCE"
+golden_update_env = "AQG_ALLOW_GOLDEN_UPDATE"
+
+protected_paths = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "QUALITY.md",
+  "quality/policy.toml",
+  "quality/qg.py",
+  "quality/adapters/**",
+  "quality/bin/**",
+  "quality/baselines/**",
+  "quality/waivers/**",
+  "quality/tests/**",
+  "quality/hooks/**",
+  "quality/schemas/**",
+  "quality/conformance/**",
+  ".agents/skills/quality-gauntlet/**",
+  ".claude/settings.json",
+  ".claude/skills/quality-gauntlet/**",
+  ".claude/agents/quality-verifier.md",
+  ".codex/hooks.json",
+  ".codex/agents/quality-verifier.toml",
+  "ci/**",
+  ".github/workflows/**",
+  ".github/CODEOWNERS",
+]
+
+human_review_paths = [
+  "quality/change-risk.json",
+  "KEYSTONE.md",
+  "feature-spec/**",
+  "features/**",
+  "qa/procedures/**",
+  "**/golden/**",
+  "**/goldens/**",
+  "**/snapshots/**",
+  "**/migrations/**",
+  "**/schema/**",
+  "**/openapi/**",
+]
+
+# The bootstrap task MUST add every stack-native file that can weaken a gate
+# (for example linter/test/coverage/mutation config or package-script aliases)
+# to protected_paths or enforce an equivalent code-owner review.
+
+blocked_command_regex = [
+  "\\bAQG_POLICY_MAINTENANCE\\s*=",
+  "\\bAQG_ALLOW_GOLDEN_UPDATE\\s*=",
+  "(^|[;&|])\\s*rm\\s+-[^\\n]*r[^\\n]*f",
+  "\\bgit\\s+reset\\s+--hard\\b",
+  "\\bgit\\s+clean\\s+-[^\\n]*f",
+  "\\bgit\\s+(checkout|restore)\\s+--\\s+",
+  "\\b(drop\\s+database|drop\\s+table|truncate\\s+table)\\b",
+  "\\bcurl\\b[^\\n|]*\\|\\s*(sh|bash)\\b",
+  "\\bwget\\b[^\\n|]*\\|\\s*(sh|bash)\\b",
+]
+
+[risk_rules.minimum_profile_by_factor]
+data_loss = "high_assurance"
+authentication = "high_assurance"
+authorization = "high_assurance"
+privacy = "high_assurance"
+money = "high_assurance"
+external_contract = "high_assurance"
+migration = "high_assurance"
+concurrency = "high_assurance"
+irreversible_action = "high_assurance"
+safety = "critical"
+
+[hooks]
+enforce_on_stop = false
+stop_profile = "fast"
+
+[risk_profiles.experiment]
+required_execution_profiles = ["fast"]
+requires_human_behavior_review = false
+requires_read_only_verifier = false
+requires_human_code_review = false
+requires_manual_qa = false
+
+[risk_profiles.standard]
+required_execution_profiles = ["pr"]
+requires_human_behavior_review = true
+requires_read_only_verifier = false
+requires_human_code_review = false
+requires_manual_qa = false
+
+[risk_profiles.high_assurance]
+required_execution_profiles = ["deep"]
+requires_human_behavior_review = true
+requires_read_only_verifier = true
+requires_human_code_review = false
+requires_manual_qa = true
+
+[risk_profiles.critical]
+required_execution_profiles = ["release"]
+requires_human_behavior_review = true
+requires_read_only_verifier = true
+requires_human_code_review = true
+requires_manual_qa = true
+
+[profiles.fast]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure"]
+max_total_seconds = 180
+
+[profiles.pr]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "mutation_changed", "security_fast"]
+max_total_seconds = 1200
+
+[profiles.deep]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "security_fast", "security_deep", "performance"]
+max_total_seconds = 7200
+
+[profiles.release]
+gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "security_fast", "security_deep", "performance", "release_readiness"]
+max_total_seconds = 10800
+
+# The bootstrap agent MUST replace every __CONFIGURE__ command with a real,
+# repository-native command or remove the gate from all active profiles with a
+# documented reason. Placeholder commands are configuration errors.
+
+[gates.format]
+command = "__CONFIGURE__"
+timeout_seconds = 120
+clean_paths = []
+quality_failure_exit_codes = [1]
+
+[gates.lint]
+command = "__CONFIGURE__"
+timeout_seconds = 180
+clean_paths = []
+quality_failure_exit_codes = [1]
+
+[gates.typecheck]
+command = "__CONFIGURE__"
+timeout_seconds = 300
+clean_paths = []
+quality_failure_exit_codes = [1]
+
+[gates.test_integrity]
+command = "__CONFIGURE__"
+timeout_seconds = 180
+clean_paths = ["build/quality/test-discovery"]
+quality_failure_exit_codes = [1]
+
+[gates.unit]
+command = "__CONFIGURE__"
+timeout_seconds = 900
+clean_paths = ["build/quality/unit"]
+quality_failure_exit_codes = [1]
+
+[gates.structure]
+command = "__CONFIGURE__"
+timeout_seconds = 300
+clean_paths = ["build/quality/structure"]
+quality_failure_exit_codes = [1]
+
+[gates.coverage]
+command = "__CONFIGURE__"
+timeout_seconds = 1200
+clean_paths = ["build/quality/coverage"]
+quality_failure_exit_codes = [1]
+
+[gates.contracts]
+command = "__CONFIGURE__"
+timeout_seconds = 900
+clean_paths = ["build/quality/contracts"]
+quality_failure_exit_codes = [1]
+
+[gates.acceptance]
+command = "__CONFIGURE__"
+timeout_seconds = 1800
+clean_paths = ["build/acceptance"]
+quality_failure_exit_codes = [1]
+
+[gates.golden]
+command = "__CONFIGURE__"
+timeout_seconds = 1800
+clean_paths = ["build/quality/golden"]
+quality_failure_exit_codes = [1]
+
+[gates.mutation_changed]
+command = "__CONFIGURE__"
+timeout_seconds = 3600
+clean_paths = ["build/quality/mutation-changed"]
+quality_failure_exit_codes = [1]
+
+[gates.mutation_acceptance]
+command = "__CONFIGURE__"
+timeout_seconds = 3600
+clean_paths = ["build/acceptance-mutation"]
+quality_failure_exit_codes = [1]
+
+[gates.security_fast]
+command = "__CONFIGURE__"
+timeout_seconds = 600
+clean_paths = ["build/quality/security-fast"]
+quality_failure_exit_codes = [1]
+
+[gates.security_deep]
+command = "__CONFIGURE__"
+timeout_seconds = 3600
+clean_paths = ["build/quality/security-deep"]
+quality_failure_exit_codes = [1]
+
+[gates.performance]
+command = "__CONFIGURE__"
+timeout_seconds = 3600
+clean_paths = ["build/quality/performance"]
+quality_failure_exit_codes = [1]
+
+[gates.reproducible_build]
+command = "__CONFIGURE__"
+timeout_seconds = 3600
+clean_paths = ["build/quality/reproducible-build"]
+quality_failure_exit_codes = [1]
+
+[gates.release_readiness]
+command = "__CONFIGURE__"
+timeout_seconds = 1800
+clean_paths = ["build/quality/release"]
+quality_failure_exit_codes = [1]

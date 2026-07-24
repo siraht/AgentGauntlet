@@ -1,0 +1,16 @@
+bandit[toml]
+coverage
+hypothesis
+mypy
+mutmut
+pip-audit
+pytest
+pytest-cov
+pytest-timeout
+pytest-xdist
+radon
+ruff
+vulture
+xenon
+
+pip-tools

@@ -1,0 +1,30 @@
+{
+  "description": "Agent Quality Gauntlet local policy and completion hooks.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|apply_patch|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/quality/qg.py\" hook-pretool",
+            "timeout": 30,
+            "statusMessage": "Checking repository quality policy"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/quality/qg.py\" hook-stop",
+            "timeout": 300,
+            "statusMessage": "Checking fast quality profile"
+          }
+        ]
+      }
+    ]
+  }
+}
