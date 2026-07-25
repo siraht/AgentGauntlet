@@ -59,6 +59,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-022 | Dogfood every public control surface in a disposable project.                                     | Unit tests cannot prove the real setup executable, curses terminal, loopback HTTP server, token boundary, review artifacts, and CLI process contracts compose end to end.             | A new public control surface or security boundary is added.                      |
 | D-023 | Prioritize inherited-debt tests around governance boundaries.                                      | Hooks, TUI, and dashboard authentication were among the least-covered modules and can silently weaken or misreport the gauntlet if their failure paths are untested.                   | These modules meet strict branch coverage and a lower-risk hotspot dominates.    |
 | D-024 | Publish deterministic local provenance and keyless hosting attestations as distinct evidence.      | A reproducibility statement remains reviewable offline, while GitHub OIDC and Sigstore authenticate CI-built bytes without a long-lived signing key; neither should be misrepresented as a security verdict. | A managed independent builder or organization signing policy is introduced.      |
+| D-025 | Make protected Python locks explicit about interpreter-selected transitive dependencies.           | libcst selects `pyyaml-ft` only on Python 3.13+, so a lock resolved on another interpreter can pass locally yet fail hash enforcement on a supported runtime; the marker and hashes now live in the reviewed input and lock. | Python packaging gains a resolver-native universal lock format used by pip.       |
 
 ## Progress
 
@@ -126,6 +127,12 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Local provenance and authenticated provenance answer different questions. The local
   statement makes the build inputs inspectable; the hosting attestation authenticates the
   builder identity and binds its output digests using a short-lived certificate.
+- Cross-version CLI tests should assert semantic layout, not an argparse column boundary.
+  Python 3.11 wrapped a long command description that 3.13 kept inline; normalized
+  whitespace preserves the actual help contract without pinning terminal formatting.
+- Hash enforcement correctly fails when an environment-selected transitive dependency is
+  absent. Validate protected locks on both the oldest and newest supported interpreters,
+  even when the top-level requirements are identical.
 
 ## Evidence conventions
 

@@ -28,7 +28,12 @@ from aqg.sbom import (
     python_inventory,
     validate_cyclonedx_document,
 )
-from aqg.scaffold import build_project_config, initialize_project
+from aqg.scaffold import (
+    _direct_requirement_markers,
+    _restore_direct_requirement_markers,
+    build_project_config,
+    initialize_project,
+)
 from aqg.util import change_fingerprint, detect_base_ref, git_changed_files, read_json, write_json
 
 
@@ -793,6 +798,47 @@ class SetupContractTests(RepoCase):
         )
         self.assertEqual(manifest["devDependencies"]["c8"], "12.0.0")
         self.assertEqual(lock["packages"]["node_modules/c8"]["version"], "12.0.0")
+
+    def test_python_tool_lock_covers_libcst_on_python_313(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        expected = 'pyyaml-ft==8.0.0; python_version >= "3.13"'
+        for path in (
+            source_root / "quality" / "tools" / "python" / "requirements.in",
+            source_root / "src" / "aqg" / "templates" / "python" / "requirements.in",
+        ):
+            requirements = path.read_text(encoding="utf-8")
+            self.assertIn(expected, requirements)
+            self.assertIn("uv==0.11.32", requirements)
+        lock = (source_root / "quality" / "tools" / "python" / "requirements.lock.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('pyyaml-ft==8.0.0 ; python_version >= "3.13"', lock)
+        self.assertIn("uv==0.11.32", lock)
+        self.assertIn("sha256:052561b89d5b2a8e1289f326d060e794", lock)
+
+    def test_universal_lock_restores_direct_environment_markers(self) -> None:
+        requirements = self.root / "requirements.in"
+        lock = self.root / "requirements.lock.txt"
+        requirements.write_text(
+            'conditional_dep==1.2; python_version >= "3.13"\nplain==2.0\n',
+            encoding="utf-8",
+        )
+        lock.write_text(
+            "conditional-dep==1.2 \\\n"
+            "    --hash=sha256:abc\n"
+            "plain==2.0 \\\n"
+            "    --hash=sha256:def\n",
+            encoding="utf-8",
+        )
+
+        self.assertEqual(
+            _direct_requirement_markers(requirements),
+            {"conditional-dep": 'python_version >= "3.13"'},
+        )
+        _restore_direct_requirement_markers(requirements, lock)
+        content = lock.read_text(encoding="utf-8")
+        self.assertIn('conditional-dep==1.2 ; python_version >= "3.13" \\', content)
+        self.assertIn("plain==2.0 \\", content)
 
     def test_rendered_policy_contains_every_registered_gate(self) -> None:
         policy = tomllib.loads(render_policy("@quality"))

@@ -25,6 +25,12 @@ The Linux live job uses the hash-locked AQG toolchains and currently exercises:
 | `python-pytest` | pip / pytest   | collection, unit, structure, fresh coverage |
 | `python-tox`    | pip / tox      | collection, unit, structure, fresh coverage |
 
+The Python checker lock is resolved universally for the supported Python 3.11-3.13
+range. Environment-selected direct requirements are retained with their original
+markers, and the lock-install contract is exercised on both the oldest and newest
+supported interpreter so a transitive dependency cannot appear only after CI selects
+a newer Python.
+
 An additional local `bun-node` case proves Bun command generation and execution. The
 browser job installs protected Chromium and runs the generated Playwright smoke journey
 with axe-core against a static HTML/CSS project on an isolated free port.

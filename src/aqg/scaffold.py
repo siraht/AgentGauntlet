@@ -6,6 +6,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -33,6 +34,8 @@ from .util import (
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PACKAGE_RESOURCES = resources.files(__package__.split(".", 1)[0])
+_MAX_TOOLCHAIN_PYTHON = "3.13"
+_UV_BOOTSTRAP_VERSION = "0.11.32"
 
 
 def _resource(relative: str) -> Traversable:
@@ -1175,6 +1178,12 @@ def _venv_python(root: Path) -> Path:
     return root / ".aqg" / "venv" / "bin" / "python"
 
 
+def _venv_tool(root: Path, name: str) -> Path:
+    if os.name == "nt":
+        return root / ".aqg" / "venv" / "Scripts" / f"{name}.exe"
+    return root / ".aqg" / "venv" / "bin" / name
+
+
 def _pin_js_manifest_from_lock(tool_dir: Path) -> bool:
     package_path = tool_dir / "package.json"
     lock_path = tool_dir / "package-lock.json"
@@ -1198,42 +1207,101 @@ def _pin_js_manifest_from_lock(tool_dir: Path) -> bool:
     return changed
 
 
+def _direct_requirement_markers(path: Path) -> dict[str, str]:
+    markers: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line or line.startswith("-") or ";" not in line:
+            continue
+        requirement, marker = (part.strip() for part in line.split(";", 1))
+        match = re.match(r"^([A-Za-z0-9_.-]+)", requirement)
+        if match and marker:
+            markers[re.sub(r"[-_.]+", "-", match.group(1)).lower()] = marker
+    return markers
+
+
+def _restore_direct_requirement_markers(requirements_in: Path, requirements_lock: Path) -> None:
+    markers = _direct_requirement_markers(requirements_in)
+    if not markers:
+        return
+    output: list[str] = []
+    package_line = re.compile(r"^([A-Za-z0-9_.-]+)(.*?)(\s+\\)$")
+    for line in requirements_lock.read_text(encoding="utf-8").splitlines():
+        match = package_line.match(line)
+        name = re.sub(r"[-_.]+", "-", match.group(1)).lower() if match else ""
+        marker = markers.get(name)
+        if marker and ";" not in line:
+            line = f"{line[:-2].rstrip()} ; {marker} \\"
+        output.append(line)
+    requirements_lock.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+
+def _pinned_uv_command(root: Path, python: Path) -> str:
+    candidates: list[str] = []
+    local_uv = _venv_tool(root, "uv")
+    if local_uv.exists():
+        candidates.append(str(local_uv))
+    if command_exists("uv"):
+        candidates.append("uv")
+    for candidate in candidates:
+        version = run_command([candidate, "--version"], cwd=root, timeout=30)
+        if version.code == 0 and version.stdout.strip() == f"uv {_UV_BOOTSTRAP_VERSION}":
+            return candidate
+
+    ensurepip = run_command(
+        [str(python), "-m", "ensurepip", "--upgrade"],
+        cwd=root,
+        timeout=300,
+        stream=True,
+    )
+    if ensurepip.code != 0:
+        raise InfrastructureError(
+            "Python's ensurepip failed while bootstrapping the pinned lock resolver"
+        )
+    bootstrap = run_command(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            f"uv=={_UV_BOOTSTRAP_VERSION}",
+        ],
+        cwd=root,
+        timeout=900,
+        stream=True,
+    )
+    if bootstrap.code != 0 or not local_uv.exists():
+        raise InfrastructureError(
+            "pinned uv bootstrap failed while creating the protected Python tool lock"
+        )
+    return str(local_uv)
+
+
 def _compile_python_lock(
     root: Path, python: Path, requirements_in: Path, requirements_lock: Path
 ) -> None:
-    if command_exists("uv"):
-        command = [
-            "uv",
-            "pip",
-            "compile",
-            str(requirements_in),
-            "--generate-hashes",
-            "--output-file",
-            str(requirements_lock),
-        ]
-    else:
-        bootstrap = run_command(
-            [str(python), "-m", "pip", "install", "pip-tools"], cwd=root, timeout=900, stream=True
-        )
-        if bootstrap.code != 0:
-            raise InfrastructureError(
-                "pip-tools bootstrap failed while creating the protected Python tool lock"
-            )
-        command = [
-            str(python),
-            "-m",
-            "piptools",
-            "compile",
-            str(requirements_in),
-            "--generate-hashes",
-            "--output-file",
-            str(requirements_lock),
-        ]
+    uv = _pinned_uv_command(root, python)
+    command = [
+        uv,
+        "pip",
+        "compile",
+        str(requirements_in),
+        "--python-version",
+        _MAX_TOOLCHAIN_PYTHON,
+        "--universal",
+        "--generate-hashes",
+        "--custom-compile-command",
+        "qg tools install (universal Python 3.11-3.13)",
+        "--output-file",
+        str(requirements_lock),
+    ]
     result = run_command(command, cwd=root, timeout=1800, stream=True)
     if result.code != 0 or not requirements_lock.exists():
         raise InfrastructureError(
             "failed to generate quality/tools/python/requirements.lock.txt with hashes"
         )
+    _restore_direct_requirement_markers(requirements_in, requirements_lock)
 
 
 def install_toolchains(root: Path, *, ci: bool = False, browsers: bool = False) -> dict[str, Any]:
