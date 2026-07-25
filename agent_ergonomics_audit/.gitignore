@@ -1,6 +1,7 @@
 # Pass-local scratch
 audit/partial/
 audit/.archive/
+audit/*.lock
 
 # Don't ignore other audit/ contents — they're the durable artifacts
 !audit/

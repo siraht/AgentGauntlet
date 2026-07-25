@@ -16,8 +16,8 @@
       "summary": {
         "surfaces_inventoried": 197,
         "surfaces_scored": 197,
-        "recommendations_total": 0,
-        "recommendations_applied": 0,
+        "recommendations_total": 8,
+        "recommendations_applied": 3,
         "substantive_commits": 0,
         "dimensions_touched": 0,
         "ambition_bar_met": false,
