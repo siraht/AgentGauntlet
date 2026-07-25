@@ -67,6 +67,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-030 | Classify authorization controls as affected by this change.                                      | The productionization branch changes policy evaluation and public-branch enforcement, so marking authorization false contradicted the changed surface even though the deterministic profile already resolved to high assurance.                                                    | The policy and repository-governance changes are removed from scope.            |
 | D-031 | Parse each mutation outcome instead of inferring survivors from display text.                    | Mutmut's default results omit killed mutants and list every other status; counting mutant-looking lines mislabeled never-run, timed-out, and skipped work as survivors and could not enforce the configured score.                                                                 | Mutmut publishes a stable machine-readable result schema.                       |
 | D-032 | Apply Python debt-marker review only to lexical comments.                                        | Identifiers such as `todo=args.todo` and user-facing strings about TODO feature specifications are valid product code, not unresolved implementation comments; token-aware review preserves the intended warning without noisy false positives.                                    | A language-neutral parsed-comment interface replaces the current scanner.       |
+| D-033 | Bootstrap Yarn fixture locks, then prove an immutable hardened reinstall.                        | Yarn 4 automatically enables hardened mode for public pull requests and will not create a missing lock; explicit trusted generation followed by hardened `--immutable` installation tests both setup and the committed-project security contract.                                  | Yarn provides a dedicated ephemeral-fixture mode with equivalent guarantees.    |
 
 ## Progress
 
@@ -157,6 +158,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Diff heuristics should be conservative about severity and precise about syntax. Token
   boundaries prevent ordinary option names and explanatory strings from masquerading as
   unresolved production comments.
+- Public-pull-request hardening is a distinct execution environment. Disposable package
+  fixtures must generate their exact lock under an explicit bootstrap boundary, then
+  rerun the same install immutably instead of disabling the hardened contract wholesale.
 
 ## Evidence conventions
 

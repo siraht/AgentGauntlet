@@ -37,10 +37,19 @@ JS_CASES = {
 }
 
 
-def _run(command: list[str], *, cwd: Path, timeout: int = 900) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: list[str],
+    *,
+    cwd: Path,
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment.update(env or {})
     result = subprocess.run(
         command,
         cwd=cwd,
+        env=environment,
         text=True,
         capture_output=True,
         timeout=timeout,
@@ -171,7 +180,21 @@ def _manager_install(project: Path, manager: str) -> None:
         "yarn": ["yarn", "install", "--mode=skip-build"],
         "bun": ["bun", "install", "--ignore-scripts"],
     }
-    _run(commands[manager], cwd=project, timeout=1200)
+    if manager == "yarn":
+        _run(
+            commands[manager],
+            cwd=project,
+            timeout=1200,
+            env={"YARN_ENABLE_HARDENED_MODE": "false"},
+        )
+        _run(
+            ["yarn", "install", "--immutable", "--mode=skip-build"],
+            cwd=project,
+            timeout=1200,
+            env={"YARN_ENABLE_HARDENED_MODE": "true"},
+        )
+    else:
+        _run(commands[manager], cwd=project, timeout=1200)
 
 
 def _prepare_javascript(project: Path, case: str) -> list[str]:
