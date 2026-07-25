@@ -55,6 +55,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-018 | Support help-first ordering without duplicating command documentation.                           | `qg help COMMAND` is a conventional first guess; resolving it through the real parser prevents a parallel help model from drifting.                                                  | Argparse gains a native equivalent with the same JSON contract.                 |
 | D-019 | Treat natural multi-word guidance as search intent and keep intent probes bounded.               | Agents commonly omit `--search`; accepting the phrase is unambiguous and safe, while audit probes must finish inside the runner's fixed deadline to measure recovery rather than task duration. | Search syntax or the intent-runner deadline changes.                            |
 | D-020 | Make empty human and machine invocations self-describing.                                        | Bare `qg` and `qg --json` have no ambiguous product intent and can safely return help or the capabilities contract without repository access or side effects.                          | The CLI gains a different explicit discovery entry point.                       |
+| D-021 | Keep embedded guidance independent of repository discovery.                                      | Read-only playbooks ship inside the binary; requiring an initialized project prevented the cold agents who need them most from reading them.                                         | Guidance gains project-specific extensions.                                     |
 
 ## Progress
 
@@ -108,6 +109,8 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Cold-start recovery should act only when intent is exact: an empty invocation can show
   help and `--json` alone can return capabilities, while ambiguous or mutating guesses
   must continue to stop with a correction.
+- Embedded guidance must remain available before setup. A read-only documentation
+  command that unnecessarily discovers project state defeats its own cold-start role.
 
 ## Evidence conventions
 

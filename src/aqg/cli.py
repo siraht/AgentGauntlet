@@ -1320,7 +1320,7 @@ def dispatch(args: argparse.Namespace) -> int:
     handler = COMMAND_HANDLERS.get(args.command)
     if handler is None:
         raise ConfigurationError(f"unknown command {args.command!r}")
-    rootless = {"capabilities", "help", "robot-docs"}
+    rootless = {"capabilities", "guidance", "help", "robot-docs"}
     return handler(args, _root(args.root, require_initialized=args.command not in rootless))
 
 

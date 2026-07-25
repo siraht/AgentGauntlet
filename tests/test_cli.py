@@ -171,8 +171,11 @@ class CliControlSurfaceTests(unittest.TestCase):
                 self.assertIn(expected, stderr.getvalue())
 
     def test_natural_multiword_guidance_is_treated_as_a_search(self) -> None:
-        code, payload, stderr = self._json_command("guidance", "mutation", "testing")
-        self.assertEqual(code, PASS, stderr)
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = main(["guidance", "mutation", "testing", "--json"])
+        self.assertEqual(code, PASS)
+        payload = json.loads(stdout.getvalue())
         self.assertIsInstance(payload, list)
         self.assertTrue(payload)
 
