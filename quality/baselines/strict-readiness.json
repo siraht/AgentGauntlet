@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 32.37,
+    "branch_coverage_points": 32.34,
     "functions_over_complexity_cap": 52,
-    "line_coverage_points": 27.54
+    "line_coverage_points": 27.5
   },
   "coverage": {
-    "branch_percent": 42.63,
-    "branches": 2116,
-    "covered_branches": 902,
-    "covered_statements": 3195,
-    "line_percent": 57.46,
-    "statements": 5560
+    "branch_percent": 42.66,
+    "branches": 2138,
+    "covered_branches": 912,
+    "covered_statements": 3224,
+    "line_percent": 57.5,
+    "statements": 5607
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-25T03:30:00Z",
+  "generated_at": "2026-07-25T02:55:00Z",
   "highest_complexity_functions": [
     {
       "complexity": 96,
@@ -24,14 +24,14 @@
     },
     {
       "complexity": 47,
-      "line": 782,
+      "line": 785,
       "name": "build_onboarding",
       "path": "src/aqg/scaffold.py",
       "rank": "F"
     },
     {
       "complexity": 35,
-      "line": 1239,
+      "line": 1307,
       "name": "install_toolchains",
       "path": "src/aqg/scaffold.py",
       "rank": "E"
@@ -80,7 +80,7 @@
     },
     {
       "complexity": 23,
-      "line": 1055,
+      "line": 1058,
       "name": "initialize_project",
       "path": "src/aqg/scaffold.py",
       "rank": "D"
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "b3a41d755d69984d261506bf9ac63378f8708db7",
+  "revision": "129dbf50d698317159a6c8aab3ddc2c0f21bfa2d",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 64
+  "test_count": 66
 }

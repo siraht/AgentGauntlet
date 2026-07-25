@@ -38,7 +38,7 @@ The following items named in the referenced conversation were absent or incomple
 - Deterministic portable release builder with local in-toto/SLSA provenance.
 - Keyless GitHub OIDC/Sigstore build-provenance and CycloneDX attestations.
 - PEP 561 typed-package metadata.
-- 64 Python source/acceptance tests, one JavaScript dashboard contract test, and internal,
+- 66 Python source/acceptance tests, one JavaScript dashboard contract test, and internal,
   installed-tool, disposable-project, browser, and control-surface conformance fixtures.
 
 ## Locally validated
@@ -86,7 +86,7 @@ AQG includes conformance commands for installed tools, but an organization shoul
 ## Recovered-code debt
 
 The implementation does not yet earn its own High-assurance “reduced code review” mode.
-Fresh whole-tree evidence reports 57.46% Python line coverage, 42.63% branch coverage,
+Fresh whole-tree evidence reports 57.50% Python line coverage, 42.66% branch coverage,
 and 52 functions over the Standard cyclomatic-complexity cap. This is a material
 improvement over the recovered baseline near 35%, but remains below the 85% line and
 75% branch targets. The largest remaining hotspots are automated diff review, onboarding

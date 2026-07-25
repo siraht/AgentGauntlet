@@ -1,12 +1,12 @@
 # Strict-mode readiness
 
-Revision: `b3a41d755d69984d261506bf9ac63378f8708db7` · mode: **adopt** · strict ready: **no**
+Revision: `129dbf50d698317159a6c8aab3ddc2c0f21bfa2d` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 64
-- Line coverage: 57.46% (gap 27.54 points)
-- Branch coverage: 42.63% (gap 32.37 points)
+- Tests: 66
+- Line coverage: 57.50% (gap 27.50 points)
+- Branch coverage: 42.66% (gap 32.34 points)
 - Functions above complexity cap: 52
 
 ## Lowest coverage modules
@@ -31,15 +31,15 @@ Revision: `b3a41d755d69984d261506bf9ac63378f8708db7` · mode: **adopt** · stric
 | Function | Complexity | Rank |
 |---|---:|:---:|
 | `src/aqg/review.py:188::analyze_review` | 96 | F |
-| `src/aqg/scaffold.py:782::build_onboarding` | 47 | F |
-| `src/aqg/scaffold.py:1239::install_toolchains` | 35 | E |
+| `src/aqg/scaffold.py:785::build_onboarding` | 47 | F |
+| `src/aqg/scaffold.py:1307::install_toolchains` | 35 | E |
 | `src/aqg/checks.py:304::parse_feature` | 33 | E |
 | `src/aqg/approvals.py:105::validate_approval` | 30 | D |
 | `src/aqg/doctor.py:261::_check_toolchains` | 30 | D |
 | `src/aqg/checks.py:213::scan_secrets` | 25 | D |
 | `src/aqg/review.py:761::_html` | 25 | D |
 | `src/aqg/hooks.py:104::hook_pretool` | 24 | D |
-| `src/aqg/scaffold.py:1055::initialize_project` | 23 | D |
+| `src/aqg/scaffold.py:1058::initialize_project` | 23 | D |
 | `src/aqg/tui.py:41::_draw` | 23 | D |
 | `src/aqg/adapters.py:734::_js_coverage_metrics` | 21 | D |
 | `src/aqg/conformance.py:384::run_tool_conformance` | 20 | C |
