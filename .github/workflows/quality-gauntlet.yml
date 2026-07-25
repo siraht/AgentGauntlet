@@ -61,7 +61,7 @@ jobs:
           cache: npm
           cache-dependency-path: quality/tools/js/package-lock.json
       - name: Install hash-locked AQG toolchains
-        run: python quality/qg.py tools install --ci
+        run: python quality/qg.py tools install --ci --browsers
       - name: Run the risk-selected authoritative profile
         run: python quality/qg.py check-risk --keep-going --quiet
       - name: Generate the review packet
@@ -77,6 +77,9 @@ jobs:
           path: |
             .aqg/runs/
             .aqg/review/
+            .aqg/work/*/report.json
+            .aqg/work/coverage/*.json
+            .aqg/work/supply_chain/sbom/*.json
           if-no-files-found: warn
           retention-days: 14
 

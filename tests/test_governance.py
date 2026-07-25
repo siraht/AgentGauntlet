@@ -62,6 +62,17 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         self.assertEqual({check["context"] for check in required}, expected)
         self.assertEqual({check["integration_id"] for check in required}, {15368})
 
+    def test_authoritative_profile_installs_browser_and_retains_checker_reports(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github" / "workflows" / "quality-gauntlet.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("tools install --ci --browsers", workflow)
+        self.assertIn(".aqg/work/*/report.json", workflow)
+        self.assertIn(".aqg/work/coverage/*.json", workflow)
+        self.assertIn(".aqg/work/supply_chain/sbom/*.json", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
