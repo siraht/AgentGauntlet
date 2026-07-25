@@ -74,6 +74,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-037 | Require the risk-selected AQG profile as its own protected GitHub context.                       | Source tests, conformance, browser checks, and reproducible builds can all pass while the committed High-assurance `deep` profile fails. Branch protection must enforce the policy result rather than infer it from adjacent green checks.                                                                      | CI can consume equally trustworthy immutable profile evidence from a separate builder.                           |
 | D-038 | Scan untracked content while exempting only statically proven loopback network calls.            | New files were fingerprinted but absent from the textual review diff, while controlled dashboard boundary tests produced the same nondeterminism warning as a live external dependency. Synthetic diffs close the blind spot; literal/dataflow loopback recognition removes only the false positive.            | Git supplies a stable cross-platform API for textual untracked-file diffs and parsed test dependency boundaries. |
 | D-039 | Apply changed-code metrics only to configured, non-excluded source paths.                        | Synthetic untracked diffs made review complete but exposed an implicit coupling: coverage treated generated AQG launchers, runtimes, and checker configuration as application production. Governed source roots preserve untracked application enforcement without measuring the control plane as adopter code. | A future project schema supports separately governed implementation and generated-code roots.                    |
+| D-040 | Provision every dependency of every gate in the authoritative hosted profile.                    | The protected deep profile correctly failed as infrastructure when its Lighthouse gate lacked Playwright Chromium, even though a separate browser conformance job was green. Installing browsers in the policy job makes the required context self-contained instead of borrowing confidence from adjacent CI.  | Hosted runners expose a preinstalled, integrity-verifiable browser that AQG can safely adopt.                    |
 
 ## Progress
 
@@ -82,7 +83,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                                                                                                              |
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                                                                                                                   |
 | Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; all cross-platform contracts and live/browser jobs pass in [run 30142857369](https://github.com/siraht/AgentGauntlet/actions/runs/30142857369).                                 |
-| Coverage and complexity debt   | Active   | 92 tests plus 73 subtests pass; whole-tree coverage is 55.55% / 43.24% with 54 complexity blockers; the prior mutation run was 53.48%; exact-current deep evidence is being regenerated.                                                 |
+| Coverage and complexity debt   | Active   | 93 tests plus 73 subtests pass; whole-tree coverage is 55.55% / 43.24% with 54 complexity blockers; the prior mutation run was 53.48%; exact-current deep evidence is being regenerated.                                                 |
 | End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.                                                                                            |
 | Release and provenance         | Active   | Final artifacts reproduce byte-for-byte and verify; extracted install/doctor/archive hygiene pass; public-main rollback and candidate restoration match exact vendored bytes; keyless CI attestation remains.                            |
 | GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 13 GitHub Actions contexts, including fail-closed `policy-evidence`; merge, Dependabot, secret-scanning, push-protection, and alert controls are configured. |
@@ -193,6 +194,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Review scope and metric scope are related but not identical. Review must see every
   untracked file, while changed-code coverage and structure must enforce only configured,
   non-excluded application roots; sharing an unfiltered diff silently conflates the two.
+- A required profile job must provision its own complete execution surface. A green
+  browser fixture in another job cannot turn a missing browser in the authoritative
+  Lighthouse gate into usable evidence.
 
 ## Evidence conventions
 
