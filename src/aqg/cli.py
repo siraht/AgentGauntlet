@@ -280,6 +280,7 @@ def _nested_subparsers(parser: ArgumentParser, dest: str) -> Any:
 
 def _add_execution_parsers(sub: Any) -> None:
     sub.add_parser("status", help="show risk plus latest evidence and gate status")
+    sub.add_parser("triage", help="show readiness, risk, evidence, and exact next commands")
     doctor = sub.add_parser("doctor", help="validate project readiness and governance")
     doctor.add_argument("--strict-tools", action="store_true")
 
@@ -535,6 +536,42 @@ def _status_payload(root: Path) -> dict[str, Any]:
     }
 
 
+def _triage_payload(root: Path) -> dict[str, Any]:
+    policy = load_policy(root)
+    risk_errors, risk = risk_summary(root, policy, "quality/change-risk.json")
+    onboarding = current_onboarding(root)
+    current = onboarding["current"]
+    runs = list_runs(root, 1)
+    project = load_project(root)
+    return {
+        "schema_version": 1,
+        "project": {
+            "name": project["name"],
+            "stacks": sorted(name for name, enabled in project["stacks"].items() if enabled),
+            "enforcement": project["enforcement"],
+        },
+        "readiness": {
+            "summary": current["summary"],
+            "stale": onboarding["stale"],
+            "next_action": current["next_action"],
+        },
+        "risk": {
+            "selected": risk["selected_risk_profile"],
+            "minimum": risk["minimum_risk_profile"],
+            "required_execution_profiles": risk["required_execution_profiles"],
+            "errors": risk_errors,
+        },
+        "latest": runs[0] if runs else None,
+        "commands": [
+            "qg onboarding next",
+            "qg doctor",
+            "qg check fast",
+            "qg review",
+            "qg check-risk --keep-going",
+        ],
+    }
+
+
 def _subparser_choices(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
     for action in parser._actions:
         choices = getattr(action, "choices", None)
@@ -677,6 +714,35 @@ def _dispatch_status(args: argparse.Namespace, root: Path) -> int:
     payload = _status_payload(root)
     _json_dump(payload) if args.json else _print_status(root, payload)
     return CONFIGURATION_ERROR if payload["risk_errors"] else PASS
+
+
+def _print_triage(payload: dict[str, Any]) -> None:
+    summary = payload["readiness"]["summary"]
+    latest = payload["latest"]
+    print(f"AQG triage · {payload['project']['name']}")
+    print(
+        f"Readiness: {summary['blockers']} blocker(s) · "
+        f"{summary['review']} review item(s) · "
+        f"{'stale' if payload['readiness']['stale'] else 'current'}"
+    )
+    risk = payload["risk"]
+    print(f"Risk: {risk['selected']} · required: {', '.join(risk['required_execution_profiles'])}")
+    print(
+        f"Latest evidence: {latest['status']} ({latest['profile']})"
+        if latest
+        else "Latest evidence: none"
+    )
+    print(f"Next: {payload['readiness']['next_action']['next_step']}")
+    print("Commands:")
+    for command in payload["commands"]:
+        print(f"  {command}")
+
+
+def _dispatch_triage(args: argparse.Namespace, root: Path) -> int:
+    payload = _triage_payload(root)
+    _json_dump(payload) if args.json else _print_triage(payload)
+    blockers = payload["readiness"]["summary"]["blockers"]
+    return CONFIGURATION_ERROR if payload["risk"]["errors"] or blockers else PASS
 
 
 def _dispatch_doctor(args: argparse.Namespace, root: Path) -> int:
@@ -1136,6 +1202,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "risk-card": _dispatch_risk_card,
     "robot-docs": _dispatch_robot_docs,
     "status": _dispatch_status,
+    "triage": _dispatch_triage,
     "tools": _dispatch_tools,
     "tui": _dispatch_tui,
     "upgrade": _dispatch_upgrade,

@@ -179,6 +179,19 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("# AQG agent operating guide", human.getvalue())
         self.assertIn("`qg review --write --sarif`", human.getvalue())
 
+    def test_triage_collapses_orientation_into_one_stable_payload(self) -> None:
+        first_code, first, _ = self._json_command("triage")
+        second_code, second, _ = self._json_command("triage")
+        self.assertEqual(first_code, second_code)
+        self.assertIn(first_code, {PASS, CONFIGURATION_ERROR})
+        self.assertEqual(first, second)
+        self.assertEqual(first["schema_version"], 1)
+        self.assertEqual(first["project"]["name"], self.root.name)
+        self.assertIn("summary", first["readiness"])
+        self.assertIn("selected", first["risk"])
+        self.assertIn("qg doctor", first["commands"])
+        self.assertIn("qg check-risk --keep-going", first["commands"])
+
 
 if __name__ == "__main__":
     unittest.main()
