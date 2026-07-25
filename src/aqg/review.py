@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import html
 import io
 import re
@@ -42,6 +43,7 @@ PRODUCTION_EXTENSIONS = {
     ".scss",
 }
 TEST_TOKENS = {"test", "tests", "spec", "specs", "__tests__", "e2e", "acceptance"}
+LOOPBACK_URL = re.compile(r"https?://(?:127(?:\.\d+){3}|localhost|\[::1\])(?=[:/])")
 
 
 def _is_test(path: str) -> bool:
@@ -120,6 +122,102 @@ def _line_locations(
             continue
         if pattern.search(line):
             locations.append(f"{path}:{line_no}")
+    return sorted(set(locations))
+
+
+def _qualified_call_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _qualified_call_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    return ""
+
+
+def _static_string(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            str(value.value)
+            for value in node.values
+            if isinstance(value, ast.Constant) and isinstance(value.value, str)
+        )
+    return None
+
+
+def _loopback_expression(node: ast.expr, safe_names: set[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in safe_names
+    static_text = _static_string(node)
+    if static_text is not None:
+        return bool(LOOPBACK_URL.search(static_text))
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _loopback_expression(node.left, safe_names)
+    if isinstance(node, ast.Call) and _qualified_call_name(node.func).endswith(".Request"):
+        return bool(node.args) and _loopback_expression(node.args[0], safe_names)
+    return False
+
+
+def _python_assignments(root: Path, path: str) -> list[ast.Assign | ast.AnnAssign]:
+    source = root / path
+    if source.suffix.lower() not in {".py", ".pyi"} or not source.is_file():
+        return []
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError):
+        return []
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
+    ]
+
+
+def _assigned_names(assignment: ast.Assign | ast.AnnAssign) -> set[str]:
+    targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+    return {target.id for target in targets if isinstance(target, ast.Name)}
+
+
+def _loopback_bindings(root: Path, path: str) -> set[str]:
+    assignments = _python_assignments(root, path)
+    safe: set[str] = set()
+    while True:
+        previous = len(safe)
+        for assignment in assignments:
+            if _loopback_expression(assignment.value, safe):
+                safe.update(_assigned_names(assignment))
+        if len(safe) == previous:
+            return safe
+
+
+def _is_controlled_loopback_call(root: Path, path: str, line: str) -> bool:
+    if LOOPBACK_URL.search(line):
+        return True
+    argument = re.search(
+        r"(?:fetch|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch)|urllib\.request\.urlopen)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)",
+        line,
+        re.IGNORECASE,
+    )
+    return bool(argument and argument.group(1) in _loopback_bindings(root, path))
+
+
+def _nondeterministic_test_locations(
+    root: Path,
+    added: list[tuple[str, int, str]],
+    pattern: re.Pattern[str],
+    network_pattern: re.Pattern[str],
+) -> list[str]:
+    locations: list[str] = []
+    for path, line_no, line in added:
+        match = pattern.search(line)
+        if not _is_test(path) or match is None:
+            continue
+        if _match_is_inside_python_string(root, path, line_no, match.start()):
+            continue
+        if network_pattern.search(line) and _is_controlled_loopback_call(root, path, line):
+            continue
+        locations.append(f"{path}:{line_no}")
     return sorted(set(locations))
 
 
@@ -368,11 +466,19 @@ def analyze_review(
             )
         )
 
-    nondeterministic_test_patterns = re.compile(
-        r"(?i)(?:\b(?:time\.sleep|asyncio\.sleep|setTimeout|setInterval|Date\.now|datetime\.(?:now|utcnow)|time\.time|Math\.random|random\.(?:random|randint|choice)|uuid\.uuid4)\s*\(|\b(?:fetch|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch)|urllib\.request\.urlopen)\s*\()"
+    network_test_patterns = re.compile(
+        r"\b(?:fetch|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch)|urllib\.request\.urlopen)\s*\(",
+        re.IGNORECASE,
     )
-    nondeterministic_tests = _line_locations(
-        added, nondeterministic_test_patterns, predicate=_is_test
+    nondeterministic_test_patterns = re.compile(
+        rf"(?:\b(?:time\.sleep|asyncio\.sleep|setTimeout|setInterval|Date\.now|datetime\.(?:now|utcnow)|time\.time|Math\.random|random\.(?:random|randint|choice)|uuid\.uuid4)\s*\(|{network_test_patterns.pattern})",
+        re.IGNORECASE,
+    )
+    nondeterministic_tests = _nondeterministic_test_locations(
+        root,
+        added,
+        nondeterministic_test_patterns,
+        network_test_patterns,
     )
     if nondeterministic_tests:
         findings.append(

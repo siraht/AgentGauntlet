@@ -640,6 +640,39 @@ class ReviewAndApprovalTests(RepoCase):
 
         self.assertIn("new-production-debt-marker", codes)
 
+    def test_review_distinguishes_loopback_and_external_network_calls(self) -> None:
+        self._initialized()
+        test_path = self.root / "tests" / "test_network.py"
+        test_path.write_text(
+            "import urllib.request\n\n"
+            "def test_loopback(port):\n"
+            '    base = f"http://127.0.0.1:{port}"\n'
+            '    request = urllib.request.Request(base + "/health")\n'
+            '    urllib.request.urlopen(base + "/status")\n'
+            "    urllib.request.urlopen(request)\n",
+            encoding="utf-8",
+        )
+        loopback_packet = analyze_review(
+            self.root, load_policy(self.root), base="HEAD", require_evidence=False
+        )
+        self.assertNotIn(
+            "test-nondeterminism-introduced",
+            {finding["code"] for finding in loopback_packet["findings"]},
+        )
+
+        test_path.write_text(
+            test_path.read_text(encoding="utf-8")
+            + '\ndef test_external():\n    urllib.request.urlopen("https://example.com/status")\n',
+            encoding="utf-8",
+        )
+        external_packet = analyze_review(
+            self.root, load_policy(self.root), base="HEAD", require_evidence=False
+        )
+        self.assertIn(
+            "test-nondeterminism-introduced",
+            {finding["code"] for finding in external_packet["findings"]},
+        )
+
     def test_approval_is_invalidated_by_subsequent_change(self) -> None:
         self._initialized()
         payload = template(self.root, "behavior-review", reviewer="human@example.test")

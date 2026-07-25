@@ -206,7 +206,7 @@ class TuiTests(ControlGuardCase):
 
 
 class DashboardHttpTests(ControlGuardCase):
-    def _serve(self, *, allow_actions: bool, token: str) -> tuple[DashboardServer, str]:
+    def _serve(self, *, allow_actions: bool, token: str) -> DashboardServer:
         server = DashboardServer(
             ("127.0.0.1", 0),
             [self.root],
@@ -216,10 +216,11 @@ class DashboardHttpTests(ControlGuardCase):
         )
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
-        return server, f"http://127.0.0.1:{server.server_address[1]}"
+        return server
 
     def test_dashboard_http_headers_errors_and_action_authentication(self) -> None:
-        server, base = self._serve(allow_actions=False, token="")
+        server = self._serve(allow_actions=False, token="")
+        base = f"http://127.0.0.1:{server.server_address[1]}"
         try:
             with urllib.request.urlopen(base + "/api/config") as response:
                 self.assertEqual(response.status, 200)
@@ -240,7 +241,8 @@ class DashboardHttpTests(ControlGuardCase):
             server.shutdown()
             server.server_close()
 
-        server, base = self._serve(allow_actions=True, token="secret")
+        server = self._serve(allow_actions=True, token="secret")
+        base = f"http://127.0.0.1:{server.server_address[1]}"
         try:
             request = urllib.request.Request(
                 base + "/api/actions/unknown",

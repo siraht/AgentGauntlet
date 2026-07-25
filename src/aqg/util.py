@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import difflib
 import fnmatch
 import hashlib
 import json
@@ -349,12 +350,44 @@ def git_diff(root: Path, base: str = "HEAD", unified: int = 0) -> str:
             staged_code, staged_out, _ = git_output(
                 root, ["diff", "--cached", f"--unified={unified}"]
             )
-            return (
+            tracked = (
                 stdout
                 + (work_out if work_code == 0 else "")
                 + (staged_out if staged_code == 0 else "")
             )
+            return tracked + _untracked_diff(root, unified=unified)
     return ""
+
+
+def _untracked_diff(root: Path, *, unified: int) -> str:
+    code, stdout, _ = git_output(
+        root,
+        ["ls-files", "--others", "--exclude-standard"],
+    )
+    if code != 0:
+        return ""
+    patches: list[str] = []
+    for rel in sorted(line.strip() for line in stdout.splitlines() if line.strip()):
+        path = root / rel
+        if not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        patch = "\n".join(
+            difflib.unified_diff(
+                [],
+                content,
+                fromfile="/dev/null",
+                tofile=f"b/{rel}",
+                n=unified,
+                lineterm="",
+            )
+        )
+        if patch:
+            patches.append(patch + "\n")
+    return "".join(patches)
 
 
 def git_revision(root: Path) -> str:
@@ -378,9 +411,6 @@ def change_fingerprint(
     digest.update(base.encode())
     digest.update(b"\0")
     digest.update(git_revision(root).encode())
-    digest.update(b"\0")
-    diff = git_diff(root, base, unified=3)
-    digest.update(diff.encode("utf-8", errors="replace"))
     digest.update(b"\0")
     for rel in git_changed_files(root, base, include_worktree=True):
         if matches_any(rel, exclude_patterns):
