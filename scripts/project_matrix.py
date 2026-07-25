@@ -185,7 +185,10 @@ def _manager_install(project: Path, manager: str) -> None:
             commands[manager],
             cwd=project,
             timeout=1200,
-            env={"YARN_ENABLE_HARDENED_MODE": "false"},
+            env={
+                "YARN_ENABLE_HARDENED_MODE": "false",
+                "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
+            },
         )
         _run(
             ["yarn", "install", "--immutable", "--mode=skip-build"],
