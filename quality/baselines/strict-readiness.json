@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 33.45,
-    "functions_over_complexity_cap": 53,
-    "line_coverage_points": 30.55
+    "branch_coverage_points": 33.49,
+    "functions_over_complexity_cap": 54,
+    "line_coverage_points": 30.57
   },
   "coverage": {
-    "branch_percent": 41.55,
-    "branches": 2272,
+    "branch_percent": 41.51,
+    "branches": 2274,
     "covered_branches": 944,
-    "covered_statements": 3368,
-    "line_percent": 54.45,
-    "statements": 6185
+    "covered_statements": 3370,
+    "line_percent": 54.43,
+    "statements": 6192
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-25T03:41:36Z",
+  "generated_at": "2026-07-25T05:24:18Z",
   "highest_complexity_functions": [
     {
       "complexity": 101,
@@ -143,7 +143,7 @@
     },
     {
       "complexity": 19,
-      "line": 1834,
+      "line": 1837,
       "name": "_reproducible_build",
       "path": "src/aqg/adapters.py",
       "rank": "C"
@@ -212,14 +212,14 @@
       "path": "src/aqg/reporting.py"
     },
     {
-      "branch_percent": 8.7,
-      "line_percent": 28.74,
-      "missing_statements": 119,
+      "branch_percent": 8.33,
+      "line_percent": 27.91,
+      "missing_statements": 124,
       "path": "scripts/project_matrix.py"
     },
     {
       "branch_percent": 19.13,
-      "line_percent": 29.42,
+      "line_percent": 29.57,
       "missing_statements": 667,
       "path": "src/aqg/adapters.py"
     },
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "ca39bdec211fff78094fa171c452913ce2959f66",
+  "revision": "ff2f2c2201e0758712290ab97585e9bba0986158",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 88
+  "test_count": 89
 }

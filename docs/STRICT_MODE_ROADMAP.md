@@ -1,13 +1,13 @@
 # Strict-mode readiness
 
-Revision: `ca39bdec211fff78094fa171c452913ce2959f66` · mode: **adopt** · strict ready: **no**
+Revision: `ff2f2c2201e0758712290ab97585e9bba0986158` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 88
-- Line coverage: 54.45% (gap 30.55 points)
-- Branch coverage: 41.55% (gap 33.45 points)
-- Functions above complexity cap: 53
+- Tests: 89
+- Line coverage: 54.43% (gap 30.57 points)
+- Branch coverage: 41.51% (gap 33.49 points)
+- Functions above complexity cap: 54
 
 ## Lowest coverage modules
 
@@ -22,8 +22,8 @@ Revision: `ca39bdec211fff78094fa171c452913ce2959f66` · mode: **adopt** · stric
 | `src/aqg/portfolio.py`                | 22.73% |    0.00% |                 51 |
 | `src/aqg/authoring.py`                | 25.64% |    0.00% |                 29 |
 | `src/aqg/reporting.py`                | 27.12% |    4.17% |                 43 |
-| `scripts/project_matrix.py`           | 28.74% |    8.70% |                119 |
-| `src/aqg/adapters.py`                 | 29.42% |   19.13% |                667 |
+| `scripts/project_matrix.py`           | 27.91% |    8.33% |                124 |
+| `src/aqg/adapters.py`                 | 29.57% |   19.13% |                667 |
 | `src/aqg/runner.py`                   | 46.32% |   17.39% |                 73 |
 
 ## Highest complexity functions
@@ -48,7 +48,7 @@ Revision: `ca39bdec211fff78094fa171c452913ce2959f66` · mode: **adopt** · stric
 | `src/aqg/wizard.py:30::run_wizard`                  |         20 |  C   |
 | `src/aqg/adapters.py:694::_python_coverage_metrics` |         19 |  C   |
 | `src/aqg/adapters.py:800::_python_crap`             |         19 |  C   |
-| `src/aqg/adapters.py:1834::_reproducible_build`     |         19 |  C   |
+| `src/aqg/adapters.py:1837::_reproducible_build`     |         19 |  C   |
 | `src/aqg/checks.py:74::scan_test_integrity`         |         19 |  C   |
 
 ## Switch contract
