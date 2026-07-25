@@ -400,7 +400,10 @@ def run_tool_conformance(root: Path) -> dict[str, Any]:
             "vitest": _js_bin(root, "vitest"),
         }
         if all(path.exists() for path in js_tools.values()):
-            atomic_write(fixture / "bad.js", "const x={a:1}; eval('x')\n")
+            atomic_write(
+                fixture / "bad.js",
+                "const x={a:1}; eval('x')\n",  # AQG_REVIEWED_SECURITY: fault fixture
+            )
             prettier = run_command([str(js_tools["prettier"]), "--check", "bad.js"], cwd=fixture)
             _record(
                 cases,
@@ -528,7 +531,7 @@ def run_tool_conformance(root: Path) -> dict[str, Any]:
         if all(path.exists() for path in py_tools.values()):
             atomic_write(
                 fixture / "src" / "bad.py",
-                "import os\n\ndef value() -> str:\n    return 1\n\ndef dangerous(x: str):\n    return eval(x)\n",
+                "import os\n\ndef value() -> str:\n    return 1\n\ndef dangerous(x: str):\n    return eval(x)\n",  # AQG_REVIEWED_SECURITY: fault fixture
             )
             atomic_write(
                 fixture / "tests" / "test_bad.py", "def test_failure():\n    assert 1 == 2\n"

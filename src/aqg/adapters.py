@@ -665,10 +665,10 @@ def _js_coverage_metrics(
 def _python_crap(
     root: Path, project: dict[str, Any], coverage_path: Path, files: list[str] | None = None
 ) -> dict[str, Any]:
-    radon = _tool(root, "radon", "python")
-    targets = files or _existing_paths(root, source_paths(project))
+    targets = files if files is not None else _existing_paths(root, source_paths(project))
     if not targets:
         return {"functions": [], "failures": [], "scope": "none"}
+    radon = _tool(root, "radon", "python")
     result = run_command([radon, "cc", "-j", "-s", *targets], cwd=root, timeout=900)
     if result.code != 0:
         return {
@@ -688,6 +688,7 @@ def _python_crap(
     functions: list[dict[str, Any]] = []
     maximum = float(_effective_thresholds(project)["structure"]["max_crap"])
     failures: list[str] = []
+    changed = _changed_lines(root, project) if _adopt_mode(project) else {}
     coverage_files = coverage.get("files", {})
     for filename, blocks in complexity.items():
         data = (
@@ -707,6 +708,9 @@ def _python_crap(
             coverage_fraction = 1.0 if not relevant else len(relevant & executed) / len(relevant)
             complexity_value = int(block.get("complexity", 1))
             score = crap_score(complexity_value, coverage_fraction)
+            enforced = not _adopt_mode(project) or bool(
+                changed.get(filename, set()) & set(range(start, end + 1))
+            )
             item = {
                 "path": filename,
                 "name": block.get("name"),
@@ -715,14 +719,20 @@ def _python_crap(
                 "complexity": complexity_value,
                 "coverage": coverage_fraction * 100,
                 "crap": score,
+                "enforced": enforced,
             }
             functions.append(item)
-            if score > maximum:
+            if enforced and score > maximum:
                 failures.append(
                     f"{filename}:{start} {block.get('name')} CRAP {score:.1f} > {maximum:.1f}"
                 )
     functions.sort(key=lambda item: item["crap"], reverse=True)
-    return {"functions": functions, "failures": failures, "maximum_allowed": maximum}
+    return {
+        "functions": functions,
+        "failures": failures,
+        "maximum_allowed": maximum,
+        "scope": "changed-functions" if _adopt_mode(project) else "full",
+    }
 
 
 def _coverage(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -1329,7 +1339,12 @@ def _dangerous_code_scan(root: Path, project: dict[str, Any]) -> dict[str, Any]:
             re.compile(r"(?i)(shell\s*=\s*true|child_process\.(?:exec|execSync)\s*\()"),
         ),
         ("weak-randomness", re.compile(r"\bMath\.random\s*\(|\brandom\.random\s*\(")),
-        ("unsafe-html", re.compile(r"(?i)(dangerouslySetInnerHTML|innerHTML\s*=|mark_safe\s*\()")),
+        (
+            "unsafe-html",
+            re.compile(
+                r"(?i)(dangerouslySetInnerHTML|innerHTML\s*=|mark_safe\s*\()"  # AQG_REVIEWED_SECURITY
+            ),
+        ),
         ("disabled-tls", re.compile(r"(?i)(verify\s*=\s*false|rejectUnauthorized\s*:\s*false)")),
     ]
     findings = []

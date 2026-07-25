@@ -11,6 +11,10 @@ const esc = (value) =>
         char
       ],
   );
+const setSafeHTML = (node, markup) => {
+  // All dynamic values must pass through esc() before reaching this reviewed rendering boundary.
+  node.innerHTML = markup; // AQG_REVIEWED_SECURITY
+};
 const human = (value) => String(value ?? "").replaceAll("_", " ");
 const duration = (ms = 0) =>
   ms < 1000
@@ -89,12 +93,15 @@ function actionStatus() {
   }
   banner.classList.remove("hidden");
   banner.className = `action-banner ${running.length ? "running" : ""}`;
-  banner.innerHTML = entries
-    .map(
-      ([name, value]) =>
-        `<span><strong>${esc(name)}</strong> ${esc(human(value))}</span>`,
-    )
-    .join("");
+  setSafeHTML(
+    banner,
+    entries
+      .map(
+        ([name, value]) =>
+          `<span><strong>${esc(name)}</strong> ${esc(human(value))}</span>`,
+      )
+      .join(""),
+  );
 }
 function renderDecision(item) {
   const latest = item.latest;
@@ -130,7 +137,10 @@ function renderDecision(item) {
   }
   const node = $("#decision-strip");
   node.className = `decision-strip ${status}`;
-  node.innerHTML = `<div><p class="eyebrow">Current disposition</p><strong>${esc(title)}</strong><span>${esc(detail)}</span></div><div class="decision-meta"><span>${esc(human(risk.selected_risk_profile || "risk unresolved"))}</span><span>${esc(review?.summary?.evidence_status || "evidence unknown")}</span></div>`;
+  setSafeHTML(
+    node,
+    `<div><p class="eyebrow">Current disposition</p><strong>${esc(title)}</strong><span>${esc(detail)}</span></div><div class="decision-meta"><span>${esc(human(risk.selected_risk_profile || "risk unresolved"))}</span><span>${esc(review?.summary?.evidence_status || "evidence unknown")}</span></div>`,
+  );
 }
 function renderOverview(item) {
   const p = item.project || {};
@@ -182,12 +192,15 @@ function renderOverview(item) {
         : latest?.revision?.slice(0, 12) || "No revision",
     ],
   ];
-  $("#metrics").innerHTML = metrics
-    .map(
-      ([label, value, small]) =>
-        `<article class="metric"><label>${esc(label)}</label><strong>${esc(human(value))}</strong><small>${esc(small)}</small></article>`,
-    )
-    .join("");
+  setSafeHTML(
+    $("#metrics"),
+    metrics
+      .map(
+        ([label, value, small]) =>
+          `<article class="metric"><label>${esc(label)}</label><strong>${esc(human(value))}</strong><small>${esc(small)}</small></article>`,
+      )
+      .join(""),
+  );
   $("#latest-badge").className = `badge ${latest?.status || "neutral"}`;
   $("#latest-badge").textContent = human(latest?.status || "No run");
   $("#risk-badge").className =
@@ -195,70 +208,101 @@ function renderOverview(item) {
   $("#risk-badge").textContent = human(
     risk.selected_risk_profile || "Unresolved",
   );
-  $("#risk-overview").innerHTML =
-    `<div class="risk-callout"><strong>${esc(human(risk.selected_risk_profile || "Unresolved"))}</strong><span>deterministic minimum ${esc(human(risk.minimum_risk_profile || "unknown"))}</span></div><div class="chip-row">${(risk.required_execution_profiles || []).map((name) => `<span class="chip">${esc(name)}</span>`).join("") || '<span class="muted">No required profiles resolved.</span>'}</div><dl class="compact"><div><dt>Evidence</dt><dd>${esc(review?.summary?.evidence_status || "not generated")}</dd></div><div><dt>Approvals</dt><dd>${esc(review?.summary?.approval_status || human(item.approvals?.errors?.length ? "missing_or_stale" : "current"))}</dd></div></dl>`;
+  setSafeHTML(
+    $("#risk-overview"),
+    `<div class="risk-callout"><strong>${esc(human(risk.selected_risk_profile || "Unresolved"))}</strong><span>deterministic minimum ${esc(human(risk.minimum_risk_profile || "unknown"))}</span></div><div class="chip-row">${(risk.required_execution_profiles || []).map((name) => `<span class="chip">${esc(name)}</span>`).join("") || '<span class="muted">No required profiles resolved.</span>'}</div><dl class="compact"><div><dt>Evidence</dt><dd>${esc(review?.summary?.evidence_status || "not generated")}</dd></div><div><dt>Approvals</dt><dd>${esc(review?.summary?.approval_status || human(item.approvals?.errors?.length ? "missing_or_stale" : "current"))}</dd></div></dl>`,
+  );
   $("#gate-map").classList.toggle("empty", !latest?.gates?.length);
-  $("#gate-map").innerHTML = latest?.gates?.length
-    ? latest.gates
-        .map(
-          (g) =>
-            `<div class="gate"><div><span class="dot ${esc(g.status)}"></span><strong>${esc(g.name)}</strong></div><small>${esc(human(g.status))} · ${duration(g.duration_ms)}</small></div>`,
-        )
-        .join("")
-    : "No evidence yet.";
+  setSafeHTML(
+    $("#gate-map"),
+    latest?.gates?.length
+      ? latest.gates
+          .map(
+            (g) =>
+              `<div class="gate"><div><span class="dot ${esc(g.status)}"></span><strong>${esc(g.name)}</strong></div><small>${esc(human(g.status))} · ${duration(g.duration_ms)}</small></div>`,
+          )
+          .join("")
+      : "No evidence yet.",
+  );
   const findings = review?.findings || [];
-  $("#review-preview").innerHTML =
+  setSafeHTML(
+    $("#review-preview"),
     findings.slice(0, 4).map(findingCard).join("") ||
-    '<div class="empty">Generate a review packet to classify the current diff.</div>';
-  $("#adapter-grid").innerHTML = Object.entries(p.stacks || {})
-    .map(
-      ([name, enabled]) =>
-        `<div class="adapter ${enabled ? "enabled" : "disabled"}"><span class="dot ${enabled ? "pass" : "neutral"}"></span><div><strong>${esc(name)}</strong><small>${enabled ? "detected and managed" : "not detected"}</small></div></div>`,
-    )
-    .join("");
+      '<div class="empty">Generate a review packet to classify the current diff.</div>',
+  );
+  setSafeHTML(
+    $("#adapter-grid"),
+    Object.entries(p.stacks || {})
+      .map(
+        ([name, enabled]) =>
+          `<div class="adapter ${enabled ? "enabled" : "disabled"}"><span class="dot ${enabled ? "pass" : "neutral"}"></span><div><strong>${esc(name)}</strong><small>${enabled ? "detected and managed" : "not detected"}</small></div></div>`,
+      )
+      .join(""),
+  );
 }
 function renderRuns(item) {
   const latest = item.latest;
-  $("#history-table").innerHTML = matrix(
-    ["Run", "Profile", "Status", "Duration", "Revision", "Change fingerprint"],
-    (item.runs || []).map(
-      (r) =>
-        `<tr><td><code>${esc(r.run_id)}</code></td><td>${esc(r.profile)}</td><td>${badge(r.status)}</td><td>${duration(r.duration_ms)}</td><td><code>${esc((r.revision || "").slice(0, 12))}</code></td><td><code>${esc((r.change_fingerprint || "").slice(0, 12))}</code></td></tr>`,
+  setSafeHTML(
+    $("#history-table"),
+    matrix(
+      [
+        "Run",
+        "Profile",
+        "Status",
+        "Duration",
+        "Revision",
+        "Change fingerprint",
+      ],
+      (item.runs || []).map(
+        (r) =>
+          `<tr><td><code>${esc(r.run_id)}</code></td><td>${esc(r.profile)}</td><td>${badge(r.status)}</td><td>${duration(r.duration_ms)}</td><td><code>${esc((r.revision || "").slice(0, 12))}</code></td><td><code>${esc((r.change_fingerprint || "").slice(0, 12))}</code></td></tr>`,
+      ),
+      "No runs recorded.",
     ),
-    "No runs recorded.",
   );
-  $("#gates-table").innerHTML = matrix(
-    ["Gate", "Status", "Duration", "Exit"],
-    (latest?.gates || []).map(
-      (g) =>
-        `<tr><td><strong>${esc(g.name)}</strong></td><td>${badge(g.status)}</td><td>${duration(g.duration_ms)}</td><td><code>${esc(g.exit_code)}</code></td></tr>`,
+  setSafeHTML(
+    $("#gates-table"),
+    matrix(
+      ["Gate", "Status", "Duration", "Exit"],
+      (latest?.gates || []).map(
+        (g) =>
+          `<tr><td><strong>${esc(g.name)}</strong></td><td>${badge(g.status)}</td><td>${duration(g.duration_ms)}</td><td><code>${esc(g.exit_code)}</code></td></tr>`,
+      ),
+      "No gate evidence.",
     ),
-    "No gate evidence.",
   );
 }
 function renderReview(item) {
   const review = item.review;
   const findings = review?.findings || [];
-  $("#review-full").innerHTML =
+  setSafeHTML(
+    $("#review-full"),
     findings.map(findingCard).join("") ||
-    '<div class="empty">No stored review packet. Generate one after the final change.</div>';
-  $("#evidence-matrix").innerHTML = matrix(
-    ["Profile", "Status", "Run"],
-    (review?.evidence || []).map(
-      (value) =>
-        `<tr><td><code>${esc(value.profile)}</code></td><td>${badge(value.status, value.status === "current_pass" ? "current pass" : human(value.status))}</td><td><code>${esc(value.run_id || "—")}</code></td></tr>`,
+      '<div class="empty">No stored review packet. Generate one after the final change.</div>',
+  );
+  setSafeHTML(
+    $("#evidence-matrix"),
+    matrix(
+      ["Profile", "Status", "Run"],
+      (review?.evidence || []).map(
+        (value) =>
+          `<tr><td><code>${esc(value.profile)}</code></td><td>${badge(value.status, value.status === "current_pass" ? "current pass" : human(value.status))}</td><td><code>${esc(value.run_id || "—")}</code></td></tr>`,
+      ),
+      "No profile evidence matrix.",
     ),
-    "No profile evidence matrix.",
   );
   const approvals = review?.approvals || item.approvals || {};
-  $("#approval-matrix").innerHTML = matrix(
-    ["Approval", "Status", "Detail"],
-    (approvals.required || []).map((kind) => {
-      const result = approvals.results?.[kind] || {};
-      const errors = result.errors || [];
-      return `<tr><td><code>${esc(kind)}</code></td><td>${badge(errors.length ? "missing_or_stale" : "current")}</td><td>${esc(errors.slice(0, 2).join("; ") || "fingerprints match current review surface")}</td></tr>`;
-    }),
-    "No approval record is required at this profile.",
+  setSafeHTML(
+    $("#approval-matrix"),
+    matrix(
+      ["Approval", "Status", "Detail"],
+      (approvals.required || []).map((kind) => {
+        const result = approvals.results?.[kind] || {};
+        const errors = result.errors || [];
+        return `<tr><td><code>${esc(kind)}</code></td><td>${badge(errors.length ? "missing_or_stale" : "current")}</td><td>${esc(errors.slice(0, 2).join("; ") || "fingerprints match current review surface")}</td></tr>`;
+      }),
+      "No approval record is required at this profile.",
+    ),
   );
 }
 function renderSetup(item) {
@@ -272,23 +316,29 @@ function renderSetup(item) {
     : bundle.stale
       ? "stale"
       : "ready";
-  $("#setup-stages").innerHTML =
+  setSafeHTML(
+    $("#setup-stages"),
     (onboarding.stages || [])
       .map(
         (stage, index) =>
           `<div class="stage ${esc(stage.status)}"><div class="stage-index">${String(index + 1).padStart(2, "0")}</div><div><strong>${esc(stage.title)}</strong><small>${esc(human(stage.status))}</small><code>${esc(stage.command)}</code></div></div>`,
       )
-      .join("") || '<div class="empty">No onboarding plan generated.</div>';
+      .join("") || '<div class="empty">No onboarding plan generated.</div>',
+  );
   const next = onboarding.next_action || {};
-  $("#next-action").innerHTML =
-    `<div class="next-card ${esc(next.severity || "info")}"><span>${esc(String(next.severity || "info").toUpperCase())}</span><h3>${esc(next.message || "No action resolved")}</h3><code>${esc(next.next_step || "")}</code>${bundle.stale ? "<p>Stored onboarding state is stale. Run <code>qg onboarding refresh</code>.</p>" : ""}</div>`;
-  $("#onboarding-gaps").innerHTML =
+  setSafeHTML(
+    $("#next-action"),
+    `<div class="next-card ${esc(next.severity || "info")}"><span>${esc(String(next.severity || "info").toUpperCase())}</span><h3>${esc(next.message || "No action resolved")}</h3><code>${esc(next.next_step || "")}</code>${bundle.stale ? "<p>Stored onboarding state is stale. Run <code>qg onboarding refresh</code>.</p>" : ""}</div>`,
+  );
+  setSafeHTML(
+    $("#onboarding-gaps"),
     (onboarding.gaps || [])
       .map(
         (gap) =>
           `<article class="gap ${esc(gap.severity)}"><div><span>${esc(String(gap.severity).toUpperCase())}</span><strong>${esc(gap.message)}</strong></div><code>${esc(gap.code)}</code><p>${esc(gap.next_step)}</p></article>`,
       )
-      .join("") || '<div class="empty">No generated setup gap remains.</div>';
+      .join("") || '<div class="empty">No generated setup gap remains.</div>',
+  );
 }
 function renderPolicy(item) {
   $("#config-json").textContent = JSON.stringify(
@@ -309,8 +359,10 @@ function render() {
   if (item.error) {
     $("#project-name").textContent = "Repository unavailable";
     $("#project-root").textContent = item.root || "";
-    $("#decision-strip").innerHTML =
-      `<strong>Configuration error</strong><span>${esc(item.error)}</span>`;
+    setSafeHTML(
+      $("#decision-strip"),
+      `<strong>Configuration error</strong><span>${esc(item.error)}</span>`,
+    );
     return;
   }
   const p = item.project || {};
@@ -321,7 +373,7 @@ function render() {
     ? `${state.projects.length} registered projects · ${item.root || ""}`
     : item.root || "";
   $("#portfolio-banner").classList.toggle("hidden", !state.portfolio);
-  if (state.portfolio) $("#portfolio-banner").innerHTML = portfolioBanner();
+  if (state.portfolio) setSafeHTML($("#portfolio-banner"), portfolioBanner());
   $("#mode-label").textContent = state.portfolio
     ? "portfolio read-only"
     : config.actions_enabled

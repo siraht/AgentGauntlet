@@ -36,7 +36,8 @@ The following items named in the referenced conversation were absent or incomple
 - Project-vendored runtime, agent integrations, GitHub Actions, and CODEOWNERS generation.
 - Deterministic CycloneDX 1.6 inventories from supported committed locks.
 - Deterministic portable release builder.
-- 26 source tests plus internal and installed-tool conformance fixtures.
+- 27 Python source/acceptance tests, one JavaScript dashboard contract test, and internal
+  and installed-tool conformance fixtures.
 
 ## Locally validated
 

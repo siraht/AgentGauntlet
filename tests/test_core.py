@@ -8,7 +8,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from aqg.adapters import run_adapter
+from aqg.adapters import _python_crap, run_adapter
 from aqg.approvals import template, validate_approval
 from aqg.cli import build_parser
 from aqg.constants import CONFIGURATION_ERROR, PASS
@@ -309,6 +309,23 @@ class SetupContractTests(RepoCase):
 
         self.assertIn("src/package/module.py", git_changed_files(self.root))
         self.assertNotIn("src/", git_changed_files(self.root))
+
+    def test_empty_changed_scope_does_not_fall_back_to_full_crap_analysis(self) -> None:
+        report = _python_crap(
+            self.root,
+            {
+                "enforcement": {"mode": "adopt"},
+                "paths": {"source": ["src"]},
+                "profile_thresholds": {},
+                "thresholds": {"structure": {"max_crap": 15}},
+            },
+            self.root / "missing-coverage.json",
+            [],
+        )
+
+        self.assertEqual(report["scope"], "none")
+        self.assertEqual(report["functions"], [])
+        self.assertEqual(report["failures"], [])
 
     def test_gate_commands_do_not_invoke_a_shell(self) -> None:
         escaped = self.root / "escaped"

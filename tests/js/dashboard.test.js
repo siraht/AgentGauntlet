@@ -17,4 +17,7 @@ test("the dashboard exposes the unified control surfaces", () => {
   expect(html).toContain("Attention queue");
   expect(script).toContain("/api/status");
   expect(script).toContain("/api/config");
+  expect(script).toContain("setSafeHTML");
+  expect(script).toContain("AQG_REVIEWED_SECURITY");
+  expect(script.match(/\.innerHTML\s*=/g)).toHaveLength(1);
 });
