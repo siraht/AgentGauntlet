@@ -70,7 +70,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                     |
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                          |
 | Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; Linux/macOS/Windows CI matrix added.                                                   |
-| Coverage and complexity debt   | Active   | 67 tests pass; whole-library line coverage is 57.50% and branch coverage 42.66%; governance boundaries improved; 52 inherited complexity blockers remain. |
+| Coverage and complexity debt   | Active   | 69 tests pass; whole-library line coverage is 57.50% and branch coverage 42.66%; governance boundaries improved; 52 inherited complexity blockers remain. |
 | End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.   |
 | Release and provenance         | Active   | Complete outputs reproduce byte-for-byte; checksum verification and CycloneDX/in-toto contract tests pass; keyless CI attestation is wired.    |
 | GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 12 GitHub Actions contexts; merge methods, Dependabot, secret scanning, push protection, alerts, and automated fixes are configured. |
