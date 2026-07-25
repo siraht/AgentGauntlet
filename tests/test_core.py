@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 import subprocess
@@ -15,7 +16,7 @@ from aqg.cli import build_parser
 from aqg.constants import CONFIGURATION_ERROR, PASS
 from aqg.dashboard import DashboardServer, project_status
 from aqg.detect import detect_project
-from aqg.policy import GATE_NAMES, load_policy, render_policy
+from aqg.policy import GATE_NAMES, load_policy, render_policy, validate_policy
 from aqg.project import load_project, validate_project
 from aqg.review import analyze_review
 from aqg.runner import run_gate
@@ -158,6 +159,163 @@ class DetectionTests(RepoCase):
             project["python"]["collect_command"],
             ["$AQG_PY_BIN/tox", "run", "--", "--collect-only", "-q"],
         )
+
+
+class ConfigurationValidationTests(RepoCase):
+    def _valid_project(self) -> dict[str, object]:
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        (self.root / "src" / "answer.py").write_text(
+            "def answer() -> int:\n    return 42\n", encoding="utf-8"
+        )
+        (self.root / "tests" / "test_answer.py").write_text(
+            "def test_answer() -> None:\n    assert True\n", encoding="utf-8"
+        )
+        return build_project_config(self.root, detect_project(self.root))
+
+    @staticmethod
+    def _replace(payload: dict[str, object], path: str, value: object) -> dict[str, object]:
+        changed = copy.deepcopy(payload)
+        target: dict[str, object] = changed
+        parts = path.split(".")
+        for part in parts[:-1]:
+            target = target[part]  # type: ignore[assignment]
+        target[parts[-1]] = value
+        return changed
+
+    def test_project_validator_reports_each_contract_with_exact_message(self) -> None:
+        project = self._valid_project()
+        self.assertEqual(validate_project(project), [])
+        cases = (
+            ("schema_version", 1, "schema_version must be 2"),
+            ("name", " ", "name must be a non-empty string"),
+            ("stacks.python", "yes", "stacks.python must be boolean"),
+            ("paths.tests", [""], "paths.tests must be an array of non-empty strings"),
+            ("enforcement.mode", "loose", "enforcement.mode must be adopt or greenfield"),
+            ("enforcement.scope", "some", "enforcement.scope must be changed or full"),
+            ("enforcement.base_ref", "", "enforcement.base_ref must be a non-empty Git ref"),
+            ("gates.unit.applicable", "yes", "gates.unit.applicable must be boolean"),
+            (
+                "thresholds.coverage.lines",
+                True,
+                "thresholds.coverage.lines must be a number from 0 to 100",
+            ),
+            (
+                "thresholds.structure.max_function_lines",
+                0,
+                "thresholds.structure.max_function_lines must be a positive number",
+            ),
+            (
+                "thresholds.mutation.minimum_score",
+                101,
+                "thresholds.mutation.minimum_score must be a number from 0 to 100",
+            ),
+            (
+                "thresholds.mutation.maximum_survivors",
+                -1,
+                "thresholds.mutation.maximum_survivors must be a non-negative integer",
+            ),
+            (
+                "profile_thresholds",
+                {"unknown": {}},
+                "profile_thresholds has unknown execution profile 'unknown'",
+            ),
+            (
+                "web.start_command",
+                [],
+                "web.start_command must be null or a non-empty string array",
+            ),
+            ("web.base_url", "file:///tmp", "web.base_url must be null or an http(s) URL"),
+        )
+        for path, value, expected in cases:
+            with self.subTest(path=path):
+                errors = validate_project(self._replace(project, path, value))
+                self.assertIn(expected, errors)
+
+    def test_project_validator_reports_cross_field_and_missing_objects(self) -> None:
+        project = self._valid_project()
+        stacks = copy.deepcopy(project["stacks"])
+        stacks.update({"javascript": False, "typescript": True})
+        self.assertEqual(
+            validate_project(self._replace(project, "stacks", stacks)),
+            ["stacks.typescript=true requires stacks.javascript=true"],
+        )
+        gate = copy.deepcopy(project)
+        gate["gates"]["unit"] = {"applicable": False, "reason": ""}  # type: ignore[index]
+        self.assertIn(
+            "gates.unit.reason is required when the gate is not applicable",
+            validate_project(gate),
+        )
+        for key, expected in (
+            ("stacks", "stacks must be an object"),
+            ("paths", "paths must be an object"),
+            ("enforcement", "enforcement must be an object"),
+            ("gates", "gates must be a non-empty object"),
+            ("thresholds", "thresholds must be an object"),
+            ("profile_thresholds", "profile_thresholds must be an object"),
+            ("web", "web must be an object"),
+        ):
+            with self.subTest(key=key):
+                self.assertIn(expected, validate_project(self._replace(project, key, None)))
+
+    def test_policy_validator_reports_gate_policy_and_risk_contracts(self) -> None:
+        policy = tomllib.loads(render_policy("@quality"))
+        self.assertEqual(validate_policy(policy), [])
+        mutations = (
+            ("initialized", False, "policy initialized=false; run qg init or qg bootstrap"),
+            ("profiles", {}, "no execution profiles are configured"),
+            ("gates", {}, "no gates are configured"),
+            (
+                "gates.unit.command",
+                " ",
+                "gate 'unit' has an unconfigured command",
+            ),
+            (
+                "gates.unit.timeout_seconds",
+                0,
+                "gate 'unit' needs a positive timeout_seconds",
+            ),
+            (
+                "gates.unit.clean_paths",
+                "bad",
+                "gate 'unit' clean_paths must be a string array",
+            ),
+            (
+                "policy.protected_paths",
+                "bad",
+                "policy.protected_paths must be a string array",
+            ),
+            (
+                "policy.blocked_command_regex",
+                ["["],
+                "invalid blocked command regex '[': unterminated character set at position 0",
+            ),
+            (
+                "risk_profiles.standard.required_execution_profiles",
+                [],
+                "risk profile 'standard' has no required execution profiles",
+            ),
+        )
+        for path, value, expected in mutations:
+            with self.subTest(path=path):
+                errors = validate_policy(self._replace(policy, path, value))
+                self.assertIn(expected, errors)
+
+    def test_policy_validator_detects_missing_references(self) -> None:
+        policy = tomllib.loads(render_policy("@quality"))
+        policy["profiles"]["fast"]["gates"].append("missing")
+        self.assertIn(
+            "profile 'fast' references missing gate 'missing'",
+            validate_policy(policy),
+        )
+        policy = tomllib.loads(render_policy("@quality"))
+        policy["risk_profiles"]["experiment"]["required_execution_profiles"] = ["missing"]
+        self.assertIn(
+            "risk profile 'experiment' references a missing execution profile",
+            validate_policy(policy),
+        )
+        policy["risk_profiles"].pop("critical")
+        self.assertIn("missing risk profile 'critical'", validate_policy(policy))
 
 
 class StructureRatchetTests(RepoCase):

@@ -46,19 +46,20 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-009 | Enforce Python structure at changed-function granularity in adopt mode.                          | Running Xenon against every function in a touched legacy file blocked unrelated edits and did not use AQG's configured line, complexity, or nesting limits. | The repository reaches strict whole-tree enforcement.                           |
 | D-010 | Require c8 12 for non-Vitest JavaScript coverage.                                                | c8 10.1.3 introduced a high-severity glob/minimatch advisory chain; c8 12 removes it while retaining AQG's machine-readable evidence contract.              | c8 publishes a new reviewed major or a compatible native runner supersedes it.  |
 | D-011 | Require both cross-platform command contracts and live disposable-project conformance.           | Static detection tests cannot expose runner discovery, module resolution, coverage-report, package-manager, browser-port, or generated-template failures.   | The supported language or runner matrix changes.                                |
+| D-012 | Decompose validators without changing diagnostic text or order.                                  | Configuration diagnostics are part of the operator and automation contract; reducing complexity must not make failures less stable or actionable.           | A versioned machine-readable diagnostic schema replaces text compatibility.     |
 
 ## Progress
 
-| Phase                          | Status   | Evidence                                                                                               |
-| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------ |
-| Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.            |
-| CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18. |
-| Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; Linux/macOS/Windows CI matrix added.          |
-| Coverage and complexity debt   | Active   | Touched high-complexity detector/scaffold/adapter functions refactored below Standard limits.          |
-| End-to-end dogfood             | Pending  | —                                                                                                      |
-| Release and provenance         | Pending  | —                                                                                                      |
-| GitHub governance              | Pending  | —                                                                                                      |
-| Final independent verification | Pending  | —                                                                                                      |
+| Phase                          | Status   | Evidence                                                                                                                                        |
+| ------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                     |
+| CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                          |
+| Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; Linux/macOS/Windows CI matrix added.                                                   |
+| Coverage and complexity debt   | Active   | Fresh baseline: 36.02% lines / 27.17% branches; detector, scaffold, adapter, project, and policy functions touched so far meet Standard limits. |
+| End-to-end dogfood             | Pending  | —                                                                                                                                               |
+| Release and provenance         | Pending  | —                                                                                                                                               |
+| GitHub governance              | Pending  | —                                                                                                                                               |
+| Final independent verification | Pending  | —                                                                                                                                               |
 
 ## Lessons
 
@@ -82,6 +83,8 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
   discovery, Jest array-option parsing, Node directory arguments, Yarn PnP artifacts, tox
   artifacts, Python src-layout imports, fixed browser ports, and protected ESM dependency
   resolution.
+- Splitting configuration validation by contract dimension reduced structural risk while
+  table-driven defect injection proved the exact messages operators and agents rely on.
 
 ## Evidence conventions
 

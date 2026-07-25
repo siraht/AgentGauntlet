@@ -231,12 +231,28 @@ def load_policy(root: Path) -> dict[str, Any]:
     return policy
 
 
-def validate_policy(policy: dict[str, Any], *, require_initialized: bool = True) -> list[str]:
+def _profile_references(
+    profile_name: str, profile: Any, gates: dict[str, Any]
+) -> tuple[list[str], set[str]]:
+    gate_names = profile.get("gates") if isinstance(profile, dict) else None
+    if not isinstance(gate_names, list) or not gate_names:
+        return [f"profile {profile_name!r} has no gates"], set()
     errors: list[str] = []
-    if require_initialized and not policy.get("initialized", False):
-        errors.append("policy initialized=false; run qg init or qg bootstrap")
-    profiles = policy.get("profiles")
-    gates = policy.get("gates")
+    referenced: set[str] = set()
+    for gate_name in gate_names:
+        if not isinstance(gate_name, str):
+            errors.append(f"profile {profile_name!r} has a non-string gate")
+        else:
+            referenced.add(gate_name)
+            if gate_name not in gates:
+                errors.append(f"profile {profile_name!r} references missing gate {gate_name!r}")
+    return errors, referenced
+
+
+def _profile_gate_references(
+    profiles: Any, gates: Any
+) -> tuple[list[str], dict[str, Any], dict[str, Any], set[str]]:
+    errors: list[str] = []
     if not isinstance(profiles, dict) or not profiles:
         errors.append("no execution profiles are configured")
         profiles = {}
@@ -245,45 +261,61 @@ def validate_policy(policy: dict[str, Any], *, require_initialized: bool = True)
         gates = {}
     referenced: set[str] = set()
     for profile_name, profile in profiles.items():
-        gate_names = profile.get("gates") if isinstance(profile, dict) else None
-        if not isinstance(gate_names, list) or not gate_names:
-            errors.append(f"profile {profile_name!r} has no gates")
-            continue
-        for gate_name in gate_names:
-            if not isinstance(gate_name, str):
-                errors.append(f"profile {profile_name!r} has a non-string gate")
-                continue
-            referenced.add(gate_name)
-            if gate_name not in gates:
-                errors.append(f"profile {profile_name!r} references missing gate {gate_name!r}")
+        profile_errors, profile_references = _profile_references(profile_name, profile, gates)
+        errors.extend(profile_errors)
+        referenced.update(profile_references)
+    return errors, profiles, gates, referenced
+
+
+def _gate_contract_errors(name: str, gate: Any) -> list[str]:
+    mapping = gate if isinstance(gate, dict) else {}
+    errors: list[str] = []
+    command = mapping.get("command")
+    if not isinstance(command, str) or not command.strip() or PLACEHOLDER in command:
+        errors.append(f"gate {name!r} has an unconfigured command")
+    timeout = mapping.get("timeout_seconds", 0)
+    if not isinstance(timeout, int) or timeout <= 0:
+        errors.append(f"gate {name!r} needs a positive timeout_seconds")
+    clean_paths = mapping.get("clean_paths", [])
+    if not isinstance(clean_paths, list) or not all(
+        isinstance(value, str) for value in clean_paths
+    ):
+        errors.append(f"gate {name!r} clean_paths must be a string array")
+    return errors
+
+
+def _validate_referenced_gates(gates: dict[str, Any], referenced: set[str]) -> list[str]:
+    errors: list[str] = []
     for name in sorted(referenced):
-        gate = gates.get(name, {})
-        command = gate.get("command") if isinstance(gate, dict) else None
-        if not isinstance(command, str) or not command.strip() or PLACEHOLDER in command:
-            errors.append(f"gate {name!r} has an unconfigured command")
-        timeout = gate.get("timeout_seconds", 0) if isinstance(gate, dict) else 0
-        if not isinstance(timeout, int) or timeout <= 0:
-            errors.append(f"gate {name!r} needs a positive timeout_seconds")
-        clean_paths = gate.get("clean_paths", []) if isinstance(gate, dict) else []
-        if not isinstance(clean_paths, list) or not all(
-            isinstance(value, str) for value in clean_paths
-        ):
-            errors.append(f"gate {name!r} clean_paths must be a string array")
-    policy_cfg = policy.get("policy", {})
+        errors.extend(_gate_contract_errors(name, gates.get(name)))
+    return errors
+
+
+def _validate_policy_controls(policy_cfg: Any) -> list[str]:
+    mapping = policy_cfg if isinstance(policy_cfg, dict) else {}
+    errors: list[str] = []
     for key in ("protected_paths", "human_review_paths", "blocked_command_regex"):
-        values = policy_cfg.get(key, []) if isinstance(policy_cfg, dict) else []
+        values = mapping.get(key, [])
         if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
             errors.append(f"policy.{key} must be a string array")
-    for expression in (
-        policy_cfg.get("blocked_command_regex", []) if isinstance(policy_cfg, dict) else []
-    ):
+    expressions = mapping.get("blocked_command_regex", [])
+    if not isinstance(expressions, list):
+        return errors
+    for expression in expressions:
+        if not isinstance(expression, str):
+            continue
         try:
             re.compile(expression, re.IGNORECASE)
         except re.error as exc:
             errors.append(f"invalid blocked command regex {expression!r}: {exc}")
-    risk_profiles = policy.get("risk_profiles", {})
+    return errors
+
+
+def _validate_risk_profiles(risk_profiles: Any, profiles: dict[str, Any]) -> list[str]:
+    mapping = risk_profiles if isinstance(risk_profiles, dict) else {}
+    errors: list[str] = []
     for name in RISK_ORDER:
-        config = risk_profiles.get(name) if isinstance(risk_profiles, dict) else None
+        config = mapping.get(name)
         if not isinstance(config, dict):
             errors.append(f"missing risk profile {name!r}")
             continue
@@ -292,6 +324,23 @@ def validate_policy(policy: dict[str, Any], *, require_initialized: bool = True)
             errors.append(f"risk profile {name!r} has no required execution profiles")
         elif any(profile not in profiles for profile in required):
             errors.append(f"risk profile {name!r} references a missing execution profile")
+    return errors
+
+
+def validate_policy(policy: dict[str, Any], *, require_initialized: bool = True) -> list[str]:
+    errors = (
+        ["policy initialized=false; run qg init or qg bootstrap"]
+        if require_initialized and not policy.get("initialized", False)
+        else []
+    )
+    reference_errors, profiles, gates, referenced = _profile_gate_references(
+        policy.get("profiles"), policy.get("gates")
+    )
+    errors.extend(reference_errors)
+    errors.extend(_validate_referenced_gates(gates, referenced))
+    policy_cfg = policy.get("policy", {})
+    errors.extend(_validate_policy_controls(policy_cfg))
+    errors.extend(_validate_risk_profiles(policy.get("risk_profiles"), profiles))
     return errors
 
 
