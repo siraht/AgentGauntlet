@@ -55,6 +55,7 @@ from .wizard import run_wizard
 ACTIVE_ARGV: ContextVar[tuple[str, ...]] = ContextVar("aqg_active_argv", default=())
 
 CONVENTIONAL_COMMANDS: dict[str, tuple[str, ...]] = {
+    "docs": ("robot-docs", "guide"),
     "health": ("doctor",),
     "inspect": ("status",),
     "scan": ("review", "--no-evidence"),
@@ -408,6 +409,8 @@ def _add_control_parsers(sub: Any) -> None:
     robot_docs = sub.add_parser("robot-docs", help="read the embedded agent operating guide")
     robot_docs_sub = _nested_subparsers(robot_docs, "robot_docs_command")
     robot_docs_sub.add_parser("guide", help="show safe setup and review workflows")
+    help_parser = sub.add_parser("help", help="show help for any command path")
+    help_parser.add_argument("path", nargs="*", help="command path such as onboarding refresh")
     conf = sub.add_parser(
         "conformance", help="prove AQG and optionally installed tools fail on known defects"
     )
@@ -923,6 +926,43 @@ def _dispatch_robot_docs(args: argparse.Namespace, root: Path) -> int:
     return PASS
 
 
+def _resolve_help_parser(path: list[str]) -> argparse.ArgumentParser:
+    parser: argparse.ArgumentParser = build_parser()
+    resolved: list[str] = []
+    for index, segment in enumerate(path):
+        choices = _subparser_choices(parser)
+        if segment not in choices:
+            matches = difflib.get_close_matches(segment, sorted(choices), n=1, cutoff=0.55)
+            hint = ""
+            if matches:
+                suggestion = ["qg", "help", *resolved, matches[0], *path[index + 1 :]]
+                hint = f" Try: {shlex.join(suggestion)}"
+            raise ConfigurationError(
+                f"unknown help command {segment!r} after {' '.join(resolved) or 'qg'}.{hint}"
+            )
+        parser = choices[segment]
+        resolved.append(segment)
+    return parser
+
+
+def _dispatch_help(args: argparse.Namespace, root: Path) -> int:
+    del root
+    parser = _resolve_help_parser(args.path)
+    rendered = parser.format_help()
+    if args.json:
+        _json_dump(
+            {
+                "schema_version": 1,
+                "path": args.path,
+                "usage": parser.format_usage().strip(),
+                "help": rendered,
+            }
+        )
+    else:
+        print(rendered, end="")
+    return PASS
+
+
 def _print_guide_search(payload: list[dict[str, Any]]) -> None:
     for item in payload:
         print(f"{item['topic']}: {item['title']}\n  " + "\n  ".join(item["snippets"]))
@@ -1192,6 +1232,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "gate": _dispatch_gate,
     "golden": _dispatch_golden,
     "guidance": _dispatch_guidance,
+    "help": _dispatch_help,
     "hook-pretool": _dispatch_hook_pretool,
     "hook-stop": _dispatch_hook_stop,
     "new": _dispatch_new,
@@ -1220,7 +1261,7 @@ def dispatch(args: argparse.Namespace) -> int:
     handler = COMMAND_HANDLERS.get(args.command)
     if handler is None:
         raise ConfigurationError(f"unknown command {args.command!r}")
-    rootless = {"capabilities", "robot-docs"}
+    rootless = {"capabilities", "help", "robot-docs"}
     return handler(args, _root(args.root, require_initialized=args.command not in rootless))
 
 

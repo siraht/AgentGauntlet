@@ -52,6 +52,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-015 | Suggest corrections but never auto-execute guessed commands.                                     | Intent recovery should remove retry friction without turning an ambiguous alias into broader write authority or surprising side effects.                                             | A versioned alias becomes an explicitly documented public command.              |
 | D-016 | Keep the agent operating guide embedded and project-independent.                                 | A cold agent must be able to discover safe setup and review workflows before it has a configured repository or external documentation context.                                       | Project-specific guidance needs a separate generated extension.                 |
 | D-017 | Make triage a read-only aggregation over existing control models.                                | Daily orientation should collapse multiple calls without creating a second source of truth or allowing the overview command to mutate evidence.                                      | A measured hot-path bottleneck requires a cached projection.                    |
+| D-018 | Support help-first ordering without duplicating command documentation.                           | `qg help COMMAND` is a conventional first guess; resolving it through the real parser prevents a parallel help model from drifting.                                                  | Argparse gains a native equivalent with the same JSON contract.                 |
 
 ## Progress
 

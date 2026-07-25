@@ -139,6 +139,7 @@ class CliControlSurfaceTests(unittest.TestCase):
             (["test"], "qg check fast"),
             (["verify"], "qg check-risk --keep-going"),
             (["health"], "qg doctor"),
+            (["docs"], "qg robot-docs guide"),
             (["onboarding", "refrsh"], "qg onboarding refresh"),
             (["check"], "qg check fast"),
         )
@@ -191,6 +192,27 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("selected", first["risk"])
         self.assertIn("qg doctor", first["commands"])
         self.assertIn("qg check-risk --keep-going", first["commands"])
+
+    def test_help_accepts_conventional_and_nested_command_ordering(self) -> None:
+        human = io.StringIO()
+        with contextlib.redirect_stdout(human):
+            self.assertEqual(main(["help", "onboarding", "refresh"]), PASS)
+        self.assertIn("usage: qg onboarding refresh", human.getvalue())
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            self.assertEqual(main(["help", "check", "--json"]), PASS)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["path"], ["check"])
+        self.assertIn("{fast,pr,deep,release}", payload["help"])
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(
+                main(["help", "onbording", "refresh"]),
+                CONFIGURATION_ERROR,
+            )
+        self.assertIn("qg help onboarding refresh", stderr.getvalue())
 
 
 if __name__ == "__main__":
