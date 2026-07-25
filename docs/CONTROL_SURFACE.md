@@ -117,3 +117,19 @@ python3 quality/qg.py review --json --no-evidence
 ```
 
 Exit codes remain stable across human and machine output.
+
+## Control-surface conformance
+
+The source repository continuously dogfoods the public workflow in a disposable
+project:
+
+```sh
+python3 scripts/dogfood_control_surfaces.py \
+  --output build/aqg/control-surface-dogfood.json
+```
+
+The harness proves cold-start help and guidance, one-command setup, status,
+doctor, fail-closed triage, review packets and SARIF, internal conformance, a
+real pseudo-terminal TUI session, dashboard security headers, read-only action
+denial, token rejection, authenticated review, and unknown-action handling. CI
+retains the normalized JSON result.
