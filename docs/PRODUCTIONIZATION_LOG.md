@@ -33,26 +33,28 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 
 ## Decisions
 
-| ID    | Decision                                                                                    | Rationale                                                                                                                                                   | Revisit when                                                                    |
-| ----- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| D-001 | Preserve the exact recovered baseline commit and its historical generated conformance file. | Byte-for-byte recovery provenance is more valuable than rewriting already-public history; the file contains no secret and is deleted at current `HEAD`.     | A confirmed secret or legal issue is discovered in the historical object.       |
-| D-002 | Keep the repository in `adopt` mode during remediation.                                     | Switching to strict whole-tree enforcement before inherited debt meets policy would turn known debt into permanent red CI or encourage threshold weakening. | Full-tree coverage, structure, and mutation evidence meet the selected profile. |
-| D-003 | Make changes on `agent/productionize-v2-beta` in small reviewable commits.                  | Policy, dependency, test, refactor, release, and governance changes need separate rollback points and review surfaces.                                      | The productionization pull request merges.                                      |
-| D-004 | Treat this effort as explicit policy maintenance.                                           | The user explicitly requested CI, governance, dependency, and gauntlet improvements that necessarily touch protected control-plane files.                   | Policy-plane work is complete.                                                  |
-| D-005 | Prefer attestable automation over a locally stored private signing key.                     | Repository releases must be verifiable without creating or exposing a long-lived secret in the workspace.                                                   | A managed organizational signing identity is provided.                          |
+| ID    | Decision                                                                                         | Rationale                                                                                                                                                   | Revisit when                                                                    |
+| ----- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| D-001 | Preserve the exact recovered baseline commit and its historical generated conformance file.      | Byte-for-byte recovery provenance is more valuable than rewriting already-public history; the file contains no secret and is deleted at current `HEAD`.     | A confirmed secret or legal issue is discovered in the historical object.       |
+| D-002 | Keep the repository in `adopt` mode during remediation.                                          | Switching to strict whole-tree enforcement before inherited debt meets policy would turn known debt into permanent red CI or encourage threshold weakening. | Full-tree coverage, structure, and mutation evidence meet the selected profile. |
+| D-003 | Make changes on `agent/productionize-v2-beta` in small reviewable commits.                       | Policy, dependency, test, refactor, release, and governance changes need separate rollback points and review surfaces.                                      | The productionization pull request merges.                                      |
+| D-004 | Treat this effort as explicit policy maintenance.                                                | The user explicitly requested CI, governance, dependency, and gauntlet improvements that necessarily touch protected control-plane files.                   | Policy-plane work is complete.                                                  |
+| D-005 | Prefer attestable automation over a locally stored private signing key.                          | Repository releases must be verifiable without creating or exposing a long-lived secret in the workspace.                                                   | A managed organizational signing identity is provided.                          |
+| D-006 | Pin third-party GitHub Actions to reviewed immutable commits and let Dependabot propose updates. | Mutable major tags allow unreviewed workflow code to change; commit pins plus automated proposals preserve integrity and maintainability.                   | GitHub provides native immutable action references with equivalent automation.  |
+| D-007 | Override Stryker's transitive `qs` dependency to `6.15.3`.                                       | Upstream pins vulnerable `6.15.1`; the patched release removes the findings without replacing the mutation engine.                                          | Stryker removes the dependency or ships a patched version.                      |
 
 ## Progress
 
-| Phase                          | Status      | Evidence                                                                                    |
-| ------------------------------ | ----------- | ------------------------------------------------------------------------------------------- |
-| Baseline and risk contract     | In progress | Goal created; baseline status and public remote verified; productionization branch created. |
-| CI and dependencies            | Pending     | —                                                                                           |
-| Cross-stack conformance        | Pending     | —                                                                                           |
-| Coverage and complexity debt   | Pending     | —                                                                                           |
-| End-to-end dogfood             | Pending     | —                                                                                           |
-| Release and provenance         | Pending     | —                                                                                           |
-| GitHub governance              | Pending     | —                                                                                           |
-| Final independent verification | Pending     | —                                                                                           |
+| Phase                          | Status   | Evidence                                                                                               |
+| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------ |
+| Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.            |
+| CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18. |
+| Cross-stack conformance        | Pending  | —                                                                                                      |
+| Coverage and complexity debt   | Pending  | —                                                                                                      |
+| End-to-end dogfood             | Pending  | —                                                                                                      |
+| Release and provenance         | Pending  | —                                                                                                      |
+| GitHub governance              | Pending  | —                                                                                                      |
+| Final independent verification | Pending  | —                                                                                                      |
 
 ## Lessons
 
@@ -62,6 +64,11 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
   historical artifacts are retained only in the recovery commit and ignored thereafter.
 - Release reproducibility is incomplete unless the final source state, embedded license,
   checksums, and published artifacts are all tied to the same revision.
+- An exact transitive tool dependency can prevent normal audit remediation; a narrow root
+  override is safer than accepting the advisory when conformance proves the tool still
+  starts and propagates failures.
+- Immutable action pins need an update mechanism. Dependabot keeps the review boundary
+  explicit without freezing security patches indefinitely.
 
 ## Evidence conventions
 

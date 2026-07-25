@@ -1,5 +1,8 @@
 {
   "name": "aqg-project-toolchain",
+  "overrides": {
+    "qs": "6.15.3"
+  },
   "private": true,
   "type": "module",
   "description": "Project-local JavaScript/Web quality tools resolved and locked during setup managed by Agent Quality Gauntlet",

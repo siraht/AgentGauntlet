@@ -26,6 +26,9 @@
     "vitest": "4.1.10"
   },
   "name": "aqg-project-toolchain",
+  "overrides": {
+    "qs": "6.15.3"
+  },
   "private": true,
   "type": "module"
 }

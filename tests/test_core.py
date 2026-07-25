@@ -395,6 +395,27 @@ class SetupContractTests(RepoCase):
                 relative,
             )
 
+    def test_js_toolchain_overrides_vulnerable_qs_transitive(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        installed_manifest = json.loads(
+            (source_root / "quality" / "tools" / "js" / "package.json").read_text(encoding="utf-8")
+        )
+        template_manifest = json.loads(
+            (source_root / "src" / "aqg" / "templates" / "js" / "package.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        lock = json.loads(
+            (source_root / "quality" / "tools" / "js" / "package-lock.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual(installed_manifest["overrides"]["qs"], "6.15.3")
+        self.assertEqual(template_manifest["overrides"]["qs"], "6.15.3")
+        self.assertEqual(lock["packages"]["node_modules/qs"]["version"], "6.15.3")
+        self.assertNotIn("node_modules/typed-rest-client/node_modules/qs", lock["packages"])
+
     def test_rendered_policy_contains_every_registered_gate(self) -> None:
         policy = tomllib.loads(render_policy("@quality"))
         self.assertEqual(set(policy["gates"]), set(GATE_NAMES))
