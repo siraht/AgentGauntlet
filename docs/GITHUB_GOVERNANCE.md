@@ -13,8 +13,8 @@ default branch by:
 - requiring linear history and pull requests;
 - requiring one independent approval, approval of the last reviewable push, dismissal
   of stale approvals, and resolution of review conversations;
-- requiring every source, cross-platform contract, live-project, browser, and release
-  check from the GitHub Actions app;
+- requiring every source, cross-platform contract, live-project, browser, release-build,
+  and risk-selected `policy-evidence` check from the GitHub Actions app;
 - requiring the pull request to be current with the default branch.
 
 There are no bypass actors. Because this is currently a personal repository with one
@@ -55,3 +55,9 @@ gh api repos/siraht/AgentGauntlet
 The current pull request is deliberately kept unmergeable until all required checks pass
 and an independent human approves it. Agent verification is additional evidence, not a
 substitute for that approval.
+
+The `policy-evidence` context is intentionally different from the faster source and
+conformance checks. It installs the protected checker toolchains in a clean runner and
+executes `qg check-risk`, which resolves the committed risk card and runs its required
+profile. A red policy context cannot be reinterpreted as green because the other contexts
+pass; remediation or a narrow, owned, expiring, human-approved exception is required.
