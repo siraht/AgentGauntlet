@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -370,6 +371,29 @@ class SetupContractTests(RepoCase):
         )
         self.assertIn("tools install --ci --browsers", workflow)
         self.assertEqual(workflow.count("continue-on-error: true"), 1)
+        references = re.findall(
+            r"uses:\s+[\w.-]+/[\w.-]+(?:/[\w.-]+)?@([^\s#]+)",
+            workflow,
+        )
+        self.assertTrue(references)
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in references))
+
+    def test_checked_in_workflows_pin_actions_by_commit(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        for relative in (
+            ".github/workflows/quality-gauntlet.yml",
+            "ci/github-actions-quality.yml.example",
+        ):
+            workflow = (source_root / relative).read_text(encoding="utf-8")
+            references = re.findall(
+                r"uses:\s+[\w.-]+/[\w.-]+(?:/[\w.-]+)?@([^\s#]+)",
+                workflow,
+            )
+            self.assertTrue(references, relative)
+            self.assertTrue(
+                all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in references),
+                relative,
+            )
 
     def test_rendered_policy_contains_every_registered_gate(self) -> None:
         policy = tomllib.loads(render_policy("@quality"))

@@ -448,7 +448,7 @@ def _write_ci(
     )
     node_step = (
         """
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -478,10 +478,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
 {node_step}      - name: Resolve comparison base
@@ -516,13 +516,13 @@ jobs:
           python3 quality/qg.py review --write --sarif --github-summary "$GITHUB_STEP_SUMMARY"
       - name: Upload AQG SARIF
         if: always() && hashFiles('.aqg/review/review.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         with:
           sarif_file: .aqg/review/review.sarif
           category: aqg-review
       - name: Upload quality evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: aqg-evidence-${{{{ github.run_id }}}}
           path: |
