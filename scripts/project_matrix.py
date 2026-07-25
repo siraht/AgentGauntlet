@@ -47,7 +47,14 @@ def _run(command: list[str], *, cwd: Path, timeout: int = 900) -> subprocess.Com
         check=False,
     )
     if result.returncode:
-        detail = result.stderr.strip() or result.stdout.strip()
+        detail = "\n".join(
+            stream
+            for stream in (
+                f"stdout:\n{result.stdout.strip()}" if result.stdout.strip() else "",
+                f"stderr:\n{result.stderr.strip()}" if result.stderr.strip() else "",
+            )
+            if stream
+        )
         raise RuntimeError(f"{' '.join(command)} failed with {result.returncode}: {detail}")
     return result
 
@@ -113,6 +120,7 @@ def _corepack_shim(project: Path, manager: str) -> None:
         raise RuntimeError("a real Node.js executable is required for the Yarn matrix case")
     shim = project.parent / ".manager-bin"
     shim.mkdir(exist_ok=True)
+    _run([str(node), str(corepack), "install"], cwd=project)
     _run(
         [str(node), str(corepack), "enable", "--install-directory", str(shim), manager],
         cwd=project,
@@ -168,7 +176,6 @@ def _manager_install(project: Path, manager: str) -> None:
 
 def _prepare_javascript(project: Path, case: str) -> list[str]:
     manager, runner, version = JS_CASES[case]
-    _corepack_shim(project, manager)
     source_path, test_path, combined = _javascript_source(runner)
     source, test = combined.split("\0", 1)
     _write(project / source_path, source)
@@ -190,6 +197,7 @@ def _prepare_javascript(project: Path, case: str) -> list[str]:
     if runner == "node":
         package["scripts"] = {"check": "node --test"}
     _write(project / "package.json", json.dumps(package, indent=2) + "\n")
+    _corepack_shim(project, manager)
     _manager_install(project, manager)
     return ["test_integrity", "unit", "structure", "coverage"]
 

@@ -138,6 +138,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A binary on `PATH` is not evidence that it satisfies a project's declared tool contract.
   Package-manager conformance must select the version named by `packageManager`, including
   when the CI image already exposes an incompatible global Yarn.
+- A cold CI cache must be part of the package-manager proof. Hydrate the declared manager
+  explicitly with Corepack before invoking its shim, and preserve both stdout and stderr
+  on failure; a warm local cache can otherwise hide the download path entirely.
 
 ## Evidence conventions
 

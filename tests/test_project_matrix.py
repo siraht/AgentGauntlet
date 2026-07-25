@@ -42,11 +42,13 @@ class CrossPlatformMatrixContractTests(unittest.TestCase):
             project.mkdir()
             _corepack_shim(project, "yarn")
 
-            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_count, 3)
             bootstrap = run.call_args_list[0].args[0]
             self.assertEqual(bootstrap[:2], ["npm", "install"])
             self.assertIn("corepack@0.34.0", bootstrap)
-            enable = run.call_args_list[1].args[0]
+            hydrate = run.call_args_list[1].args[0]
+            self.assertEqual(hydrate[-1], "install")
+            enable = run.call_args_list[2].args[0]
             self.assertEqual(enable[-1], "yarn")
             self.assertTrue(os.environ["PATH"].startswith(str(Path(temporary) / ".manager-bin")))
 
