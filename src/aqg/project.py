@@ -80,9 +80,12 @@ def _validate_gates(project: dict[str, Any]) -> list[str]:
             errors.append(f"gates.{gate} must be an object")
         elif not isinstance(config.get("applicable"), bool):
             errors.append(f"gates.{gate}.applicable must be boolean")
-        if isinstance(config, dict) and config.get("applicable") is False:
-            if not str(config.get("reason", "")).strip():
-                errors.append(f"gates.{gate}.reason is required when the gate is not applicable")
+        if (
+            isinstance(config, dict)
+            and config.get("applicable") is False
+            and not str(config.get("reason", "")).strip()
+        ):
+            errors.append(f"gates.{gate}.reason is required when the gate is not applicable")
     return errors
 
 

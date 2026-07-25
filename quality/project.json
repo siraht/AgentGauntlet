@@ -153,7 +153,7 @@
     ],
     "html": ["src"],
     "source": ["scripts", "src"],
-    "tests": ["quality", "src", "tests"]
+    "tests": ["tests", "agent_ergonomics_audit/audit/regression_tests"]
   },
   "profile_thresholds": {
     "deep": {
@@ -207,9 +207,29 @@
   },
   "python": {
     "manager": "uv",
+    "mutation_copy_paths": [
+      ".github",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "IMPLEMENTATION_STATUS.md",
+      "KEYSTONE.md",
+      "LICENSE",
+      "QUALITY.md",
+      "README.md",
+      "ci",
+      "docs",
+      "examples",
+      "feature-spec",
+      "features",
+      "global",
+      "install-aqg.sh",
+      "qg",
+      "qa",
+      "quality"
+    ],
     "pytest_args": ["--strict-config", "--strict-markers", "-ra"],
     "source_paths": ["scripts", "src"],
-    "test_paths": ["quality", "src", "tests"]
+    "test_paths": ["tests", "agent_ergonomics_audit/audit/regression_tests"]
   },
   "schema_version": 2,
   "stacks": {

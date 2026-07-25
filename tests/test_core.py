@@ -11,11 +11,23 @@ import tomllib
 import unittest
 import zipfile
 from pathlib import Path
+from typing import cast
 
-from aqg.adapters import _python_crap, _python_structure_evidence, run_adapter
+import pytest
+
+from aqg.adapters import (
+    _append_mutmut_config,
+    _classify_mutmut_results,
+    _is_test_path,
+    _js_mutation_scope,
+    _parse_mutmut_results,
+    _python_crap,
+    _python_structure_evidence,
+    run_adapter,
+)
 from aqg.approvals import template, validate_approval
 from aqg.cli import build_parser
-from aqg.constants import CONFIGURATION_ERROR, PASS
+from aqg.constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE
 from aqg.dashboard import DashboardServer, project_status
 from aqg.detect import detect_project
 from aqg.policy import GATE_NAMES, load_policy, render_policy, validate_policy
@@ -201,7 +213,7 @@ class ConfigurationValidationTests(RepoCase):
         target: dict[str, object] = changed
         parts = path.split(".")
         for part in parts[:-1]:
-            target = target[part]  # type: ignore[assignment]
+            target = cast(dict[str, object], target[part])
         target[parts[-1]] = value
         return changed
 
@@ -263,7 +275,8 @@ class ConfigurationValidationTests(RepoCase):
             ["stacks.typescript=true requires stacks.javascript=true"],
         )
         gate = copy.deepcopy(project)
-        gate["gates"]["unit"] = {"applicable": False, "reason": ""}  # type: ignore[index]
+        gates = cast(dict[str, object], gate["gates"])
+        gates["unit"] = {"applicable": False, "reason": ""}
         self.assertIn(
             "gates.unit.reason is required when the gate is not applicable",
             validate_project(gate),
@@ -816,6 +829,118 @@ class SetupContractTests(RepoCase):
         self.assertIn("uv==0.11.32", lock)
         self.assertIn("sha256:052561b89d5b2a8e1289f326d060e794", lock)
 
+    def test_source_mutation_routes_configuration_to_conformance(self) -> None:
+        candidates, configuration = _js_mutation_scope(
+            [
+                "src/app.js",
+                "src/vite.config.js",
+                "src/aqg/templates/js/eslint.config.mjs",
+                "quality/tools/js/config/eslint.config.mjs",
+            ]
+        )
+        self.assertEqual(candidates, ["src/app.js"])
+        self.assertEqual(
+            configuration,
+            [
+                "src/vite.config.js",
+                "src/aqg/templates/js/eslint.config.mjs",
+                "quality/tools/js/config/eslint.config.mjs",
+            ],
+        )
+
+    def test_configured_nested_test_root_overrides_filename_heuristics(self) -> None:
+        project = {
+            "paths": {"tests": ["tests", "agent_ergonomics_audit/audit/regression_tests"]},
+            "python": {"test_paths": ["tests"]},
+        }
+        self.assertTrue(
+            _is_test_path(
+                "agent_ergonomics_audit/audit/regression_tests/conftest.py",
+                project,
+            )
+        )
+        self.assertFalse(_is_test_path("src/conftest.py", project))
+
+    def test_mutmut_copies_nonstandard_test_roots_into_its_sandbox(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        nested = self.root / "audit" / "regression_tests"
+        nested.mkdir(parents=True)
+        (self.root / "fixtures").mkdir()
+        _append_mutmut_config(
+            self.root,
+            {
+                "python": {
+                    "source_paths": ["src"],
+                    "test_paths": ["tests", "audit/regression_tests"],
+                    "mutation_copy_paths": ["fixtures"],
+                }
+            },
+            ["src/example.py"],
+        )
+        content = (self.root / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(
+            'pytest_add_cli_args_test_selection = ["-m", "not mutation_incompatible", '
+            '"tests", "audit/regression_tests"]',
+            content,
+        )
+        self.assertIn('also_copy = ["audit/regression_tests", "fixtures"]', content)
+
+    def test_mutmut_result_parser_separates_outcomes(self) -> None:
+        counts, lines = _parse_mutmut_results(
+            """
+                aqg.example.x_value__mutmut_1: killed
+                aqg.example.x_value__mutmut_2: survived
+                aqg.example.x_value__mutmut_3: no tests
+                aqg.example.x_value__mutmut_4: not checked
+                aqg.example.x_value__mutmut_5: caught by type check
+            """
+        )
+
+        self.assertEqual(
+            counts,
+            {
+                "killed": 1,
+                "survived": 1,
+                "no tests": 1,
+                "not checked": 1,
+                "caught by type check": 1,
+            },
+        )
+        self.assertEqual(
+            lines["survived"],
+            ["aqg.example.x_value__mutmut_2: survived"],
+        )
+
+    def test_mutmut_result_classifier_enforces_score_and_completeness(self) -> None:
+        passing, passing_metrics = _classify_mutmut_results(
+            {"killed": 7, "survived": 1},
+            run_code=0,
+            results_code=0,
+            minimum_score=85,
+            maximum_survivors=1,
+        )
+        weak, weak_metrics = _classify_mutmut_results(
+            {"killed": 6, "survived": 2},
+            run_code=0,
+            results_code=0,
+            minimum_score=85,
+            maximum_survivors=2,
+        )
+        incomplete, _ = _classify_mutmut_results(
+            {"killed": 8, "not checked": 1},
+            run_code=0,
+            results_code=0,
+            minimum_score=85,
+            maximum_survivors=0,
+        )
+
+        self.assertEqual(passing, PASS)
+        self.assertEqual(passing_metrics["mutation_score"], 87.5)
+        self.assertEqual(weak, QUALITY_FAILURE)
+        self.assertEqual(weak_metrics["mutation_score"], 75.0)
+        self.assertEqual(incomplete, INFRASTRUCTURE_ERROR)
+
     def test_universal_lock_restores_direct_environment_markers(self) -> None:
         requirements = self.root / "requirements.in"
         lock = self.root / "requirements.lock.txt"
@@ -853,6 +978,7 @@ class SetupContractTests(RepoCase):
         self.assertEqual(code, PASS)
         self.assertTrue(report["inventory"]["complete"])
 
+    @pytest.mark.mutation_incompatible
     def test_standalone_zipapp_initializes_a_vendored_runtime(self) -> None:
         source_root = Path(__file__).resolve().parents[1]
         output = self.root / "release"

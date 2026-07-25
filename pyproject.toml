@@ -40,7 +40,10 @@ aqg = ["py.typed", "templates/**/*", "static/**/*", "guides/**/*"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers -ra"
-testpaths = ["tests"]
+testpaths = ["tests", "agent_ergonomics_audit/audit/regression_tests"]
+markers = [
+  "mutation_incompatible: test exercises a process-global native runtime that cannot be re-imported after mutmut forks",
+]
 
 [tool.ruff]
 line-length = 100

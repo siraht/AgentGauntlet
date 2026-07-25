@@ -42,7 +42,6 @@ from .scaffold import (
     refresh_onboarding,
     upgrade_runtime,
 )
-from .tui import run_tui
 from .util import (
     find_project_root,
     git_changed_files,
@@ -1233,6 +1232,8 @@ def _dispatch_dashboard(args: argparse.Namespace, root: Path) -> int:
 
 def _dispatch_tui(args: argparse.Namespace, root: Path) -> int:
     del args
+    from .tui import run_tui
+
     run_tui(root)
     return PASS
 

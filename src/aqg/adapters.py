@@ -80,7 +80,7 @@ def _relative_files(
     result: list[str] = []
     for path in files:
         rel = path.relative_to(root).as_posix()
-        is_test = _is_test_path(rel)
+        is_test = _is_test_path(rel, project)
         if tests is None or tests == is_test:
             result.append(rel)
     return result
@@ -132,12 +132,21 @@ def _changed_production_files(root: Path, project: dict[str, Any], suffixes: set
         path
         for path in git_changed_files(root, _base_ref(project))
         if Path(path).suffix.lower() in suffixes
-        and not _is_test_path(path)
+        and not _is_test_path(path, project)
         and (root / path).is_file()
     ]
 
 
-def _is_test_path(path: str) -> bool:
+def _is_test_path(path: str, project: dict[str, Any] | None = None) -> bool:
+    normalized = Path(path).as_posix().strip("/")
+    configured: list[str] = []
+    if project:
+        configured.extend(str(value) for value in project.get("paths", {}).get("tests", []))
+        configured.extend(str(value) for value in project.get("python", {}).get("test_paths", []))
+    for root in configured:
+        test_root = Path(root).as_posix().strip("/")
+        if test_root and (normalized == test_root or normalized.startswith(f"{test_root}/")):
+            return True
     parts = [part.lower() for part in Path(path).parts]
     name = Path(path).name.lower()
     return (
@@ -694,7 +703,7 @@ def _python_coverage_metrics(root: Path, path: Path, project: dict[str, Any]) ->
     covered = 0
     files = payload.get("files", {})
     for filename, changed_set in changed.items():
-        if not filename.endswith(".py") or _is_test_path(filename):
+        if not filename.endswith(".py") or _is_test_path(filename, project):
             continue
         data = files.get(filename) or files.get(str((root / filename).resolve()))
         if not isinstance(data, dict):
@@ -707,7 +716,7 @@ def _python_coverage_metrics(root: Path, path: Path, project: dict[str, Any]) ->
     thresholds = _effective_thresholds(project)["coverage"]
     failures: list[str] = []
     changed_production = [
-        path for path in changed if path.endswith(".py") and not _is_test_path(path)
+        path for path in changed if path.endswith(".py") and not _is_test_path(path, project)
     ]
     if not _adopt_mode(project):
         if line_pct < float(thresholds["lines"]):
@@ -749,7 +758,7 @@ def _js_coverage_metrics(
                 rel = Path(filename).resolve().relative_to(root.resolve()).as_posix()
             except ValueError:
                 rel = filename
-            if rel not in changed or _is_test_path(rel):
+            if rel not in changed or _is_test_path(rel, project):
                 continue
             changed_set = changed[rel]
             statement_map = data.get("statementMap", {})
@@ -766,7 +775,7 @@ def _js_coverage_metrics(
     changed_production = [
         path
         for path in changed
-        if Path(path).suffix.lower() in JS_SUFFIXES and not _is_test_path(path)
+        if Path(path).suffix.lower() in JS_SUFFIXES and not _is_test_path(path, project)
     ]
     if not _adopt_mode(project):
         for name in ("lines", "branches", "functions", "statements"):
@@ -1191,16 +1200,94 @@ def _append_mutmut_config(
     sources = project.get("python", {}).get("source_paths", source_paths(project))
     tests = project.get("python", {}).get("test_paths", ["tests", "test"])
     if "[tool.mutmut]" not in original:
+        selected_tests = [path for path in tests if (project_copy / path).exists()]
+        extra_test_roots = [
+            path for path in selected_tests if Path(path).parts[0].lower() not in {"test", "tests"}
+        ]
+        additional_copy = [
+            str(path)
+            for path in project.get("python", {}).get("mutation_copy_paths", [])
+            if (project_copy / str(path)).exists()
+        ]
+        also_copy = list(dict.fromkeys([*extra_test_roots, *additional_copy]))
         original = original.rstrip() + "\n\n[tool.mutmut]\n"
         original += "source_paths = " + json.dumps(sources) + "\n"
         original += (
             "pytest_add_cli_args_test_selection = "
-            + json.dumps([path for path in tests if (project_copy / path).exists()])
+            + json.dumps(["-m", "not mutation_incompatible", *selected_tests])
             + "\n"
         )
+        if also_copy:
+            original += "also_copy = " + json.dumps(also_copy) + "\n"
         original += "mutate_only_covered_lines = true\nmax_stack_depth = 8\non_dependency_change = 'rerun'\n"
     original = _upsert_toml_array(original, "tool.mutmut", "only_mutate", only_mutate)
     pyproject.write_text(original, encoding="utf-8")
+
+
+_MUTMUT_STATUSES = (
+    "caught by type check",
+    "check was interrupted by user",
+    "not checked",
+    "no tests",
+    "suspicious",
+    "survived",
+    "segfault",
+    "skipped",
+    "timeout",
+    "killed",
+)
+
+
+def _parse_mutmut_results(text: str) -> tuple[dict[str, int], dict[str, list[str]]]:
+    counts: dict[str, int] = {}
+    lines: dict[str, list[str]] = {}
+    statuses = "|".join(re.escape(status) for status in _MUTMUT_STATUSES)
+    pattern = re.compile(rf"^\s*(?P<mutant>.+?):\s*(?P<status>{statuses})\s*$")
+    for line in text.splitlines():
+        match = pattern.match(line)
+        if match is None:
+            continue
+        status = match.group("status")
+        counts[status] = counts.get(status, 0) + 1
+        lines.setdefault(status, []).append(line.strip())
+    return counts, lines
+
+
+def _classify_mutmut_results(
+    status_counts: dict[str, int],
+    *,
+    run_code: int,
+    results_code: int,
+    minimum_score: float,
+    maximum_survivors: int,
+) -> tuple[int, dict[str, Any]]:
+    killed = status_counts.get("killed", 0) + status_counts.get("caught by type check", 0)
+    survivors = status_counts.get("survived", 0) + status_counts.get("no tests", 0)
+    denominator = killed + survivors
+    score = round(killed * 100 / denominator, 2) if denominator else 0.0
+    incomplete_statuses = (
+        "check was interrupted by user",
+        "not checked",
+        "segfault",
+        "skipped",
+        "suspicious",
+        "timeout",
+    )
+    incomplete = sum(status_counts.get(status, 0) for status in incomplete_statuses)
+    if run_code not in {0, 1} or results_code not in {0, 1} or not status_counts or incomplete:
+        code = INFRASTRUCTURE_ERROR
+    elif survivors > maximum_survivors or score < minimum_score:
+        code = QUALITY_FAILURE
+    elif run_code == 1:
+        code = INFRASTRUCTURE_ERROR
+    else:
+        code = PASS
+    return code, {
+        "killed": killed,
+        "survivors": survivors,
+        "mutation_score": score,
+        "incomplete_mutants": incomplete,
+    }
 
 
 def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -1231,37 +1318,49 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
         env={"PYTHONPATH": python_path, "PYTHONHASHSEED": "0", "TZ": "UTC"},
     )
     results = run_command(
-        [mutmut, "results"], cwd=work, timeout=300, env={"PYTHONPATH": python_path}
+        [mutmut, "results", "--all"],
+        cwd=work,
+        timeout=300,
+        env={"PYTHONPATH": python_path},
     )
-    text = run.stdout + "\n" + run.stderr + "\n" + results.stdout + "\n" + results.stderr
-    survivors = 0
-    for pattern in (r"(?i)survived\D+(\d+)", r"🙁\s*(\d+)"):
-        match = re.search(pattern, text)
-        if match:
-            survivors = max(survivors, int(match.group(1)))
-    listed = [
-        line
-        for line in results.stdout.splitlines()
-        if re.search(r"(?i)(survived|x_.*__mutmut_)", line)
-    ]
-    survivors = max(survivors, len(listed))
-    maximum = int(_effective_thresholds(project)["mutation"].get("maximum_survivors", 0))
-    if run.code not in {0, 1} or results.code not in {0, 1}:
-        code = INFRASTRUCTURE_ERROR
-    elif survivors > maximum:
-        code = QUALITY_FAILURE
-    elif run.code == 1 and not survivors:
-        code = INFRASTRUCTURE_ERROR
-    else:
-        code = PASS
+    status_counts, status_lines = _parse_mutmut_results(results.stdout)
+    thresholds = _effective_thresholds(project)["mutation"]
+    maximum = int(thresholds.get("maximum_survivors", 0))
+    minimum = float(thresholds.get("minimum_score", 0))
+    code, metrics = _classify_mutmut_results(
+        status_counts,
+        run_code=run.code,
+        results_code=results.code,
+        minimum_score=minimum,
+        maximum_survivors=maximum,
+    )
+    survivors = metrics["survivors"]
+    incomplete_statuses = (
+        "check was interrupted by user",
+        "not checked",
+        "segfault",
+        "skipped",
+        "suspicious",
+        "timeout",
+    )
     return code, {
         "scope": "changed",
         "mutated_files": changed,
         "run": run.as_dict(),
         "results": results.as_dict(),
+        "status_counts": status_counts,
+        "mutation_score": metrics["mutation_score"],
+        "minimum_score": minimum,
         "survivors": survivors,
         "maximum_survivors": maximum,
-        "survivor_lines": listed[:200],
+        "survivor_lines": [
+            *status_lines.get("survived", []),
+            *status_lines.get("no tests", []),
+        ][:200],
+        "incomplete_mutants": metrics["incomplete_mutants"],
+        "incomplete_lines": [
+            line for status in incomplete_statuses for line in status_lines.get(status, [])
+        ][:200],
     }
 
 
@@ -1277,17 +1376,40 @@ def _collect_mutant_statuses(value: Any, output: list[str]) -> None:
             _collect_mutant_statuses(child, output)
 
 
+def _js_mutation_scope(paths: list[str]) -> tuple[list[str], list[str]]:
+    candidates: list[str] = []
+    configuration: list[str] = []
+    for path in paths:
+        name = Path(path).name
+        if (
+            ".config." in name
+            or path.startswith("quality/tools/")
+            or path.startswith("src/aqg/templates/")
+        ):
+            configuration.append(path)
+        else:
+            candidates.append(path)
+    return candidates, configuration
+
+
 def _mutation_js(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     changed = (
         _changed_production_files(root, project, JS_SUFFIXES)
         if _effective_thresholds(project)["mutation"].get("changed_only", True)
         else _relative_files(root, JS_SUFFIXES, project, tests=False)
     )
+    changed, configuration = _js_mutation_scope(changed)
     if not changed:
         return PASS, {
             "scope": "changed",
             "mutated_files": [],
-            "reason": "no changed JavaScript/TypeScript production files",
+            "excluded_configuration_files": configuration,
+            "reason": (
+                "changed JavaScript/TypeScript files are checker or installation configuration "
+                "covered by structural and disposable-project conformance"
+                if configuration
+                else "no changed JavaScript/TypeScript production files"
+            ),
         }
     stryker = _tool(root, "stryker", "js")
     work = root / ".aqg" / "work" / "mutation"
@@ -1480,7 +1602,7 @@ def _dangerous_code_scan(root: Path, project: dict[str, Any]) -> dict[str, Any]:
     findings = []
     for path in iter_files(root, JS_SUFFIXES | PY_SUFFIXES, excludes(project)):
         rel = path.relative_to(root).as_posix()
-        if _is_test_path(rel):
+        if _is_test_path(rel, project):
             continue
         content = path.read_text(encoding="utf-8", errors="replace")
         for line_no, line in enumerate(content.splitlines(), 1):

@@ -35,6 +35,10 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         project = json.loads((root / "quality" / "project.json").read_text(encoding="utf-8"))
         self.assertEqual(project["enforcement"]["base_ref"], "origin/main")
+        self.assertEqual(
+            project["python"]["test_paths"],
+            ["tests", "agent_ergonomics_audit/audit/regression_tests"],
+        )
 
     def test_every_hosted_gauntlet_context_is_pinned_to_github_actions(self) -> None:
         expected = {

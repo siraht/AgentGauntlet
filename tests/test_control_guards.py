@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import curses
 import io
 import json
 import subprocess
@@ -13,7 +12,9 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
-from aqg import hooks, tui
+import pytest
+
+from aqg import hooks
 from aqg.constants import CONFIGURATION_ERROR, PASS
 from aqg.dashboard import DashboardServer
 from aqg.scaffold import initialize_project
@@ -159,8 +160,11 @@ class FakeScreen:
         return self.keys.pop(0)
 
 
+@pytest.mark.mutation_incompatible
 class TuiTests(ControlGuardCase):
     def test_tui_draws_project_state_and_quits(self) -> None:
+        from aqg import tui
+
         screen = FakeScreen([ord("q")])
         with (
             mock.patch("aqg.tui.curses.curs_set"),
@@ -174,6 +178,10 @@ class TuiTests(ControlGuardCase):
         self.assertIn("[f] fast", rendered)
 
     def test_tui_falls_back_to_plain_text_when_curses_is_unavailable(self) -> None:
+        import curses
+
+        from aqg import tui
+
         stdout = io.StringIO()
         with (
             mock.patch("aqg.tui.curses.wrapper", side_effect=curses.error),
@@ -183,6 +191,10 @@ class TuiTests(ControlGuardCase):
         self.assertIn(f"AQG {self.root.name}", stdout.getvalue())
 
     def test_safe_add_clips_out_of_bounds_and_suppresses_terminal_errors(self) -> None:
+        import curses
+
+        from aqg import tui
+
         screen = FakeScreen()
         tui._safe_add(screen, -1, 0, "hidden")
         tui._safe_add(screen, 0, 999, "hidden")
