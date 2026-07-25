@@ -133,6 +133,33 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertEqual(payload["output"]["stdout"], "requested data")
         self.assertEqual(payload["output"]["stderr"], "diagnostics")
 
+    def test_parse_errors_teach_exact_safe_corrections(self) -> None:
+        cases = (
+            (["capabilities", "--jsno"], "qg capabilities --json"),
+            (["test"], "qg check fast"),
+            (["verify"], "qg check-risk --keep-going"),
+            (["health"], "qg doctor"),
+            (["onboarding", "refrsh"], "qg onboarding refresh"),
+            (["check"], "qg check fast"),
+        )
+        for argv, expected in cases:
+            with self.subTest(argv=argv):
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    code = main(argv)
+                self.assertEqual(code, CONFIGURATION_ERROR)
+                self.assertIn(expected, stderr.getvalue())
+
+    def test_json_parse_error_contains_the_same_correction(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(["test", "--json"])
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        payload = json.loads(stdout.getvalue())
+        self.assertIn("qg --json check fast", payload["error"]["message"])
+        self.assertIn("qg --json check fast", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

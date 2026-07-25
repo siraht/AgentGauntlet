@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
+import re
+import shlex
 import sys
 from collections.abc import Callable
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Never
 
@@ -48,6 +52,64 @@ from .util import (
 )
 from .wizard import run_wizard
 
+ACTIVE_ARGV: ContextVar[tuple[str, ...]] = ContextVar("aqg_active_argv", default=())
+
+CONVENTIONAL_COMMANDS: dict[str, tuple[str, ...]] = {
+    "health": ("doctor",),
+    "inspect": ("status",),
+    "scan": ("review", "--no-evidence"),
+    "test": ("check", "fast"),
+    "verify": ("check-risk", "--keep-going"),
+}
+
+GLOBAL_FLAGS = ("--help", "--json", "--root", "--version", "-h")
+
+
+def _invalid_token(message: str) -> str | None:
+    for expression in (
+        r"invalid choice: '([^']+)'",
+        r"unrecognized arguments?:\s+(\S+)",
+    ):
+        match = re.search(expression, message)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _candidate_tokens(parser: argparse.ArgumentParser, token: str) -> list[str]:
+    if token.startswith("-"):
+        options = {option for action in parser._actions for option in action.option_strings}
+        return sorted(options | set(GLOBAL_FLAGS))
+    return sorted(_subparser_choices(parser))
+
+
+def _replacement(parser: argparse.ArgumentParser, token: str) -> tuple[str, ...] | None:
+    if parser.prog == "qg" and token in CONVENTIONAL_COMMANDS:
+        return CONVENTIONAL_COMMANDS[token]
+    matches = difflib.get_close_matches(token, _candidate_tokens(parser, token), n=1, cutoff=0.55)
+    return (matches[0],) if matches else None
+
+
+def _suggested_command(token: str, replacement: tuple[str, ...]) -> str:
+    argv = list(ACTIVE_ARGV.get())
+    if token in argv:
+        index = argv.index(token)
+        argv[index : index + 1] = replacement
+    else:
+        argv.extend(replacement)
+    return shlex.join(["qg", *argv])
+
+
+def _augment_parse_error(parser: argparse.ArgumentParser, message: str) -> str:
+    if "the following arguments are required: profile" in message:
+        return f"{message}. Try: qg check fast"
+    token = _invalid_token(message)
+    replacement = _replacement(parser, token) if token else None
+    if token and replacement:
+        command = _suggested_command(token, replacement)
+        return f"{message}. Did you mean: {command}"
+    return message
+
 
 class StableHelpFormatter(argparse.HelpFormatter):
     """Render help at a deterministic width suitable for humans and discovery tools."""
@@ -63,7 +125,7 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def error(self, message: str) -> Never:
         self.print_usage(sys.stderr)
-        raise ConfigurationError(message)
+        raise ConfigurationError(_augment_parse_error(self, message))
 
 
 def _json_dump(payload: Any) -> None:
@@ -1056,12 +1118,9 @@ def _emit_cli_failure(category: str, message: str, code: int, *, json_mode: bool
     return code
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    raw = list(sys.argv[1:] if argv is None else argv)
-    json_mode = "--json" in raw
+def _run_cli(parser: ArgumentParser, raw: list[str], *, json_mode: bool) -> int:
     try:
-        args = parser.parse_args(_normalize_global_flags(raw))
+        args = parser.parse_args(raw)
         return int(dispatch(args))
     except QualityFailure as exc:
         return _emit_cli_failure("quality_failure", str(exc), QUALITY_FAILURE, json_mode=json_mode)
@@ -1084,6 +1143,22 @@ def main(argv: list[str] | None = None) -> int:
         return _emit_cli_failure(
             "infrastructure_error", str(exc), INFRASTRUCTURE_ERROR, json_mode=json_mode
         )
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    json_mode = "--json" in raw
+    try:
+        normalized = _normalize_global_flags(raw)
+    except ConfigurationError as exc:
+        return _emit_cli_failure(
+            "configuration_error", str(exc), CONFIGURATION_ERROR, json_mode=json_mode
+        )
+    context = ACTIVE_ARGV.set(tuple(normalized))
+    try:
+        return _run_cli(build_parser(), normalized, json_mode=json_mode)
+    finally:
+        ACTIVE_ARGV.reset(context)
 
 
 if __name__ == "__main__":
