@@ -14,7 +14,7 @@
       "target_branch": "agent/productionize-v2-beta",
       "feature_branch": null,
       "summary": {
-        "surfaces_inventoried": 0,
+        "surfaces_inventoried": 197,
         "surfaces_scored": 0,
         "recommendations_total": 0,
         "recommendations_applied": 0,
