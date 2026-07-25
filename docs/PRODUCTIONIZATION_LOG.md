@@ -73,16 +73,16 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 
 ## Progress
 
-| Phase                          | Status   | Evidence                                                                                                                                                                                                         |
-| ------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                                                                                      |
-| CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                                                                                           |
-| Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; all cross-platform contracts and live/browser jobs pass in [run 30142857369](https://github.com/siraht/AgentGauntlet/actions/runs/30142857369).         |
-| Coverage and complexity debt   | Active   | 89 tests plus 73 subtests pass; coverage is 54.43% statements / 41.51% branches with 54 complexity blockers; changed-file mutation executed 9,421 mutants at 53.48% with zero incomplete.                        |
-| End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.                                                                    |
-| Release and provenance         | Active   | Complete outputs reproduce byte-for-byte; checksum verification and CycloneDX/in-toto contract tests pass; keyless CI attestation is wired.                                                                      |
-| GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 12 GitHub Actions contexts; merge methods, Dependabot, secret scanning, push protection, alerts, and automated fixes are configured. |
-| Final independent verification | Pending  | —                                                                                                                                                                                                                |
+| Phase                          | Status   | Evidence                                                                                                                                                                                                                 |
+| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                                                                                              |
+| CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                                                                                                   |
+| Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; all cross-platform contracts and live/browser jobs pass in [run 30142857369](https://github.com/siraht/AgentGauntlet/actions/runs/30142857369).                 |
+| Coverage and complexity debt   | Active   | 89 tests plus 73 subtests pass; coverage is 54.43% / 41.51% with 54 whole-tree complexity blockers; mutation executed 9,421 mutants at 53.48%; fast run `20260725-052620-c8cd990b` retains 17 changed-function failures. |
+| End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.                                                                            |
+| Release and provenance         | Active   | Final artifacts reproduce byte-for-byte and verify; extracted install/doctor/archive hygiene pass; public-main rollback and candidate restoration match exact vendored bytes; keyless CI attestation remains.            |
+| GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 12 GitHub Actions contexts; merge methods, Dependabot, secret scanning, push protection, alerts, and automated fixes are configured.         |
+| Final independent verification | Pending  | —                                                                                                                                                                                                                        |
 
 ## Lessons
 
@@ -170,6 +170,10 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Exercise result-export commands as well as mutation execution during checker
   conformance. A value-taking Click option can look like a normal flag in code review and
   fail only after an otherwise successful long run.
+- Rehearse release recovery against exact bytes, not only version strings. Installing the
+  public-main runtime and comparing its vendored source before restoring and comparing the
+  candidate proves both rollback and forward recovery even when both builds share a
+  semantic version.
 
 ## Evidence conventions
 
