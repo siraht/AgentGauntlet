@@ -139,7 +139,10 @@ class CliControlSurfaceTests(unittest.TestCase):
         with contextlib.redirect_stdout(human):
             self.assertEqual(main([]), PASS)
         self.assertIn("Constraint-first quality control", human.getvalue())
-        self.assertIn("capabilities   describe the machine-readable", human.getvalue())
+        self.assertRegex(
+            human.getvalue(),
+            r"capabilities\s+describe the machine-readable",
+        )
 
         machine = io.StringIO()
         with contextlib.redirect_stdout(machine):
