@@ -423,6 +423,8 @@ def _stack_settings(
             "source_paths": python_sources,
             "test_paths": detection.test_paths or ["tests", "test"],
             "pytest_args": ["--strict-config", "--strict-markers", "-ra"],
+            "mutation_timeout_multiplier": 5.0,
+            "mutation_timeout_constant": 1.0,
             "unit_command": python_commands["unit"],
             "collect_command": python_commands["collect"],
         },

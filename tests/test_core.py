@@ -1069,6 +1069,56 @@ class SetupContractTests(RepoCase):
             content,
         )
         self.assertIn('also_copy = ["audit/regression_tests", "fixtures"]', content)
+        self.assertIn("timeout_multiplier = 5.0", content)
+        self.assertIn("timeout_constant = 1.0", content)
+
+    def test_mutmut_sandbox_replaces_unbounded_timeout_configuration(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        (self.root / "pyproject.toml").write_text(
+            "[tool.mutmut]\n"
+            "timeout_multiplier = 15.0\n"
+            "timeout_constant = 30.0\n"
+            'only_mutate = ["src/old.py"]\n',
+            encoding="utf-8",
+        )
+
+        _append_mutmut_config(
+            self.root,
+            {
+                "python": {
+                    "source_paths": ["src"],
+                    "test_paths": ["tests"],
+                    "mutation_timeout_multiplier": 4.0,
+                    "mutation_timeout_constant": 0.5,
+                }
+            },
+            ["src/example.py"],
+        )
+
+        content = (self.root / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertEqual(content.count("timeout_multiplier ="), 1)
+        self.assertEqual(content.count("timeout_constant ="), 1)
+        self.assertIn("timeout_multiplier = 4.0", content)
+        self.assertIn("timeout_constant = 0.5", content)
+        self.assertIn('only_mutate = ["src/example.py"]', content)
+
+    def test_mutation_timeout_configuration_has_anti_gaming_bounds(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        project = json.loads((source_root / "quality" / "project.json").read_text())
+        project["python"]["mutation_timeout_multiplier"] = 2.0
+        project["python"]["mutation_timeout_constant"] = 10.0
+
+        errors = validate_project(project)
+
+        self.assertIn(
+            "python.mutation_timeout_multiplier must be a number from 3 to 10",
+            errors,
+        )
+        self.assertIn(
+            "python.mutation_timeout_constant must be a number from 0.5 to 5",
+            errors,
+        )
 
     def test_mutmut_result_parser_separates_outcomes(self) -> None:
         counts, lines = _parse_mutmut_results(

@@ -1200,15 +1200,15 @@ def _copy_for_mutmut(root: Path, destination: Path) -> None:
     shutil.copytree(root, destination, ignore=ignore)
 
 
-def _upsert_toml_array(text: str, section: str, key: str, values: list[str]) -> str:
-    """Upsert a simple array key in a TOML section inside a disposable sandbox."""
-    lines = text.splitlines()
+def _toml_section_bounds(lines: list[str], section: str) -> tuple[int, int] | None:
+    """Return the half-open body bounds for a top-level TOML section."""
     section_header = f"[{section}]"
-    try:
-        start = next(index for index, line in enumerate(lines) if line.strip() == section_header)
-    except StopIteration:
-        suffix = "\n" if text.endswith("\n") else "\n\n"
-        return text + suffix + section_header + "\n" + key + " = " + json.dumps(values) + "\n"
+    start = next(
+        (index for index, line in enumerate(lines) if line.strip() == section_header),
+        None,
+    )
+    if start is None:
+        return None
     end = next(
         (
             index
@@ -1217,6 +1217,18 @@ def _upsert_toml_array(text: str, section: str, key: str, values: list[str]) -> 
         ),
         len(lines),
     )
+    return start, end
+
+
+def _upsert_toml_array(text: str, section: str, key: str, values: list[str]) -> str:
+    """Upsert a simple array key in a TOML section inside a disposable sandbox."""
+    lines = text.splitlines()
+    bounds = _toml_section_bounds(lines, section)
+    if bounds is None:
+        section_header = f"[{section}]"
+        suffix = "\n" if text.endswith("\n") else "\n\n"
+        return text + suffix + section_header + "\n" + key + " = " + json.dumps(values) + "\n"
+    start, end = bounds
     filtered: list[str] = []
     index = start + 1
     while index < end:
@@ -1231,6 +1243,24 @@ def _upsert_toml_array(text: str, section: str, key: str, values: list[str]) -> 
         filtered.append(line)
         index += 1
     replacement = lines[: start + 1] + [f"{key} = {json.dumps(values)}", *filtered] + lines[end:]
+    return "\n".join(replacement).rstrip() + "\n"
+
+
+def _upsert_toml_scalar(text: str, section: str, key: str, value: int | float) -> str:
+    """Upsert a numeric key in a TOML section inside a disposable sandbox."""
+    lines = text.splitlines()
+    bounds = _toml_section_bounds(lines, section)
+    if bounds is None:
+        section_header = f"[{section}]"
+        suffix = "\n" if text.endswith("\n") else "\n\n"
+        return text + suffix + section_header + "\n" + key + " = " + json.dumps(value) + "\n"
+    start, end = bounds
+    replacement = [
+        line
+        for index, line in enumerate(lines)
+        if not (start < index < end and re.match(rf"^\s*{re.escape(key)}\s*=", line))
+    ]
+    replacement.insert(start + 1, f"{key} = {json.dumps(value)}")
     return "\n".join(replacement).rstrip() + "\n"
 
 
@@ -1266,7 +1296,14 @@ def _append_mutmut_config(
         if also_copy:
             original += "also_copy = " + json.dumps(also_copy) + "\n"
         original += "mutate_only_covered_lines = true\nmax_stack_depth = 8\non_dependency_change = 'rerun'\n"
+    python = project.get("python", {})
+    timeout_multiplier = python.get("mutation_timeout_multiplier", 5.0)
+    timeout_constant = python.get("mutation_timeout_constant", 1.0)
     original = _upsert_toml_array(original, "tool.mutmut", "only_mutate", only_mutate)
+    original = _upsert_toml_scalar(
+        original, "tool.mutmut", "timeout_multiplier", timeout_multiplier
+    )
+    original = _upsert_toml_scalar(original, "tool.mutmut", "timeout_constant", timeout_constant)
     pyproject.write_text(original, encoding="utf-8")
 
 

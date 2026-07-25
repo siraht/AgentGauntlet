@@ -183,6 +183,30 @@ def _validate_web(project: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_python(project: dict[str, Any]) -> list[str]:
+    python = project.get("python")
+    if python is None:
+        return []
+    if not isinstance(python, dict):
+        return ["python must be an object"]
+    errors: list[str] = []
+    multiplier = python.get("mutation_timeout_multiplier", 5.0)
+    if (
+        not isinstance(multiplier, (int, float))
+        or isinstance(multiplier, bool)
+        or not 3 <= multiplier <= 10
+    ):
+        errors.append("python.mutation_timeout_multiplier must be a number from 3 to 10")
+    constant = python.get("mutation_timeout_constant", 1.0)
+    if (
+        not isinstance(constant, (int, float))
+        or isinstance(constant, bool)
+        or not 0.5 <= constant <= 5
+    ):
+        errors.append("python.mutation_timeout_constant must be a number from 0.5 to 5")
+    return errors
+
+
 def validate_project(project: dict[str, Any]) -> list[str]:
     """Return every project configuration defect in stable document order."""
     return [
@@ -194,6 +218,7 @@ def validate_project(project: dict[str, Any]) -> list[str]:
         *_validate_thresholds(project),
         *_validate_profile_thresholds(project),
         *_validate_web(project),
+        *_validate_python(project),
     ]
 
 
