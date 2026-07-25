@@ -75,6 +75,7 @@ class CliControlSurfaceTests(unittest.TestCase):
             (("changed-files",), {PASS}),
             (("guidance", "--list"), {PASS}),
             (("guidance", "--search", "mutation"), {PASS}),
+            (("guidance", "mutation", "testing"), {PASS}),
             (("onboarding", "show"), {PASS, CONFIGURATION_ERROR}),
             (("onboarding", "next"), {PASS, CONFIGURATION_ERROR}),
             (("acceptance", "lint"), {PASS}),
@@ -135,6 +136,10 @@ class CliControlSurfaceTests(unittest.TestCase):
 
     def test_parse_errors_teach_exact_safe_corrections(self) -> None:
         cases = (
+            (["--jsno"], "qg capabilities --json"),
+            (["--baes-url"], "qg detect --base-url BASE_URL"),
+            (["--browers"], "qg init --browsers"),
+            (["--verion"], "qg --version"),
             (["capabilities", "--jsno"], "qg capabilities --json"),
             (["test"], "qg check fast"),
             (["verify"], "qg check-risk --keep-going"),
@@ -150,6 +155,12 @@ class CliControlSurfaceTests(unittest.TestCase):
                     code = main(argv)
                 self.assertEqual(code, CONFIGURATION_ERROR)
                 self.assertIn(expected, stderr.getvalue())
+
+    def test_natural_multiword_guidance_is_treated_as_a_search(self) -> None:
+        code, payload, stderr = self._json_command("guidance", "mutation", "testing")
+        self.assertEqual(code, PASS, stderr)
+        self.assertIsInstance(payload, list)
+        self.assertTrue(payload)
 
     def test_json_parse_error_contains_the_same_correction(self) -> None:
         stdout = io.StringIO()

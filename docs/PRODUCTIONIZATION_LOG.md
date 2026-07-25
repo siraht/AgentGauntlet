@@ -53,6 +53,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-016 | Keep the agent operating guide embedded and project-independent.                                 | A cold agent must be able to discover safe setup and review workflows before it has a configured repository or external documentation context.                                       | Project-specific guidance needs a separate generated extension.                 |
 | D-017 | Make triage a read-only aggregation over existing control models.                                | Daily orientation should collapse multiple calls without creating a second source of truth or allowing the overview command to mutate evidence.                                      | A measured hot-path bottleneck requires a cached projection.                    |
 | D-018 | Support help-first ordering without duplicating command documentation.                           | `qg help COMMAND` is a conventional first guess; resolving it through the real parser prevents a parallel help model from drifting.                                                  | Argparse gains a native equivalent with the same JSON contract.                 |
+| D-019 | Treat natural multi-word guidance as search intent and keep intent probes bounded.               | Agents commonly omit `--search`; accepting the phrase is unambiguous and safe, while audit probes must finish inside the runner's fixed deadline to measure recovery rather than task duration. | Search syntax or the intent-runner deadline changes.                            |
 
 ## Progress
 
@@ -100,6 +101,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A 277-case wrong-intent corpus is more revealing than a handful of hand-picked typos:
   it showed that global flag reordering worked, no path failed silently, and nearly every
   other mistake lacked a useful correction.
+- Cataloging every nested flag lets a missing-command error suggest a complete valid
+  invocation instead of merely reporting that `COMMAND` is absent. Natural multi-word
+  documentation queries can also be recovered safely because they are read-only.
 
 ## Evidence conventions
 

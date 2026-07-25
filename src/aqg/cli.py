@@ -120,6 +120,56 @@ def _candidate_tokens(parser: argparse.ArgumentParser, token: str) -> list[str]:
     return sorted(_subparser_choices(parser))
 
 
+def _flag_catalog(
+    parser: argparse.ArgumentParser, path: tuple[str, ...] = ()
+) -> list[tuple[str, tuple[str, ...], argparse.Action]]:
+    entries = [
+        (option, path, action) for action in parser._actions for option in action.option_strings
+    ]
+    for name, child in _subparser_choices(parser).items():
+        entries.extend(_flag_catalog(child, (*path, name)))
+    return entries
+
+
+def _flag_value(action: argparse.Action) -> list[str]:
+    if action.nargs == 0 or action.nargs == "?":
+        return []
+    if action.choices:
+        return [str(next(iter(action.choices)))]
+    return [str(action.metavar or action.dest).upper()]
+
+
+def _flag_correction(parser: argparse.ArgumentParser, token: str) -> str | None:
+    catalog = _flag_catalog(parser)
+    matches = difflib.get_close_matches(
+        token, sorted({option for option, _, _ in catalog}), n=1, cutoff=0.55
+    )
+    if not matches:
+        return None
+    flag = matches[0]
+    if flag in {"--help", "-h"}:
+        return "qg --help"
+    if flag == "--version":
+        return "qg --version"
+    if flag == "--json":
+        return "qg capabilities --json"
+    if flag == "--root":
+        return "qg --root PATH status"
+    owners = sorted(
+        ((path, action) for option, path, action in catalog if option == flag),
+        key=lambda item: (len(item[0]), item[0]),
+    )
+    path, action = owners[0]
+    return shlex.join(["qg", *path, flag, *_flag_value(action)])
+
+
+def _missing_command_correction(parser: argparse.ArgumentParser, message: str) -> str | None:
+    if "the following arguments are required: COMMAND" not in message:
+        return None
+    token = next((value for value in ACTIVE_ARGV.get() if value.startswith("-")), None)
+    return _flag_correction(parser, token) if token else None
+
+
 def _replacement(parser: argparse.ArgumentParser, token: str) -> tuple[str, ...] | None:
     if parser.prog == "qg" and token in CONVENTIONAL_COMMANDS:
         return CONVENTIONAL_COMMANDS[token]
@@ -139,7 +189,10 @@ def _suggested_command(token: str, replacement: tuple[str, ...]) -> str:
 
 def _augment_parse_error(parser: argparse.ArgumentParser, message: str) -> str:
     if "the following arguments are required: profile" in message:
-        return f"{message}. Try: qg check fast"
+        return f"{message}. Did you mean: qg check fast"
+    missing_command = _missing_command_correction(parser, message)
+    if missing_command:
+        return f"{message}. Did you mean: {missing_command}"
     token = _invalid_token(message)
     replacement = _replacement(parser, token) if token else None
     if token and replacement:
@@ -340,6 +393,11 @@ def _add_review_parsers(sub: Any) -> None:
         "guidance", help="read or search the embedded agent test-writing playbooks"
     )
     guidance.add_argument("topic", nargs="?")
+    guidance.add_argument(
+        "terms",
+        nargs="*",
+        help="additional natural-language search terms",
+    )
     guidance.add_argument("--list", action="store_true")
     guidance.add_argument("--search")
 
@@ -976,8 +1034,9 @@ def _print_guide_list(payload: list[dict[str, Any]]) -> None:
 
 def _dispatch_guidance(args: argparse.Namespace, root: Path) -> int:
     del root
-    if args.search:
-        payload = search_guides(args.search)
+    query = args.search or (" ".join([args.topic, *args.terms]) if args.terms else None)
+    if query:
+        payload = search_guides(query)
         _json_dump(payload) if args.json else _print_guide_search(payload)
     elif args.list or not args.topic:
         payload = guides()
