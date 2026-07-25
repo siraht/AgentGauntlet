@@ -1,6 +1,6 @@
 {
   "enforcement": {
-    "base_ref": "HEAD",
+    "base_ref": "origin/main",
     "existing_debt_must_not_increase": true,
     "mode": "adopt",
     "new_code_must_meet_current_policy": true,

@@ -62,6 +62,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-025 | Make protected Python locks explicit about interpreter-selected transitive dependencies.           | libcst selects `pyyaml-ft` only on Python 3.13+, so a lock resolved on another interpreter can pass locally yet fail hash enforcement on a supported runtime; the marker and hashes now live in the reviewed input and lock. | Python packaging gains a resolver-native universal lock format used by pip.       |
 | D-026 | Resolve Yarn and pnpm matrix runs through the fixture's declared Corepack version.                  | A preinstalled Yarn 1 binary can exist while `packageManager` requires Yarn 4; command presence alone does not prove compatibility, and silently choosing the global binary makes conformance host-dependent. | Package-manager shims gain an equally deterministic native replacement.           |
 | D-027 | Require an independent review without enabling code-owner review in the single-owner repository.    | The author cannot approve their own pull request, while requiring `@siraht` specifically as code owner would deadlock every owner-authored change. There are no bypass actors; enable code-owner enforcement when policy ownership can be assigned to a second maintainer or team. | A second independent policy owner is added.                                      |
+| D-028 | Compare this repository against `origin/main` after publishing its first remote branch.              | Setup correctly used `HEAD` while the recovered folder had no remote, but retaining it after publication made a clean feature branch appear to have zero changed files and invalidated review scope. | The repository's default branch or remote name changes.                           |
 
 ## Progress
 
@@ -141,6 +142,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A cold CI cache must be part of the package-manager proof. Hydrate the declared manager
   explicitly with Corepack before invoking its shim, and preserve both stdout and stderr
   on failure; a warm local cache can otherwise hide the download path entirely.
+- A setup-time `HEAD` comparison is valid only before a durable mainline exists. Reconcile
+  the protected base ref immediately after first publication or the review engine will
+  faithfully analyze an empty three-dot diff.
 
 ## Evidence conventions
 

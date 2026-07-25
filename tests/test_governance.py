@@ -31,6 +31,11 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         self.assertTrue(review["require_last_push_approval"])
         self.assertTrue(review["required_review_thread_resolution"])
 
+    def test_repository_review_scope_uses_the_published_mainline(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        project = json.loads((root / "quality" / "project.json").read_text(encoding="utf-8"))
+        self.assertEqual(project["enforcement"]["base_ref"], "origin/main")
+
     def test_every_hosted_gauntlet_context_is_pinned_to_github_actions(self) -> None:
         expected = {
             "Python 3.11",
