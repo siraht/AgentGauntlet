@@ -32,6 +32,7 @@ class Detection:
     frameworks: list[str]
     source_paths: list[str]
     test_paths: list[str]
+    test_files: list[str]
     html_paths: list[str]
     css_paths: list[str]
     js_test_runner: str | None
@@ -188,16 +189,26 @@ def _path_roots(root: Path, files: list[Path]) -> list[str]:
     return sorted(roots)
 
 
+def _is_test_file(root: Path, path: Path) -> bool:
+    rel = path.relative_to(root)
+    lower_parts = [part.lower() for part in rel.parts]
+    filename = rel.name.lower()
+    return any(marker in lower_parts for marker in TEST_MARKERS) or bool(
+        re.search(r"(?:^|[._-])(test|spec)(?:[._-]|$)", filename)
+    )
+
+
+def _test_file_paths(root: Path, files: list[Path]) -> list[str]:
+    return sorted(path.relative_to(root).as_posix() for path in files if _is_test_file(root, path))
+
+
 def _test_paths(root: Path, files: list[Path]) -> list[str]:
     result: set[str] = set()
     for path in files:
+        if not _is_test_file(root, path):
+            continue
         rel = path.relative_to(root)
-        lower_parts = [part.lower() for part in rel.parts]
-        filename = rel.name.lower()
-        if any(marker in lower_parts for marker in TEST_MARKERS) or re.search(
-            r"(?:^|[._-])(test|spec)(?:[._-]|$)", filename
-        ):
-            result.add(rel.parts[0] if len(rel.parts) > 1 else rel.as_posix())
+        result.add(rel.parts[0] if len(rel.parts) > 1 else rel.as_posix())
     return sorted(result)
 
 
@@ -339,6 +350,7 @@ def detect_project(root: Path) -> Detection:
     files_for_sources = _production_files(root, all_code)
     source_paths = _path_roots(root, files_for_sources)
     test_paths = _test_paths(root, all_code)
+    test_files = _test_file_paths(root, all_code)
     start_command, build_command = _package_commands(manager, scripts)
     return Detection(
         name=str(package.get("name") or root.name),
@@ -352,6 +364,7 @@ def detect_project(root: Path) -> Detection:
         frameworks=_frameworks(package, root),
         source_paths=source_paths or ["."],
         test_paths=test_paths,
+        test_files=test_files,
         html_paths=_path_roots(root, files["html"]),
         css_paths=_path_roots(root, files["css"]),
         js_test_runner=_js_test_runner(package),

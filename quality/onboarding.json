@@ -19,6 +19,14 @@
     "python_test_runner": "pytest",
     "source_paths": ["scripts", "src"],
     "start_command": null,
+    "test_files": [
+      "quality/tests/test_qg.py",
+      "src/aqg/templates/js/aqg-smoke.spec.mjs",
+      "tests/js/dashboard.test.js",
+      "tests/test_acceptance.py",
+      "tests/test_core.py",
+      "tests/test_project_matrix.py"
+    ],
     "test_paths": ["quality", "src", "tests"],
     "typescript": false
   },
@@ -36,7 +44,7 @@
       "severity": "info"
     }
   ],
-  "generated_at": "2026-07-24T23:56:38+00:00",
+  "generated_at": "2026-07-25T01:11:18+00:00",
   "generated_by": "agent-quality-gauntlet/2.0.0",
   "mode": "adopt",
   "next_action": {

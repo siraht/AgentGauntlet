@@ -372,6 +372,17 @@ def _expand_project_command(root: Path, command: list[str]) -> list[str]:
     return [part.replace("$AQG_JS_BIN", js_bin).replace("$AQG_PY_BIN", py_bin) for part in command]
 
 
+def _python_test_env(root: Path, *, timezone: bool = False) -> dict[str, str]:
+    entries = [str(root), str(root / "src")]
+    existing = os.environ.get("PYTHONPATH")
+    if existing:
+        entries.append(existing)
+    environment = {"PYTHONHASHSEED": "0", "PYTHONPATH": os.pathsep.join(entries)}
+    if timezone:
+        environment["TZ"] = "UTC"
+    return environment
+
+
 def _python_collection_spec(root: Path, project: dict[str, Any]) -> CommandSpec | None:
     python = project.get("python", {})
     custom = python.get("collect_command")
@@ -379,7 +390,7 @@ def _python_collection_spec(root: Path, project: dict[str, Any]) -> CommandSpec 
         return (
             _expand_project_command(root, [str(value) for value in custom]),
             600,
-            {"PYTHONHASHSEED": "0"},
+            _python_test_env(root),
         )
     existing = [
         path for path in python.get("test_paths", ["tests", "test"]) if (root / path).exists()
@@ -396,20 +407,25 @@ def _python_collection_spec(root: Path, project: dict[str, Any]) -> CommandSpec 
             *existing,
         ],
         600,
-        {"PYTHONHASHSEED": "0"},
+        _python_test_env(root),
     )
 
 
 def _javascript_collection_spec(root: Path, project: dict[str, Any]) -> CommandSpec | None:
     javascript = project.get("javascript", {})
     custom = javascript.get("collect_command")
-    if not isinstance(custom, list) or not custom:
+    if isinstance(custom, list) and custom:
+        command = _expand_project_command(root, [str(value) for value in custom])
+    elif javascript.get("test_runner") == "vitest":
+        command = [
+            _tool(root, "vitest", "js"),
+            "list",
+            "--config",
+            "quality/tools/js/config/vitest.config.mjs",
+        ]
+    else:
         return None
-    return (
-        _expand_project_command(root, [str(value) for value in custom]),
-        600,
-        {"CI": "1", "TZ": "UTC"},
-    )
+    return command, 600, {"CI": "1", "TZ": "UTC"}
 
 
 def _collection_specs(root: Path, project: dict[str, Any]) -> list[CommandSpec]:
@@ -466,7 +482,7 @@ def _python_unit_spec(root: Path, project: dict[str, Any]) -> CommandSpec:
             "--timeout=120",
             *existing,
         ]
-    return argv, 1800, {"PYTHONHASHSEED": "0", "TZ": "UTC"}
+    return argv, 1800, _python_test_env(root, timezone=True)
 
 
 def _unit(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -617,8 +633,10 @@ def _python_structure_analysis(
 
 
 def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    js_files = _scoped_files(
-        root, project, _relative_files(root, JS_SUFFIXES, project, tests=False)
+    js_files = (
+        _scoped_files(root, project, _relative_files(root, JS_SUFFIXES, project, tests=False))
+        if project["stacks"].get("javascript")
+        else []
     )
     py_files = (
         _scoped_files(root, project, _relative_files(root, PY_SUFFIXES, project, tests=False))
@@ -843,105 +861,123 @@ def _python_crap(
     }
 
 
+def _command_exit_code(result: Any) -> int:
+    if result.code == 0:
+        return PASS
+    return QUALITY_FAILURE if result.code == 1 else INFRASTRUCTURE_ERROR
+
+
+def _javascript_coverage_command(root: Path, project: dict[str, Any]) -> list[str]:
+    javascript = project.get("javascript", {})
+    custom = javascript.get("coverage_command")
+    if isinstance(custom, list) and custom:
+        return _expand_project_command(root, [str(value) for value in custom])
+    if javascript.get("test_runner") == "vitest":
+        return [
+            _tool(root, "vitest", "js"),
+            "run",
+            "--coverage",
+            "--config",
+            "quality/tools/js/config/vitest.config.mjs",
+        ]
+    raise ConfigurationError(
+        "JavaScript coverage needs javascript.coverage_command or a Vitest test runner"
+    )
+
+
+def _javascript_coverage(
+    root: Path, project: dict[str, Any]
+) -> tuple[int, dict[str, Any], dict[str, Any]]:
+    result = run_command(
+        _javascript_coverage_command(root, project),
+        cwd=root,
+        timeout=2400,
+        env={"CI": "1", "TZ": "UTC"},
+    )
+    code = _command_exit_code(result)
+    summary = root / ".aqg" / "work" / "coverage" / "js" / "coverage-summary.json"
+    final_json = root / ".aqg" / "work" / "coverage" / "js" / "coverage-final.json"
+    if result.code == 0 and summary.exists():
+        metrics = _js_coverage_metrics(root, summary, final_json, project)
+        if metrics["failures"]:
+            code = max(code, QUALITY_FAILURE)
+    else:
+        metrics = {
+            "failures": ["coverage command passed but coverage-summary.json was not produced"]
+        }
+        if result.code == 0:
+            code = max(code, INFRASTRUCTURE_ERROR)
+    return code, result.as_dict(), metrics
+
+
+def _python_coverage_command(root: Path, project: dict[str, Any], coverage_path: Path) -> list[str]:
+    tests = [
+        path
+        for path in project.get("python", {}).get("test_paths", ["tests", "test"])
+        if (root / path).exists()
+    ]
+    sources = project.get("python", {}).get("source_paths", source_paths(project))
+    cov_args = [argument for source in sources for argument in ("--cov", source)]
+    return [
+        _tool(root, "pytest", "python"),
+        "--strict-config",
+        "--strict-markers",
+        "--cov-branch",
+        *cov_args,
+        f"--cov-report=json:{coverage_path}",
+        "--cov-report=term-missing",
+        *tests,
+    ]
+
+
+def _python_coverage(
+    root: Path, project: dict[str, Any]
+) -> tuple[int, dict[str, Any], dict[str, Any]]:
+    coverage_path = root / ".aqg" / "work" / "coverage" / "python-coverage.json"
+    coverage_path.parent.mkdir(parents=True, exist_ok=True)
+    environment = {
+        **_python_test_env(root, timezone=True),
+        "COVERAGE_FILE": str(coverage_path.parent / ".coverage"),
+    }
+    result = run_command(
+        _python_coverage_command(root, project, coverage_path),
+        cwd=root,
+        timeout=2400,
+        env=environment,
+    )
+    code = _command_exit_code(result)
+    if result.code != 0 or not coverage_path.exists():
+        missing_metrics: dict[str, Any] = {
+            "failures": ["pytest passed but coverage JSON was not produced"]
+        }
+        return (
+            max(code, INFRASTRUCTURE_ERROR if result.code == 0 else code),
+            result.as_dict(),
+            missing_metrics,
+        )
+    metrics: dict[str, Any] = _python_coverage_metrics(root, coverage_path, project)
+    targets = _scoped_files(root, project, _relative_files(root, PY_SUFFIXES, project, tests=False))
+    crap = _python_crap(root, project, coverage_path, targets)
+    metrics["crap"] = crap
+    if metrics["failures"] or crap["failures"]:
+        code = max(code, QUALITY_FAILURE)
+    return code, result.as_dict(), metrics
+
+
 def _coverage(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     commands: list[dict[str, Any]] = []
     metrics: dict[str, Any] = {}
     final = PASS
-    if project["stacks"].get("javascript"):
-        runner = project.get("javascript", {}).get("test_runner")
-        custom = project.get("javascript", {}).get("coverage_command")
-        if isinstance(custom, list) and custom:
-            command = _expand_project_command(root, [str(value) for value in custom])
-        elif runner == "vitest":
-            command = [
-                _tool(root, "vitest", "js"),
-                "run",
-                "--coverage",
-                "--config",
-                "quality/tools/js/config/vitest.config.mjs",
-            ]
-        else:
-            raise ConfigurationError(
-                "JavaScript coverage needs javascript.coverage_command or a Vitest test runner"
-            )
-        result = run_command(command, cwd=root, timeout=2400, env={"CI": "1", "TZ": "UTC"})
-        commands.append(result.as_dict())
-        final = max(
-            final,
-            PASS
-            if result.code == 0
-            else QUALITY_FAILURE
-            if result.code == 1
-            else INFRASTRUCTURE_ERROR,
-        )
-        summary = root / ".aqg" / "work" / "coverage" / "js" / "coverage-summary.json"
-        final_json = root / ".aqg" / "work" / "coverage" / "js" / "coverage-final.json"
-        if result.code == 0 and summary.exists():
-            js_metrics = _js_coverage_metrics(root, summary, final_json, project)
-            metrics["javascript"] = js_metrics
-            if js_metrics["failures"]:
-                final = max(final, QUALITY_FAILURE)
-        elif result.code == 0:
-            final = max(final, INFRASTRUCTURE_ERROR)
-            metrics["javascript"] = {
-                "failures": ["coverage command passed but coverage-summary.json was not produced"]
-            }
-    if project["stacks"].get("python"):
-        pytest = _tool(root, "pytest", "python")
-        coverage_path = root / ".aqg" / "work" / "coverage" / "python-coverage.json"
-        coverage_path.parent.mkdir(parents=True, exist_ok=True)
-        existing_tests = [
-            path
-            for path in project.get("python", {}).get("test_paths", ["tests", "test"])
-            if (root / path).exists()
-        ]
-        cov_args = [
-            argument
-            for source in project.get("python", {}).get("source_paths", source_paths(project))
-            for argument in ("--cov", source)
-        ]
-        command = [
-            pytest,
-            "--strict-config",
-            "--strict-markers",
-            "--cov-branch",
-            *cov_args,
-            f"--cov-report=json:{coverage_path}",
-            "--cov-report=term-missing",
-            *existing_tests,
-        ]
-        result = run_command(
-            command,
-            cwd=root,
-            timeout=2400,
-            env={
-                "COVERAGE_FILE": str(coverage_path.parent / ".coverage"),
-                "PYTHONHASHSEED": "0",
-                "TZ": "UTC",
-            },
-        )
-        commands.append(result.as_dict())
-        final = max(
-            final,
-            PASS
-            if result.code == 0
-            else QUALITY_FAILURE
-            if result.code == 1
-            else INFRASTRUCTURE_ERROR,
-        )
-        if result.code == 0 and coverage_path.exists():
-            py_metrics = _python_coverage_metrics(root, coverage_path, project)
-            crap_targets = _scoped_files(
-                root, project, _relative_files(root, PY_SUFFIXES, project, tests=False)
-            )
-            crap = _python_crap(root, project, coverage_path, crap_targets)
-            py_metrics["crap"] = crap
-            metrics["python"] = py_metrics
-            if py_metrics["failures"] or crap["failures"]:
-                final = max(final, QUALITY_FAILURE)
-        elif result.code == 0:
-            final = max(final, INFRASTRUCTURE_ERROR)
-            metrics["python"] = {"failures": ["pytest passed but coverage JSON was not produced"]}
+    for stack, executor in (
+        ("javascript", _javascript_coverage),
+        ("python", _python_coverage),
+    ):
+        if not project["stacks"].get(stack):
+            continue
+        code, command, stack_metrics = executor(root, project)
+        final = max(final, code)
+        commands.append(command)
+        metrics[stack] = stack_metrics
     return _write_report(
         root,
         "coverage",
@@ -974,7 +1010,7 @@ def _contracts(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
                     *paths,
                 ],
                 1800,
-                {"PYTHONHASHSEED": "0"},
+                _python_test_env(root),
             )
         )
     if project["stacks"].get("javascript"):
@@ -997,87 +1033,73 @@ def _contracts(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
     )
 
 
-def _acceptance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    lint = lint_features(root)
-    final = QUALITY_FAILURE if lint["errors"] else PASS
-    commands: list[dict[str, Any]] = []
-    executed = False
+def _custom_acceptance_spec(root: Path, project: dict[str, Any]) -> CommandSpec | None:
     custom = project.get("acceptance_command")
-    if isinstance(custom, list) and custom:
-        result = run_command(
-            _expand_project_command(root, [str(value) for value in custom]),
-            cwd=root,
-            timeout=2400,
-            env={"CI": "1", "TZ": "UTC"},
-        )
-        commands.append(result.as_dict())
-        final = max(
-            final,
-            PASS
-            if result.code == 0
-            else QUALITY_FAILURE
-            if result.code == 1
-            else INFRASTRUCTURE_ERROR,
-        )
-        executed = True
+    if not isinstance(custom, list) or not custom:
+        return None
+    return (
+        _expand_project_command(root, [str(value) for value in custom]),
+        2400,
+        {"CI": "1", "TZ": "UTC"},
+    )
+
+
+def _browser_acceptance_spec(root: Path, project: dict[str, Any]) -> CommandSpec | None:
     browser_files = [
         path
         for path in _relative_files(root, {".js", ".mjs", ".ts"}, project, tests=True)
         if any(token in path.lower() for token in ("e2e", "acceptance", "aqg-browser"))
     ]
-    if (
-        project["stacks"].get("html") or project.get("web", {}).get("start_command")
-    ) and browser_files:
-        result = run_command(
-            [
-                _tool(root, "playwright", "js"),
-                "test",
-                "--config",
-                "quality/tools/js/config/playwright.config.mjs",
-            ],
-            cwd=root,
-            timeout=2400,
-            env={"CI": "1", "TZ": "UTC"},
-        )
-        commands.append(result.as_dict())
-        final = max(
-            final,
-            PASS
-            if result.code == 0
-            else QUALITY_FAILURE
-            if result.code == 1
-            else INFRASTRUCTURE_ERROR,
-        )
-        executed = True
-    if project["stacks"].get("python"):
-        python_acceptance = [
-            path
-            for path in _relative_files(root, {".py"}, project, tests=True)
-            if "acceptance" in Path(path).name.lower() or "e2e" in path.lower()
-        ]
-        if python_acceptance:
-            result = run_command(
-                [
-                    _tool(root, "pytest", "python"),
-                    "--strict-config",
-                    "--strict-markers",
-                    "-ra",
-                    *python_acceptance,
-                ],
-                cwd=root,
-                timeout=2400,
-                env={"PYTHONHASHSEED": "0", "TZ": "UTC"},
-            )
-            commands.append(result.as_dict())
-            final = max(
-                final,
-                PASS
-                if result.code == 0
-                else QUALITY_FAILURE
-                if result.code == 1
-                else INFRASTRUCTURE_ERROR,
-            )
-            executed = True
+    has_web = project["stacks"].get("html") or project.get("web", {}).get("start_command")
+    if not has_web or not browser_files:
+        return None
+    return (
+        [
+            _tool(root, "playwright", "js"),
+            "test",
+            "--config",
+            "quality/tools/js/config/playwright.config.mjs",
+        ],
+        2400,
+        {"CI": "1", "TZ": "UTC"},
+    )
+
+
+def _python_acceptance_spec(root: Path, project: dict[str, Any]) -> CommandSpec | None:
+    if not project["stacks"].get("python"):
+        return None
+    tests = [
+        path
+        for path in _relative_files(root, {".py"}, project, tests=True)
+        if "acceptance" in Path(path).name.lower() or "e2e" in path.lower()
+    ]
+    if not tests:
+        return None
+    return (
+        [
+            _tool(root, "pytest", "python"),
+            "--strict-config",
+            "--strict-markers",
+            "-ra",
+            *tests,
+        ],
+        2400,
+        _python_test_env(root, timezone=True),
+    )
+
+
+def _acceptance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    lint = lint_features(root)
+    final = QUALITY_FAILURE if lint["errors"] else PASS
+    candidates = (
+        _custom_acceptance_spec(root, project),
+        _browser_acceptance_spec(root, project),
+        _python_acceptance_spec(root, project),
+    )
+    specs = [spec for spec in candidates if spec is not None]
+    command_code, commands = _run_many(root, specs)
+    final = max(final, command_code)
+    executed = bool(specs)
     if not executed:
         final = max(final, CONFIGURATION_ERROR)
     return _write_report(

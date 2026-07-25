@@ -174,6 +174,7 @@ def _js_exec_command(manager: str | None, executable: str, *arguments: str) -> l
 def _javascript_unit_command(detection: Detection) -> list[str]:
     manager = detection.package_manager or "npm"
     runner = detection.js_test_runner or "vitest"
+    targets = detection.test_files or detection.test_paths
     if "test" in detection.package_scripts:
         return [manager, "run", "test"] if manager in {"npm", "bun"} else [manager, "test"]
     if runner == "vitest":
@@ -184,13 +185,16 @@ def _javascript_unit_command(detection: Detection) -> list[str]:
             "quality/tools/js/config/vitest.config.mjs",
         ]
     if runner == "node":
-        return ["node", "--test"]
-    return _js_exec_command(manager, runner)
+        return ["node", "--test", *targets]
+    if runner == "jest":
+        return _js_exec_command(manager, "jest", "--runTestsByPath", *targets)
+    return _js_exec_command(manager, runner, *targets)
 
 
 def _javascript_evidence_commands(detection: Detection) -> tuple[list[str], list[str]]:
     manager = detection.package_manager or "npm"
     runner = detection.js_test_runner or "vitest"
+    targets = detection.test_files or detection.test_paths
     coverage_root = ".aqg/work/coverage/js"
     if runner == "vitest":
         collect = [
@@ -208,17 +212,27 @@ def _javascript_evidence_commands(detection: Detection) -> tuple[list[str], list
         ]
         return collect, coverage
     if runner == "jest":
-        collect = _js_exec_command(manager, "jest", "--listTests")
+        collect = _js_exec_command(manager, "jest", "--listTests", "--runTestsByPath", *targets)
         coverage = _js_exec_command(
             manager,
             "jest",
+            "--runTestsByPath",
+            *targets,
             "--coverage",
             f"--coverageDirectory={coverage_root}",
             "--coverageReporters=json",
             "--coverageReporters=json-summary",
         )
         return collect, coverage
-    target = ["node", "--test"] if runner == "node" else _js_exec_command(manager, runner)
+    return _c8_evidence_commands(manager, runner, targets, coverage_root)
+
+
+def _c8_evidence_commands(
+    manager: str, runner: str, targets: list[str], coverage_root: str
+) -> tuple[list[str], list[str]]:
+    target = ["node", "--test", *targets]
+    if runner != "node":
+        target = _js_exec_command(manager, runner, *targets)
     collect_args = {
         "mocha": ["--dry-run", "--reporter", "json"],
         "ava": ["--tap"],

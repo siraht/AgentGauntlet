@@ -14,6 +14,8 @@ const structure = {
 };
 const ignores = [
   "**/node_modules/**",
+  "**/.yarn/**",
+  "**/.pnp.*",
   "**/.git/**",
   "**/.aqg/**",
   "**/quality/tools/**",

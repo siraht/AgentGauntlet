@@ -1,5 +1,10 @@
-import { test, expect } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { createRequire } from "node:module";
+
+const requireFromAqg = createRequire(
+  new URL("../../quality/tools/js/package.json", import.meta.url),
+);
+const { test, expect } = requireFromAqg("@playwright/test");
+const AxeBuilder = requireFromAqg("@axe-core/playwright").default;
 
 test("primary page loads without severe accessibility or console failures", async ({
   page,

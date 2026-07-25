@@ -98,6 +98,19 @@
   "generated_by": "agent-quality-gauntlet/2.0.0",
   "javascript": {
     "build_command": null,
+    "collect_command": [
+      "$AQG_JS_BIN/vitest",
+      "list",
+      "--config",
+      "quality/tools/js/config/vitest.config.mjs"
+    ],
+    "coverage_command": [
+      "$AQG_JS_BIN/vitest",
+      "run",
+      "--coverage",
+      "--config",
+      "quality/tools/js/config/vitest.config.mjs"
+    ],
     "package_manager": null,
     "test_runner": "vitest",
     "unit_command": [
@@ -118,7 +131,10 @@
       ".aqg/**",
       ".venv/**",
       "venv/**",
+      ".tox/**",
       "node_modules/**",
+      ".yarn/**",
+      ".pnp.*",
       "quality/tools/**",
       "quality/_aqg/**",
       "dist/**",

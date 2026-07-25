@@ -294,7 +294,11 @@ class SetupTests(RepoCase):
         self.assertTrue(
             (self.root / "quality" / "tools" / "js" / "config" / "htmlvalidate.json").exists()
         )
-        self.assertTrue((self.root / "tests" / "aqg-browser" / "aqg-smoke.spec.mjs").exists())
+        smoke = self.root / "tests" / "aqg-browser" / "aqg-smoke.spec.mjs"
+        self.assertTrue(smoke.exists())
+        smoke_source = smoke.read_text(encoding="utf-8")
+        self.assertIn("createRequire", smoke_source)
+        self.assertIn("quality/tools/js/package.json", smoke_source)
 
 
 class FingerprintTests(RepoCase):
@@ -548,11 +552,13 @@ class SetupContractTests(RepoCase):
 
     def test_checked_in_workflows_pin_actions_by_commit(self) -> None:
         source_root = Path(__file__).resolve().parents[1]
-        for relative in (
-            ".github/workflows/quality-gauntlet.yml",
-            "ci/github-actions-quality.yml.example",
-        ):
-            workflow = (source_root / relative).read_text(encoding="utf-8")
+        paths = [
+            *sorted((source_root / ".github" / "workflows").glob("*.yml")),
+            source_root / "ci" / "github-actions-quality.yml.example",
+        ]
+        for path in paths:
+            relative = path.relative_to(source_root).as_posix()
+            workflow = path.read_text(encoding="utf-8")
             references = re.findall(
                 r"uses:\s+[\w.-]+/[\w.-]+(?:/[\w.-]+)?@([^\s#]+)",
                 workflow,
