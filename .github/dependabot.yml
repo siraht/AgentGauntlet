@@ -22,3 +22,12 @@ updates:
       - dependencies
       - quality-toolchain
     versioning-strategy: increase
+
+  - package-ecosystem: pip
+    directory: /quality/tools/python
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - quality-toolchain
+    versioning-strategy: increase
