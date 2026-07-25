@@ -1,12 +1,12 @@
 # Strict-mode readiness
 
-Revision: `e420750d9e2e9fe458c273e0a7bc92ff3e7ff836` · mode: **adopt** · strict ready: **no**
+Revision: `c4f1c370302205320b4686cb62e961f51d64f990` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 91
-- Line coverage: 55.41% (gap 29.59 points)
-- Branch coverage: 43.05% (gap 31.95 points)
+- Tests: 92
+- Line coverage: 55.55% (gap 29.45 points)
+- Branch coverage: 43.24% (gap 31.76 points)
 - Functions above complexity cap: 54
 
 ## Lowest coverage modules
@@ -23,33 +23,33 @@ Revision: `e420750d9e2e9fe458c273e0a7bc92ff3e7ff836` · mode: **adopt** · stric
 | `src/aqg/authoring.py`                | 25.64% |    0.00% |                 29 |
 | `src/aqg/reporting.py`                | 27.12% |    4.17% |                 43 |
 | `scripts/project_matrix.py`           | 27.91% |    8.33% |                124 |
-| `src/aqg/adapters.py`                 | 29.57% |   19.13% |                667 |
+| `src/aqg/adapters.py`                 | 30.81% |   20.32% |                667 |
 | `src/aqg/runner.py`                   | 46.32% |   17.39% |                 73 |
 
 ## Highest complexity functions
 
-| Function                                            | Complexity | Rank |
-| --------------------------------------------------- | ---------: | :--: |
-| `src/aqg/review.py:304::analyze_review`             |        101 |  F   |
-| `src/aqg/scaffold.py:785::build_onboarding`         |         47 |  F   |
-| `src/aqg/scaffold.py:1307::install_toolchains`      |         35 |  E   |
-| `src/aqg/checks.py:304::parse_feature`              |         33 |  E   |
-| `src/aqg/approvals.py:105::validate_approval`       |         30 |  D   |
-| `src/aqg/doctor.py:261::_check_toolchains`          |         30 |  D   |
-| `src/aqg/checks.py:213::scan_secrets`               |         25 |  D   |
-| `src/aqg/review.py:894::_html`                      |         25 |  D   |
-| `src/aqg/hooks.py:104::hook_pretool`                |         24 |  D   |
-| `src/aqg/scaffold.py:1058::initialize_project`      |         23 |  D   |
-| `src/aqg/tui.py:41::_draw`                          |         23 |  D   |
-| `src/aqg/adapters.py:743::_js_coverage_metrics`     |         21 |  D   |
-| `src/aqg/conformance.py:384::run_tool_conformance`  |         20 |  C   |
-| `src/aqg/review.py:791::_markdown`                  |         20 |  C   |
-| `src/aqg/sbom.py:252::_strip_jsonc`                 |         20 |  C   |
-| `src/aqg/wizard.py:30::run_wizard`                  |         20 |  C   |
-| `src/aqg/adapters.py:694::_python_coverage_metrics` |         19 |  C   |
-| `src/aqg/adapters.py:800::_python_crap`             |         19 |  C   |
-| `src/aqg/adapters.py:1837::_reproducible_build`     |         19 |  C   |
-| `src/aqg/checks.py:74::scan_test_integrity`         |         19 |  C   |
+| Function                                           | Complexity | Rank |
+| -------------------------------------------------- | ---------: | :--: |
+| `src/aqg/review.py:304::analyze_review`            |        101 |  F   |
+| `src/aqg/scaffold.py:785::build_onboarding`        |         47 |  F   |
+| `src/aqg/scaffold.py:1307::install_toolchains`     |         35 |  E   |
+| `src/aqg/checks.py:304::parse_feature`             |         33 |  E   |
+| `src/aqg/approvals.py:105::validate_approval`      |         30 |  D   |
+| `src/aqg/doctor.py:261::_check_toolchains`         |         30 |  D   |
+| `src/aqg/checks.py:213::scan_secrets`              |         25 |  D   |
+| `src/aqg/review.py:894::_html`                     |         25 |  D   |
+| `src/aqg/hooks.py:104::hook_pretool`               |         24 |  D   |
+| `src/aqg/scaffold.py:1058::initialize_project`     |         23 |  D   |
+| `src/aqg/tui.py:41::_draw`                         |         23 |  D   |
+| `src/aqg/conformance.py:384::run_tool_conformance` |         20 |  C   |
+| `src/aqg/review.py:791::_markdown`                 |         20 |  C   |
+| `src/aqg/sbom.py:252::_strip_jsonc`                |         20 |  C   |
+| `src/aqg/wizard.py:30::run_wizard`                 |         20 |  C   |
+| `src/aqg/adapters.py:817::_python_crap`            |         19 |  C   |
+| `src/aqg/adapters.py:1854::_reproducible_build`    |         19 |  C   |
+| `src/aqg/checks.py:74::scan_test_integrity`        |         19 |  C   |
+| `src/aqg/doctor.py:84::diagnose`                   |         19 |  C   |
+| `src/aqg/tui.py:140::_run`                         |         19 |  C   |
 
 ## Switch contract
 

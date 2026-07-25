@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 31.95,
+    "branch_coverage_points": 31.76,
     "functions_over_complexity_cap": 54,
-    "line_coverage_points": 29.59
+    "line_coverage_points": 29.45
   },
   "coverage": {
-    "branch_percent": 43.05,
-    "branches": 2316,
-    "covered_branches": 997,
-    "covered_statements": 3477,
-    "line_percent": 55.41,
-    "statements": 6275
+    "branch_percent": 43.24,
+    "branches": 2324,
+    "covered_branches": 1005,
+    "covered_statements": 3495,
+    "line_percent": 55.55,
+    "statements": 6292
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-25T05:55:00+00:00",
+  "generated_at": "2026-07-25T06:02:00+00:00",
   "highest_complexity_functions": [
     {
       "complexity": 101,
@@ -93,13 +93,6 @@
       "rank": "D"
     },
     {
-      "complexity": 21,
-      "line": 743,
-      "name": "_js_coverage_metrics",
-      "path": "src/aqg/adapters.py",
-      "rank": "D"
-    },
-    {
       "complexity": 20,
       "line": 384,
       "name": "run_tool_conformance",
@@ -129,21 +122,14 @@
     },
     {
       "complexity": 19,
-      "line": 694,
-      "name": "_python_coverage_metrics",
-      "path": "src/aqg/adapters.py",
-      "rank": "C"
-    },
-    {
-      "complexity": 19,
-      "line": 800,
+      "line": 817,
       "name": "_python_crap",
       "path": "src/aqg/adapters.py",
       "rank": "C"
     },
     {
       "complexity": 19,
-      "line": 1837,
+      "line": 1854,
       "name": "_reproducible_build",
       "path": "src/aqg/adapters.py",
       "rank": "C"
@@ -153,6 +139,20 @@
       "line": 74,
       "name": "scan_test_integrity",
       "path": "src/aqg/checks.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 19,
+      "line": 84,
+      "name": "diagnose",
+      "path": "src/aqg/doctor.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 19,
+      "line": 140,
+      "name": "_run",
+      "path": "src/aqg/tui.py",
       "rank": "C"
     }
   ],
@@ -218,8 +218,8 @@
       "path": "scripts/project_matrix.py"
     },
     {
-      "branch_percent": 19.13,
-      "line_percent": 29.57,
+      "branch_percent": 20.32,
+      "line_percent": 30.81,
       "missing_statements": 667,
       "path": "src/aqg/adapters.py"
     },
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "e420750d9e2e9fe458c273e0a7bc92ff3e7ff836",
+  "revision": "c4f1c370302205320b4686cb62e961f51d64f990",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 91
+  "test_count": 92
 }
