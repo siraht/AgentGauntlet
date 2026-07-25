@@ -394,12 +394,20 @@ def _expand_project_command(root: Path, command: list[str]) -> list[str]:
     return [part.replace("$AQG_JS_BIN", js_bin).replace("$AQG_PY_BIN", py_bin) for part in command]
 
 
+def _project_test_env(**values: str) -> dict[str, str]:
+    """Keep outer AQG control variables out of project test processes."""
+    return {"AQG_DIFF_BASE": "", **values}
+
+
 def _python_test_env(root: Path, *, timezone: bool = False) -> dict[str, str]:
     entries = [str(root), str(root / "src")]
     existing = os.environ.get("PYTHONPATH")
     if existing:
         entries.append(existing)
-    environment = {"PYTHONHASHSEED": "0", "PYTHONPATH": os.pathsep.join(entries)}
+    environment = _project_test_env(
+        PYTHONHASHSEED="0",
+        PYTHONPATH=os.pathsep.join(entries),
+    )
     if timezone:
         environment["TZ"] = "UTC"
     return environment
@@ -447,7 +455,7 @@ def _javascript_collection_spec(root: Path, project: dict[str, Any]) -> CommandS
         ]
     else:
         return None
-    return command, 600, {"CI": "1", "TZ": "UTC"}
+    return command, 600, _project_test_env(CI="1", TZ="UTC")
 
 
 def _collection_specs(root: Path, project: dict[str, Any]) -> list[CommandSpec]:
@@ -483,7 +491,7 @@ def _javascript_unit_spec(root: Path, project: dict[str, Any]) -> CommandSpec:
             "quality/tools/js/config/vitest.config.mjs",
         ]
     )
-    return argv, 1800, {"CI": "1", "TZ": "UTC", "FORCE_COLOR": "0"}
+    return argv, 1800, _project_test_env(CI="1", TZ="UTC", FORCE_COLOR="0")
 
 
 def _python_unit_spec(root: Path, project: dict[str, Any]) -> CommandSpec:
@@ -761,39 +769,41 @@ def _python_coverage_metrics(root: Path, path: Path, project: dict[str, Any]) ->
     }
 
 
-def _js_coverage_metrics(
-    root: Path, summary_path: Path, final_path: Path, project: dict[str, Any]
-) -> dict[str, Any]:
-    summary = read_json(summary_path)
-    total = summary.get("total", {})
-    metrics: dict[str, Any] = {
-        name: float(total.get(name, {}).get("pct", 0.0))
-        for name in ("lines", "branches", "functions", "statements")
-    }
+def _js_changed_statement_counts(
+    root: Path,
+    final_path: Path,
+    project: dict[str, Any],
+) -> tuple[int, int]:
     changed = _changed_lines(root, project)
     relevant = covered = 0
-    if final_path.exists():
-        final = read_json(final_path)
-        for filename, data in final.items():
-            try:
-                rel = Path(filename).resolve().relative_to(root.resolve()).as_posix()
-            except ValueError:
-                rel = filename
-            if rel not in changed or _is_test_path(rel, project):
-                continue
-            changed_set = changed[rel]
-            statement_map = data.get("statementMap", {})
-            counts = data.get("s", {})
-            for key, location in statement_map.items():
-                line = int(location.get("start", {}).get("line", 0))
-                if line in changed_set:
-                    relevant += 1
-                    covered += int(counts.get(key, 0)) > 0
-    metrics["changed_lines"] = None if relevant == 0 else covered * 100 / relevant
-    metrics["changed_executable_lines"] = relevant
+    if not final_path.exists():
+        return relevant, covered
+    final = read_json(final_path)
+    for filename, data in final.items():
+        try:
+            rel = Path(filename).resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            rel = filename
+        if rel not in changed or _is_test_path(rel, project):
+            continue
+        changed_set = changed[rel]
+        statement_map = data.get("statementMap", {})
+        counts = data.get("s", {})
+        for key, location in statement_map.items():
+            line = int(location.get("start", {}).get("line", 0))
+            if line in changed_set:
+                relevant += 1
+                covered += int(counts.get(key, 0)) > 0
+    return relevant, covered
+
+
+def _js_coverage_failures(
+    metrics: dict[str, Any],
+    changed_production: list[str],
+    project: dict[str, Any],
+) -> list[str]:
     thresholds = _effective_thresholds(project)["coverage"]
     failures: list[str] = []
-    changed_production = _changed_production_files(root, project, JS_SUFFIXES)
     if not _adopt_mode(project):
         for name in ("lines", "branches", "functions", "statements"):
             if metrics[name] < float(thresholds[name]):
@@ -808,9 +818,28 @@ def _js_coverage_metrics(
         failures.append(
             f"changed-line coverage {metrics['changed_lines']:.1f}% < {thresholds['changed_lines']}%"
         )
+    return failures
+
+
+def _js_coverage_metrics(
+    root: Path, summary_path: Path, final_path: Path, project: dict[str, Any]
+) -> dict[str, Any]:
+    summary = read_json(summary_path)
+    total = summary.get("total", {})
+    metrics: dict[str, Any] = {
+        name: float(total.get(name, {}).get("pct", 0.0))
+        for name in ("lines", "branches", "functions", "statements")
+    }
+    relevant, covered = _js_changed_statement_counts(root, final_path, project)
+    metrics["changed_lines"] = None if relevant == 0 else covered * 100 / relevant
+    metrics["changed_executable_lines"] = relevant
+    changed_production, excluded_configuration = _js_mutation_scope(
+        _changed_production_files(root, project, JS_SUFFIXES)
+    )
     metrics["mode"] = "changed" if _adopt_mode(project) else "full"
     metrics["changed_production_files"] = changed_production
-    metrics["failures"] = failures
+    metrics["excluded_configuration_files"] = excluded_configuration
+    metrics["failures"] = _js_coverage_failures(metrics, changed_production, project)
     return metrics
 
 
@@ -918,7 +947,7 @@ def _javascript_coverage(
         _javascript_coverage_command(root, project),
         cwd=root,
         timeout=2400,
-        env={"CI": "1", "TZ": "UTC"},
+        env=_project_test_env(CI="1", TZ="UTC"),
     )
     code = _command_exit_code(result)
     summary = root / ".aqg" / "work" / "coverage" / "js" / "coverage-summary.json"
@@ -1050,7 +1079,7 @@ def _contracts(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
                     *paths,
                 ],
                 1800,
-                {"CI": "1"},
+                _project_test_env(CI="1"),
             )
         )
     code, results = _run_many(root, commands)
@@ -1066,7 +1095,7 @@ def _custom_acceptance_spec(root: Path, project: dict[str, Any]) -> CommandSpec 
     return (
         _expand_project_command(root, [str(value) for value in custom]),
         2400,
-        {"CI": "1", "TZ": "UTC"},
+        _project_test_env(CI="1", TZ="UTC"),
     )
 
 
@@ -1087,7 +1116,7 @@ def _browser_acceptance_spec(root: Path, project: dict[str, Any]) -> CommandSpec
             "quality/tools/js/config/playwright.config.mjs",
         ],
         2400,
-        {"CI": "1", "TZ": "UTC"},
+        _project_test_env(CI="1", TZ="UTC"),
     )
 
 
@@ -1337,13 +1366,17 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
         [mutmut, "run"],
         cwd=work,
         timeout=7200,
-        env={"PYTHONPATH": python_path, "PYTHONHASHSEED": "0", "TZ": "UTC"},
+        env=_project_test_env(
+            PYTHONPATH=python_path,
+            PYTHONHASHSEED="0",
+            TZ="UTC",
+        ),
     )
     results = run_command(
         _mutmut_results_command(mutmut),
         cwd=work,
         timeout=300,
-        env={"PYTHONPATH": python_path},
+        env=_project_test_env(PYTHONPATH=python_path),
     )
     status_counts, status_lines = _parse_mutmut_results(results.stdout)
     thresholds = _effective_thresholds(project)["mutation"]
@@ -1442,7 +1475,10 @@ def _mutation_js(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, An
         encoding="utf-8",
     )
     result = run_command(
-        [stryker, "run", str(config_path)], cwd=root, timeout=7200, env={"CI": "1", "TZ": "UTC"}
+        [stryker, "run", str(config_path)],
+        cwd=root,
+        timeout=7200,
+        env=_project_test_env(CI="1", TZ="UTC"),
     )
     report_path = root / ".aqg" / "work" / "mutation" / "stryker.json"
     payload = read_json(report_path, default={}) if report_path.exists() else {}

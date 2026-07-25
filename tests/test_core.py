@@ -21,11 +21,13 @@ from aqg.adapters import (
     _changed_production_files,
     _classify_mutmut_results,
     _is_test_path,
+    _javascript_unit_spec,
     _js_mutation_scope,
     _mutmut_results_command,
     _parse_mutmut_results,
     _python_crap,
     _python_structure_evidence,
+    _python_test_env,
     run_adapter,
 )
 from aqg.approvals import template, validate_approval
@@ -1019,6 +1021,16 @@ class SetupContractTests(RepoCase):
                 "quality/tools/js/config/eslint.config.mjs",
             ],
         )
+
+    def test_project_test_commands_clear_the_outer_comparison_base(self) -> None:
+        python_environment = _python_test_env(self.root, timezone=True)
+        _, _, javascript_environment = _javascript_unit_spec(
+            self.root,
+            {"javascript": {"unit_command": ["node", "--test"]}},
+        )
+
+        self.assertEqual(python_environment["AQG_DIFF_BASE"], "")
+        self.assertEqual(javascript_environment["AQG_DIFF_BASE"], "")
 
     def test_configured_nested_test_root_overrides_filename_heuristics(self) -> None:
         project = {
