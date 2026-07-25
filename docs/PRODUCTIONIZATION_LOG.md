@@ -76,6 +76,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-039 | Apply changed-code metrics only to configured, non-excluded source paths.                        | Synthetic untracked diffs made review complete but exposed an implicit coupling: coverage treated generated AQG launchers, runtimes, and checker configuration as application production. Governed source roots preserve untracked application enforcement without measuring the control plane as adopter code. | A future project schema supports separately governed implementation and generated-code roots.                    |
 | D-040 | Provision every dependency of every gate in the authoritative hosted profile.                    | The protected deep profile correctly failed as infrastructure when its Lighthouse gate lacked Playwright Chromium, even though a separate browser conformance job was green. Installing browsers in the policy job makes the required context self-contained instead of borrowing confidence from adjacent CI.  | Hosted runners expose a preinstalled, integrity-verifiable browser that AQG can safely adopt.                    |
 | D-041 | Fail closed when the configured Git comparison base is unavailable.                              | A shallow pull-request checkout lacked `origin/main`, so fallback to `HEAD~1` made review report zero changed files and mutation return vacuous evidence. CI now resolves the real event base, and runtime diff discovery rejects missing refs while preserving untracked-file support in unborn repositories.  | Git provides a first-class event-aware changed-file API with equivalent local reproducibility.                   |
+| D-042 | Keep the comparison-base override inside the AQG control process.                                | The outer adapter needs the event base, but passing `AQG_DIFF_BASE` into project tests and mutation sandboxes overrode their own repository models and caused valid disposable-repository tests to fail. Child collection, test, coverage, contract, acceptance, and mutation processes now clear the override. | A typed execution-context API replaces environment-variable propagation.                                         |
 
 ## Progress
 
@@ -84,7 +85,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                                                                                                              |
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                                                                                                                   |
 | Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; all cross-platform contracts and live/browser jobs pass in [run 30142857369](https://github.com/siraht/AgentGauntlet/actions/runs/30142857369).                                 |
-| Coverage and complexity debt   | Active   | 94 tests plus 73 subtests pass; whole-tree coverage is 55.62% / 43.27% with 54 complexity blockers; the prior mutation run was 53.48%; exact-current deep evidence is being regenerated.                                                 |
+| Coverage and complexity debt   | Active   | 95 tests plus 73 subtests pass; whole-tree coverage is 55.88% / 43.40% with 53 complexity blockers; the prior mutation run was 53.48%; exact-current deep evidence is being regenerated.                                                 |
 | End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.                                                                                            |
 | Release and provenance         | Active   | Final artifacts reproduce byte-for-byte and verify; extracted install/doctor/archive hygiene pass; public-main rollback and candidate restoration match exact vendored bytes; keyless CI attestation remains.                            |
 | GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 13 GitHub Actions contexts, including fail-closed `policy-evidence`; merge, Dependabot, secret-scanning, push-protection, and alert controls are configured. |
@@ -201,6 +202,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A missing comparison ref is not an empty diff. Changed-code gates must reject it as a
   configuration error, and hosted workflows must resolve the event's real base before
   hashing, reviewing, measuring coverage, or selecting mutation scope.
+- Control-plane context must stop at the application-process boundary. A comparison ref
+  selected for the outer AQG run must not override the repository model of tests,
+  acceptance handlers, or mutation sandboxes launched by an adapter.
 
 ## Evidence conventions
 

@@ -1,23 +1,23 @@
 {
   "blockers": {
-    "branch_coverage_points": 31.73,
-    "functions_over_complexity_cap": 54,
-    "line_coverage_points": 29.38
+    "branch_coverage_points": 31.6,
+    "functions_over_complexity_cap": 53,
+    "line_coverage_points": 29.12
   },
   "coverage": {
-    "branch_percent": 43.27,
+    "branch_percent": 43.4,
     "branches": 2332,
-    "covered_branches": 1009,
-    "covered_statements": 3508,
-    "line_percent": 55.62,
-    "statements": 6307
+    "covered_branches": 1012,
+    "covered_statements": 3530,
+    "line_percent": 55.88,
+    "statements": 6317
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-25T06:21:59+00:00",
+  "generated_at": "2026-07-25T06:42:22+00:00",
   "highest_complexity_functions": [
     {
       "complexity": 101,
-      "line": 304,
+      "line": 305,
       "name": "analyze_review",
       "path": "src/aqg/review.py",
       "rank": "F"
@@ -66,7 +66,7 @@
     },
     {
       "complexity": 25,
-      "line": 894,
+      "line": 895,
       "name": "_html",
       "path": "src/aqg/review.py",
       "rank": "D"
@@ -101,7 +101,7 @@
     },
     {
       "complexity": 20,
-      "line": 791,
+      "line": 792,
       "name": "_markdown",
       "path": "src/aqg/review.py",
       "rank": "C"
@@ -122,14 +122,14 @@
     },
     {
       "complexity": 19,
-      "line": 817,
+      "line": 846,
       "name": "_python_crap",
       "path": "src/aqg/adapters.py",
       "rank": "C"
     },
     {
       "complexity": 19,
-      "line": 1854,
+      "line": 1890,
       "name": "_reproducible_build",
       "path": "src/aqg/adapters.py",
       "rank": "C"
@@ -218,9 +218,9 @@
       "path": "scripts/project_matrix.py"
     },
     {
-      "branch_percent": 20.32,
-      "line_percent": 30.81,
-      "missing_statements": 667,
+      "branch_percent": 21.12,
+      "line_percent": 32.68,
+      "missing_statements": 655,
       "path": "src/aqg/adapters.py"
     },
     {
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "de25a0c33132c12f989a4b39f9e66fd17448456e",
+  "revision": "b3a6d39ffe8b904a929ac4e5f2d6b342d2813657",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 94
+  "test_count": 95
 }
