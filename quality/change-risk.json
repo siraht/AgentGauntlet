@@ -1,20 +1,24 @@
 {
   "schema_version": "1",
-  "summary": "Recover, complete, validate, and publicly publish the Agent Quality Gauntlet v2 source distribution.",
+  "summary": "Productionize the public Agent Quality Gauntlet v2 beta through governance, debt remediation, cross-stack conformance, dogfooding, and a provenance-backed release.",
   "risk_profile": "high_assurance",
   "production_scope": true,
   "reversible": true,
   "blast_radius": "public",
   "behavior_changes": [
-    "The public repository presents one coherent v2 CLI, installer, documentation set, and reproducible release build.",
-    "High-assurance and release profiles generate and validate deterministic CycloneDX dependency inventories.",
-    "Automatic setup distinguishes existing repositories from greenfield repositories and installs browsers only when explicitly requested."
+    "GitHub CI and branch governance require the authoritative source-test and deterministic-release checks before main can advance.",
+    "Representative JavaScript, TypeScript, HTML, CSS, and Python fixture projects prove setup and gate behavior across supported runner variants.",
+    "High-risk implementation hotspots gain characterization tests and smaller control-flow units without changing their public contracts.",
+    "The beta release includes deterministic portable artifacts, checksums, CycloneDX inventories, provenance, and verifiable signatures or attestations.",
+    "Dogfood evidence covers setup, CLI, review, dashboard, TUI, acceptance mutation, release, rollback, and clean-clone operation."
   ],
   "behavior_preserved": [
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",
     "Missing, stale, malformed, or untrustworthy evidence fails closed.",
     "Existing JavaScript, TypeScript, HTML, CSS, and Python adapter behavior remains supported.",
-    "Policy, expected-output, waiver, and approval changes remain protected and reviewable."
+    "Policy, expected-output, waiver, and approval changes remain protected and reviewable.",
+    "The source runtime remains dependency-free on Python 3.11 or newer.",
+    "Recovered baseline history and published main remain recoverable throughout the work."
   ],
   "risk_factors": {
     "data_loss": false,
@@ -29,12 +33,13 @@
     "supply_chain": true,
     "safety": false
   },
-  "failure_detection": "Unit tests, internal conformance fixtures, package builds, deterministic release rebuild comparison, disposable-project setup smoke tests, and GitHub remote verification.",
-  "rollback": "Revert the initial public commit or delete the newly created GitHub repository before external adoption; no existing remote or production deployment is modified.",
+  "failure_detection": "Fast and deep AQG profiles, changed-code mutation, expanded source tests, real-project fixture conformance, browser smoke tests, deterministic double builds, SBOM validation, clean-clone dogfooding, GitHub required checks, and independent verification.",
+  "rollback": "Revert granular commits or the productionization pull request; restore the prior main ruleset export; delete an unpublished draft release or supersede a published beta with the prior checksummed artifacts.",
   "human_review": [
-    "Public CLI and setup behavior",
-    "CycloneDX gate behavior",
-    "Release contents and checksums",
-    "Repository visibility and governance guidance"
+    "Public CLI, setup, review, and dashboard behavior",
+    "Changed coverage and complexity policy behavior",
+    "Cross-stack conformance applicability and expected failures",
+    "Release contents, SBOMs, signatures, provenance, and rollback",
+    "Required GitHub checks, bypass authority, and CODEOWNERS governance"
   ]
 }
