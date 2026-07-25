@@ -35,6 +35,7 @@ from aqg.constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALI
 from aqg.dashboard import DashboardServer, project_status
 from aqg.detect import detect_project
 from aqg.doctor import diagnose
+from aqg.errors import ConfigurationError
 from aqg.policy import GATE_NAMES, load_policy, render_policy, validate_policy
 from aqg.project import load_project, validate_project
 from aqg.review import analyze_review
@@ -577,6 +578,15 @@ class FingerprintTests(RepoCase):
         current = git(self.root, "branch", "--show-current")
         expected = current if current in {"main", "master"} else "HEAD"
         self.assertEqual(detect_base_ref(self.root), expected)
+
+    def test_missing_comparison_base_fails_closed(self) -> None:
+        (self.root / "a.txt").write_text("a\n", encoding="utf-8")
+        self.commit()
+
+        with self.assertRaisesRegex(ConfigurationError, "comparison base"):
+            git_changed_files(self.root, "origin/missing")
+        with self.assertRaisesRegex(ConfigurationError, "comparison base"):
+            git_diff(self.root, "origin/missing")
 
 
 class ReviewAndApprovalTests(RepoCase):

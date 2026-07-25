@@ -51,6 +51,8 @@ jobs:
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
@@ -60,6 +62,21 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: quality/tools/js/package-lock.json
+      - name: Resolve comparison base
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            AQG_BASE="origin/${{ github.base_ref }}"
+          else
+            AQG_BASE="${{ github.event.before }}"
+            if [[ -z "$AQG_BASE" || "$AQG_BASE" =~ ^0+$ ]] || ! git cat-file -e "$AQG_BASE^{commit}" 2>/dev/null; then
+              AQG_BASE="HEAD~1"
+              git cat-file -e "$AQG_BASE^{commit}" 2>/dev/null || AQG_BASE="HEAD"
+            fi
+          fi
+          echo "AQG_DIFF_BASE=$AQG_BASE" >> "$GITHUB_ENV"
+          echo "Comparison base: $AQG_BASE"
       - name: Install hash-locked AQG toolchains
         run: python quality/qg.py tools install --ci --browsers
       - name: Run the risk-selected authoritative profile

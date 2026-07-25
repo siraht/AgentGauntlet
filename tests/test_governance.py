@@ -68,6 +68,8 @@ class GitHubGovernanceContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("AQG_DIFF_BASE=$AQG_BASE", workflow)
         self.assertIn("tools install --ci --browsers", workflow)
         self.assertIn(".aqg/work/*/report.json", workflow)
         self.assertIn(".aqg/work/coverage/*.json", workflow)

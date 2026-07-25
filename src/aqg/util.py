@@ -315,11 +315,30 @@ def detect_base_ref(root: Path) -> str:
     return "HEAD" if code == 0 else "HEAD"
 
 
+def _comparison_base_available(root: Path, base: str) -> bool:
+    code, _, _ = git_output(
+        root,
+        ["rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
+    )
+    if code == 0:
+        return True
+    head_code, _, _ = git_output(
+        root,
+        ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+    )
+    if base == "HEAD" and head_code != 0:
+        return False
+    raise ConfigurationError(
+        f"comparison base {base!r} is unavailable; fetch it or set enforcement.base_ref"
+    )
+
+
 def git_changed_files(root: Path, base: str = "HEAD", include_worktree: bool = True) -> list[str]:
+    if not _comparison_base_available(root, base):
+        return sorted(_status_paths(root))
     candidates = [
         ["diff", "--name-only", f"{base}...HEAD"],
         ["diff", "--name-only", base],
-        ["diff", "--name-only", "HEAD~1...HEAD"],
     ]
     for args in candidates:
         code, stdout, _ = git_output(root, args)
@@ -334,14 +353,15 @@ def git_changed_files(root: Path, base: str = "HEAD", include_worktree: bool = T
                         )
                 files.update(_status_paths(root))
             return sorted(files)
-    return sorted(_status_paths(root))
+    raise ConfigurationError(f"could not compare HEAD with configured base {base!r}")
 
 
 def git_diff(root: Path, base: str = "HEAD", unified: int = 0) -> str:
+    if not _comparison_base_available(root, base):
+        return _untracked_diff(root, unified=unified)
     candidates = [
         ["diff", f"--unified={unified}", f"{base}...HEAD"],
         ["diff", f"--unified={unified}", base],
-        ["diff", f"--unified={unified}", "HEAD~1...HEAD"],
     ]
     for args in candidates:
         code, stdout, _ = git_output(root, args)
@@ -356,7 +376,7 @@ def git_diff(root: Path, base: str = "HEAD", unified: int = 0) -> str:
                 + (staged_out if staged_code == 0 else "")
             )
             return tracked + _untracked_diff(root, unified=unified)
-    return _untracked_diff(root, unified=unified)
+    raise ConfigurationError(f"could not compare HEAD with configured base {base!r}")
 
 
 def _untracked_diff(root: Path, *, unified: int) -> str:
