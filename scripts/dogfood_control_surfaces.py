@@ -86,7 +86,9 @@ def _request(
         return exc.code, exc.read(), dict(exc.headers)
 
 
-def _dashboard_start(project: Path, *, allow_actions: bool) -> tuple[subprocess.Popen[str], str, str]:
+def _dashboard_start(
+    project: Path, *, allow_actions: bool
+) -> tuple[subprocess.Popen[str], str, str]:
     arguments = [str(QG), "--root", str(project), "dashboard", "--port", "0"]
     if allow_actions:
         arguments.append("--allow-actions")
@@ -146,9 +148,7 @@ def _dogfood_dashboard(project: Path) -> dict[str, Any]:
             if path.startswith("/api/"):
                 json.loads(body)
             checks.append(f"GET {path}=200")
-        status, _, _ = _request(
-            url + "/api/actions/review", method="POST", payload={}
-        )
+        status, _, _ = _request(url + "/api/actions/review", method="POST", payload={})
         if status != 403:
             raise DogfoodFailure(f"disabled dashboard action returned {status}")
         checks.append("disabled POST=403")
@@ -274,9 +274,7 @@ def dogfood() -> dict[str, Any]:
                 expected=(0, 1),
             )
         )
-        conformance = _json(
-            _run(["--root", str(project), "conformance", "--json"], cwd=project)
-        )
+        conformance = _json(_run(["--root", str(project), "conformance", "--json"], cwd=project))
         dashboard = _dogfood_dashboard(project)
         tui = _dogfood_tui(project)
         review_packet = review.get("packet", review)
