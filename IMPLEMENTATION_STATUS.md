@@ -87,15 +87,17 @@ AQG includes conformance commands for installed tools, but an organization shoul
 ## Recovered-code debt
 
 The implementation does not yet earn its own High-assurance “reduced code review” mode.
-Fresh whole-tree evidence reports 55.88% Python statement coverage, 43.40% branch
-coverage, and 53 functions over the Standard cyclomatic-complexity cap. This is a material
+Fresh whole-tree evidence reports 56.12% Python statement coverage, 43.65% branch
+coverage, and 52 functions over the Standard cyclomatic-complexity cap. This is a material
 improvement over the recovered baseline near 35%, but remains below the 85% line and
 75% branch targets. The largest remaining hotspots are automated diff review, onboarding
 generation, toolchain installation, Gherkin parsing, approvals, and doctor diagnostics.
 
-Fresh changed-file mutation executed all 9,421 generated mutants: 5,038 were killed,
-4,277 survived, 106 had no tests, one controlled infinite-loop mutant timed out, and none
-were incomplete. The 53.48% score is below the 70% Standard target and the zero-survivor
-policy, so AQG correctly reports a quality failure.
+The most recent complete local changed-file campaign executed 10,377 generated mutants:
+5,672 were killed, 4,594 survived, 107 had no tests, four controlled mutants timed out,
+and none were incomplete. The 54.70% score is below the 70% Standard target and the
+zero-survivor policy, so AQG correctly reports a quality failure. The same campaign
+exceeded its two-hour bound on a slower hosted runner; protected, baseline-relative
+per-mutant timeout limits are now being reconfirmed locally and in CI.
 
 AQG is therefore published in `adopt`/ratchet mode. New changes must not add debt, while the existing hotspots need focused characterization tests and incremental extraction before switching this repository to full strict enforcement. This limitation affects confidence in AQG’s implementation, not the availability of the CLI, installer, evidence model, dashboard, or supported adapters.
