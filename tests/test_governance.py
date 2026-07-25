@@ -45,6 +45,7 @@ class GitHubGovernanceContractTests(unittest.TestCase):
             "Python 3.11",
             "Python 3.12",
             "Python 3.13",
+            "policy-evidence",
             "release-build",
             "Contract (ubuntu-latest, Python 3.11)",
             "Contract (ubuntu-latest, Python 3.13)",
