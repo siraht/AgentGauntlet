@@ -300,8 +300,7 @@ def main() -> int:
         print("\n".join(ALL_CASES))
         return 0
     cases = args.cases or list(DEFAULT_CASES)
-    temporary = tempfile.TemporaryDirectory(prefix="aqg-project-matrix-")
-    workspace = Path(temporary.name)
+    workspace = Path(tempfile.mkdtemp(prefix="aqg-project-matrix-"))
     report: dict[str, Any] = {"schema_version": 1, "cases": [], "failures": []}
     try:
         for case in cases:
@@ -317,10 +316,9 @@ def main() -> int:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
         if args.keep_workspace:
-            temporary._finalizer.detach()  # type: ignore[attr-defined]
             print(f"workspace: {workspace}")
         else:
-            temporary.cleanup()
+            shutil.rmtree(workspace)
     return 1 if report["failures"] else 0
 
 

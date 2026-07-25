@@ -13,6 +13,7 @@ A good test makes four things obvious: starting state, action, externally meanin
 ```python
 # Feature-Spec: Billing.Refunds
 
+
 def test_duplicate_request_returns_original_refund_without_second_charge(store, gateway):
     existing = store.refund(idempotency_key="r-17", amount=2500)
 

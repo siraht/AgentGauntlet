@@ -19,14 +19,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from aqg.sbom import (  # noqa: E402
-    Inventory,
-    cyclonedx_document,
-    javascript_inventory,
-    python_inventory,
-    validate_cyclonedx_document,
-)
-
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 MAIN = b"from aqg.cli import main\nraise SystemExit(main())\n"
 
@@ -99,7 +91,9 @@ def _source_materials() -> list[dict[str, Any]]:
     ]
 
 
-def _write_sbom(path: Path, root: Path, inventory: Inventory) -> None:
+def _write_sbom(path: Path, root: Path, inventory: Any) -> None:
+    from aqg.sbom import cyclonedx_document, validate_cyclonedx_document
+
     document = cyclonedx_document(root, inventory)
     errors = validate_cyclonedx_document(document)
     if errors or not inventory.complete:
@@ -109,6 +103,8 @@ def _write_sbom(path: Path, root: Path, inventory: Inventory) -> None:
 
 
 def _write_sboms(output: Path) -> list[Path]:
+    from aqg.sbom import Inventory, javascript_inventory, python_inventory
+
     runtime = Inventory(
         ecosystem="python",
         source=ROOT / "pyproject.toml",
