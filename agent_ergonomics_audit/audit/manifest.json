@@ -3,7 +3,7 @@
   "tool_name": "AgentGauntlet",
   "tool_repo": "/data/projects/AgentGauntlet",
   "audit_workspace": "/data/projects/AgentGauntlet/agent_ergonomics_audit",
-  "rubric_version": "<git SHA of references/rubric/SCORING-RUBRIC.md when scoring ran>",
+  "rubric_version": "sha256:44e7c00b3dee6be38118f1f40719d814278cb129f9aad34572e0936104b135a4",
   "passes": [
     {
       "pass": 1,
@@ -15,7 +15,7 @@
       "feature_branch": null,
       "summary": {
         "surfaces_inventoried": 197,
-        "surfaces_scored": 0,
+        "surfaces_scored": 197,
         "recommendations_total": 0,
         "recommendations_applied": 0,
         "substantive_commits": 0,
@@ -34,7 +34,7 @@
         "playbook": "audit/playbook.md",
         "applied_changes": "audit/applied_changes.jsonl",
         "ambition_bar_check": "audit/ambition_bar_check.md",
-        "scorecard": "audit/scorecard_pass_N.md",
+        "scorecard": "audit/scorecard_pass_1.md",
         "heatmap": "audit/heatmap.svg",
         "uplift_diff": "audit/uplift_diff.md",
         "regression_alerts": "audit/regression_alerts.md",
