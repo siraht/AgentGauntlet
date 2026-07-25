@@ -1,0 +1,96 @@
+{
+  "name": "Protect main with the AQG gauntlet",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "required_linear_history"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "allowed_merge_methods": [
+          "squash",
+          "rebase"
+        ],
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": true,
+        "required_approving_review_count": 1,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "Python 3.11",
+            "integration_id": 15368
+          },
+          {
+            "context": "Python 3.12",
+            "integration_id": 15368
+          },
+          {
+            "context": "Python 3.13",
+            "integration_id": 15368
+          },
+          {
+            "context": "release-build",
+            "integration_id": 15368
+          },
+          {
+            "context": "Contract (ubuntu-latest, Python 3.11)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Contract (ubuntu-latest, Python 3.13)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Contract (macos-latest, Python 3.11)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Contract (macos-latest, Python 3.13)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Contract (windows-latest, Python 3.11)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Contract (windows-latest, Python 3.13)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Live project adapters",
+            "integration_id": 15368
+          },
+          {
+            "context": "Browser and accessibility adapter",
+            "integration_id": 15368
+          }
+        ],
+        "strict_required_status_checks_policy": true
+      }
+    }
+  ]
+}

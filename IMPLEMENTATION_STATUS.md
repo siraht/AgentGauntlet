@@ -69,7 +69,7 @@ These cannot be certified by source tests alone:
 - Playwright browser/E2E behavior on every supported CI image;
 - Stryker and mutmut performance, isolation, and survivor triage at large-project scale;
 - Lighthouse behavior for framework-specific start/build flows;
-- GitHub branch protection, required reviews, and organization rulesets;
+- downstream GitHub branch protection, required reviews, and organization rulesets;
 - license/provenance approval for every external checker.
 
 AQG includes conformance commands for installed tools, but an organization should approve a toolchain only after running those fixtures in a clean, connected environment.

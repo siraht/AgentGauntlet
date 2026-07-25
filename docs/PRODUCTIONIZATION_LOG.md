@@ -61,6 +61,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-024 | Publish deterministic local provenance and keyless hosting attestations as distinct evidence.      | A reproducibility statement remains reviewable offline, while GitHub OIDC and Sigstore authenticate CI-built bytes without a long-lived signing key; neither should be misrepresented as a security verdict. | A managed independent builder or organization signing policy is introduced.      |
 | D-025 | Make protected Python locks explicit about interpreter-selected transitive dependencies.           | libcst selects `pyyaml-ft` only on Python 3.13+, so a lock resolved on another interpreter can pass locally yet fail hash enforcement on a supported runtime; the marker and hashes now live in the reviewed input and lock. | Python packaging gains a resolver-native universal lock format used by pip.       |
 | D-026 | Resolve Yarn and pnpm matrix runs through the fixture's declared Corepack version.                  | A preinstalled Yarn 1 binary can exist while `packageManager` requires Yarn 4; command presence alone does not prove compatibility, and silently choosing the global binary makes conformance host-dependent. | Package-manager shims gain an equally deterministic native replacement.           |
+| D-027 | Require an independent review without enabling code-owner review in the single-owner repository.    | The author cannot approve their own pull request, while requiring `@siraht` specifically as code owner would deadlock every owner-authored change. There are no bypass actors; enable code-owner enforcement when policy ownership can be assigned to a second maintainer or team. | A second independent policy owner is added.                                      |
 
 ## Progress
 
@@ -72,7 +73,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | Coverage and complexity debt   | Active   | 67 tests pass; whole-library line coverage is 57.50% and branch coverage 42.66%; governance boundaries improved; 52 inherited complexity blockers remain. |
 | End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.   |
 | Release and provenance         | Active   | Complete outputs reproduce byte-for-byte; checksum verification and CycloneDX/in-toto contract tests pass; keyless CI attestation is wired.    |
-| GitHub governance              | Pending  | —                                                                                                                                               |
+| GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 12 GitHub Actions contexts; merge methods, Dependabot, secret scanning, push protection, alerts, and automated fixes are configured. |
 | Final independent verification | Pending  | —                                                                                                                                               |
 
 ## Lessons
