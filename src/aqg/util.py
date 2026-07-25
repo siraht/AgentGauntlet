@@ -333,6 +333,15 @@ def _comparison_base_available(root: Path, base: str) -> bool:
     )
 
 
+def _worktree_changed_files(root: Path) -> set[str]:
+    files = _status_paths(root)
+    for args in (["diff", "--name-only"], ["diff", "--name-only", "--cached"]):
+        code, stdout, _ = git_output(root, args)
+        if code == 0:
+            files.update(line.strip() for line in stdout.splitlines() if line.strip())
+    return files
+
+
 def git_changed_files(root: Path, base: str = "HEAD", include_worktree: bool = True) -> list[str]:
     if not _comparison_base_available(root, base):
         return sorted(_status_paths(root))
@@ -345,13 +354,7 @@ def git_changed_files(root: Path, base: str = "HEAD", include_worktree: bool = T
         if code == 0:
             files = {line.strip() for line in stdout.splitlines() if line.strip()}
             if include_worktree:
-                for extra_args in (["diff", "--name-only"], ["diff", "--name-only", "--cached"]):
-                    extra_code, extra_out, _ = git_output(root, extra_args)
-                    if extra_code == 0:
-                        files.update(
-                            line.strip() for line in extra_out.splitlines() if line.strip()
-                        )
-                files.update(_status_paths(root))
+                files.update(_worktree_changed_files(root))
             return sorted(files)
     raise ConfigurationError(f"could not compare HEAD with configured base {base!r}")
 
