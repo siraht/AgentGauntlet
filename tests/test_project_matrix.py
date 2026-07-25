@@ -1,15 +1,55 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from aqg.detect import detect_project
 from aqg.scaffold import build_project_config
 
+_MATRIX_SPEC = importlib.util.spec_from_file_location(
+    "aqg_project_matrix",
+    Path(__file__).resolve().parents[1] / "scripts" / "project_matrix.py",
+)
+assert _MATRIX_SPEC and _MATRIX_SPEC.loader
+_MATRIX_MODULE = importlib.util.module_from_spec(_MATRIX_SPEC)
+_MATRIX_SPEC.loader.exec_module(_MATRIX_MODULE)
+_corepack_shim = _MATRIX_MODULE._corepack_shim
+
 
 class CrossPlatformMatrixContractTests(unittest.TestCase):
+    def test_yarn_uses_project_pinned_corepack_even_when_global_yarn_exists(self) -> None:
+        with (
+            tempfile.TemporaryDirectory(prefix="aqg-contract-") as temporary,
+            patch.object(_MATRIX_MODULE, "_run") as run,
+            patch.object(
+                _MATRIX_MODULE.shutil,
+                "which",
+                side_effect=lambda command: {
+                    "npm": sys.executable,
+                    "node": sys.executable,
+                    "yarn": "/usr/bin/yarn",
+                }.get(command),
+            ),
+            patch.dict(os.environ, {"PATH": "/usr/bin"}),
+        ):
+            project = Path(temporary) / "project"
+            project.mkdir()
+            _corepack_shim(project, "yarn")
+
+            self.assertEqual(run.call_count, 2)
+            bootstrap = run.call_args_list[0].args[0]
+            self.assertEqual(bootstrap[:2], ["npm", "install"])
+            self.assertIn("corepack@0.34.0", bootstrap)
+            enable = run.call_args_list[1].args[0]
+            self.assertEqual(enable[-1], "yarn")
+            self.assertTrue(os.environ["PATH"].startswith(str(Path(temporary) / ".manager-bin")))
+
     def test_every_manager_and_runner_produces_argv_commands(self) -> None:
         combinations = (
             ("npm", "vitest"),

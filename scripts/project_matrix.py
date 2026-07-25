@@ -83,7 +83,7 @@ def _link_toolchains(project: Path, *, javascript: bool, python: bool) -> None:
 
 
 def _corepack_shim(project: Path, manager: str) -> None:
-    if shutil.which(manager):
+    if manager not in {"yarn", "pnpm"} and shutil.which(manager):
         return
     if manager not in {"yarn", "pnpm"} or not shutil.which("npm"):
         raise RuntimeError(f"{manager} is required for this matrix case")

@@ -60,6 +60,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-023 | Prioritize inherited-debt tests around governance boundaries.                                      | Hooks, TUI, and dashboard authentication were among the least-covered modules and can silently weaken or misreport the gauntlet if their failure paths are untested.                   | These modules meet strict branch coverage and a lower-risk hotspot dominates.    |
 | D-024 | Publish deterministic local provenance and keyless hosting attestations as distinct evidence.      | A reproducibility statement remains reviewable offline, while GitHub OIDC and Sigstore authenticate CI-built bytes without a long-lived signing key; neither should be misrepresented as a security verdict. | A managed independent builder or organization signing policy is introduced.      |
 | D-025 | Make protected Python locks explicit about interpreter-selected transitive dependencies.           | libcst selects `pyyaml-ft` only on Python 3.13+, so a lock resolved on another interpreter can pass locally yet fail hash enforcement on a supported runtime; the marker and hashes now live in the reviewed input and lock. | Python packaging gains a resolver-native universal lock format used by pip.       |
+| D-026 | Resolve Yarn and pnpm matrix runs through the fixture's declared Corepack version.                  | A preinstalled Yarn 1 binary can exist while `packageManager` requires Yarn 4; command presence alone does not prove compatibility, and silently choosing the global binary makes conformance host-dependent. | Package-manager shims gain an equally deterministic native replacement.           |
 
 ## Progress
 
@@ -133,6 +134,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Hash enforcement correctly fails when an environment-selected transitive dependency is
   absent. Validate protected locks on both the oldest and newest supported interpreters,
   even when the top-level requirements are identical.
+- A binary on `PATH` is not evidence that it satisfies a project's declared tool contract.
+  Package-manager conformance must select the version named by `packageManager`, including
+  when the CI image already exposes an incompatible global Yarn.
 
 ## Evidence conventions
 
