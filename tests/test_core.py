@@ -32,6 +32,7 @@ from aqg.cli import build_parser
 from aqg.constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE
 from aqg.dashboard import DashboardServer, project_status
 from aqg.detect import detect_project
+from aqg.doctor import diagnose
 from aqg.policy import GATE_NAMES, load_policy, render_policy, validate_policy
 from aqg.project import load_project, validate_project
 from aqg.review import analyze_review
@@ -480,11 +481,13 @@ class SetupTests(RepoCase):
         (self.root / "styles.css").write_text(
             "body { font-family: sans-serif; }\n", encoding="utf-8"
         )
-        initialize_project(self.root, install=False, ci=False)
+        setup = initialize_project(self.root, install=False, ci=False)
         project = load_project(self.root)
         self.assertTrue(project["stacks"]["html"])
         self.assertTrue(project["stacks"]["css"])
+        self.assertFalse(project["stacks"]["javascript"])
         self.assertFalse(project["stacks"]["python"])
+        self.assertFalse(setup["onboarding"]["state"]["detected_stacks"]["python"])
         self.assertTrue(project["gates"]["acceptance"]["applicable"])
         self.assertTrue(
             (self.root / "quality" / "tools" / "js" / "config" / "htmlvalidate.json").exists()
@@ -494,6 +497,56 @@ class SetupTests(RepoCase):
         smoke_source = smoke.read_text(encoding="utf-8")
         self.assertIn("createRequire", smoke_source)
         self.assertIn("quality/tools/js/package.json", smoke_source)
+        post_setup = detect_project(self.root)
+        self.assertFalse(post_setup.javascript)
+        self.assertFalse(post_setup.python)
+        self.assertNotIn(
+            "project-model-stack-drift",
+            {gap["code"] for gap in setup["onboarding"]["gaps"]},
+        )
+        doctor = diagnose(self.root)
+        self.assertFalse(doctor["detected"]["python"])
+        self.assertNotIn("stack-drift", {item["code"] for item in doctor["diagnostics"]})
+
+    def test_javascript_only_setup_does_not_invent_python_stack_drift(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "test").mkdir()
+        (self.root / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "javascript-only",
+                    "scripts": {"test": "node --test"},
+                    "devDependencies": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.root / "src" / "app.js").write_text("export const value = 1;\n", encoding="utf-8")
+        (self.root / "test" / "app.test.js").write_text(
+            "import assert from 'node:assert/strict';\n"
+            "import test from 'node:test';\n"
+            "test('value', () => assert.equal(1, 1));\n",
+            encoding="utf-8",
+        )
+
+        setup = initialize_project(
+            self.root,
+            owner="@quality-owner",
+            install=False,
+            ci=True,
+            mode="greenfield",
+        )
+        detected = detect_project(self.root)
+        doctor = diagnose(self.root)
+
+        self.assertTrue(detected.javascript)
+        self.assertFalse(detected.python)
+        self.assertFalse(setup["project"]["stacks"]["python"])
+        self.assertNotIn(
+            "project-model-stack-drift",
+            {gap["code"] for gap in setup["onboarding"]["gaps"]},
+        )
+        self.assertNotIn("stack-drift", {item["code"] for item in doctor["diagnostics"]})
 
 
 class FingerprintTests(RepoCase):

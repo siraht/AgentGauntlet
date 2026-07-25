@@ -251,31 +251,26 @@ def _suffix_files(files: list[Path], suffixes: set[str]) -> list[Path]:
     return [path for path in files if path.suffix.lower() in suffixes]
 
 
-def _language_inventory(root: Path) -> tuple[list[Path], dict[str, list[Path]]]:
-    all_code = iter_files(
+def _language_inventory(root: Path) -> list[Path]:
+    return iter_files(
         root,
         JS_SUFFIXES | TS_SUFFIXES | PY_SUFFIXES | HTML_SUFFIXES | CSS_SUFFIXES,
         list(DEFAULT_EXCLUDES),
     )
-    groups = {
-        "javascript": _suffix_files(all_code, JS_SUFFIXES),
-        "typescript": _suffix_files(all_code, TS_SUFFIXES),
-        "python": _suffix_files(all_code, PY_SUFFIXES),
-        "html": _suffix_files(all_code, HTML_SUFFIXES),
-        "css": _suffix_files(all_code, CSS_SUFFIXES),
-    }
-    return all_code, groups
 
 
 def _production_files(root: Path, files: list[Path]) -> list[Path]:
-    return [
-        path
-        for path in files
-        if not any(
-            marker in [part.lower() for part in path.relative_to(root).parts]
-            for marker in TEST_MARKERS
-        )
-    ]
+    return [path for path in files if not _is_test_file(root, path)]
+
+
+def _group_by_language(files: list[Path]) -> dict[str, list[Path]]:
+    return {
+        "javascript": _suffix_files(files, JS_SUFFIXES),
+        "typescript": _suffix_files(files, TS_SUFFIXES),
+        "python": _suffix_files(files, PY_SUFFIXES),
+        "html": _suffix_files(files, HTML_SUFFIXES),
+        "css": _suffix_files(files, CSS_SUFFIXES),
+    }
 
 
 def _detection_notes(
@@ -342,12 +337,13 @@ def _stack_flags(
 
 
 def detect_project(root: Path) -> Detection:
-    all_code, files = _language_inventory(root)
+    all_code = _language_inventory(root)
     package = _safe_package(root)
     manager = _package_manager(root, package)
     scripts = _package_scripts(package)
-    stacks = _stack_flags(root, files, package)
     files_for_sources = _production_files(root, all_code)
+    production_files = _group_by_language(files_for_sources)
+    stacks = _stack_flags(root, production_files, package)
     source_paths = _path_roots(root, files_for_sources)
     test_paths = _test_paths(root, all_code)
     test_files = _test_file_paths(root, all_code)
@@ -365,8 +361,8 @@ def detect_project(root: Path) -> Detection:
         source_paths=source_paths or ["."],
         test_paths=test_paths,
         test_files=test_files,
-        html_paths=_path_roots(root, files["html"]),
-        css_paths=_path_roots(root, files["css"]),
+        html_paths=_path_roots(root, production_files["html"]),
+        css_paths=_path_roots(root, production_files["css"]),
         js_test_runner=_js_test_runner(package),
         python_test_runner=_python_test_runner(root) if stacks["python"] else None,
         start_command=start_command,
