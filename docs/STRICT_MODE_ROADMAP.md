@@ -1,12 +1,12 @@
 # Strict-mode readiness
 
-Revision: `a37c5d545dba0f72d4fe0377b39aa9cdabba61ac` · mode: **adopt** · strict ready: **no**
+Revision: `de25a0c33132c12f989a4b39f9e66fd17448456e` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 93
-- Line coverage: 55.55% (gap 29.45 points)
-- Branch coverage: 43.24% (gap 31.76 points)
+- Tests: 94
+- Line coverage: 55.62% (gap 29.38 points)
+- Branch coverage: 43.27% (gap 31.73 points)
 - Functions above complexity cap: 54
 
 ## Lowest coverage modules

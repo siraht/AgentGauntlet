@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 31.76,
+    "branch_coverage_points": 31.73,
     "functions_over_complexity_cap": 54,
-    "line_coverage_points": 29.45
+    "line_coverage_points": 29.38
   },
   "coverage": {
-    "branch_percent": 43.24,
-    "branches": 2324,
-    "covered_branches": 1005,
-    "covered_statements": 3495,
-    "line_percent": 55.55,
-    "statements": 6292
+    "branch_percent": 43.27,
+    "branches": 2332,
+    "covered_branches": 1009,
+    "covered_statements": 3508,
+    "line_percent": 55.62,
+    "statements": 6307
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-25T06:12:34+00:00",
+  "generated_at": "2026-07-25T06:21:59+00:00",
   "highest_complexity_functions": [
     {
       "complexity": 101,
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "a37c5d545dba0f72d4fe0377b39aa9cdabba61ac",
+  "revision": "de25a0c33132c12f989a4b39f9e66fd17448456e",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 93
+  "test_count": 94
 }

@@ -75,6 +75,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-038 | Scan untracked content while exempting only statically proven loopback network calls.            | New files were fingerprinted but absent from the textual review diff, while controlled dashboard boundary tests produced the same nondeterminism warning as a live external dependency. Synthetic diffs close the blind spot; literal/dataflow loopback recognition removes only the false positive.            | Git supplies a stable cross-platform API for textual untracked-file diffs and parsed test dependency boundaries. |
 | D-039 | Apply changed-code metrics only to configured, non-excluded source paths.                        | Synthetic untracked diffs made review complete but exposed an implicit coupling: coverage treated generated AQG launchers, runtimes, and checker configuration as application production. Governed source roots preserve untracked application enforcement without measuring the control plane as adopter code. | A future project schema supports separately governed implementation and generated-code roots.                    |
 | D-040 | Provision every dependency of every gate in the authoritative hosted profile.                    | The protected deep profile correctly failed as infrastructure when its Lighthouse gate lacked Playwright Chromium, even though a separate browser conformance job was green. Installing browsers in the policy job makes the required context self-contained instead of borrowing confidence from adjacent CI.  | Hosted runners expose a preinstalled, integrity-verifiable browser that AQG can safely adopt.                    |
+| D-041 | Fail closed when the configured Git comparison base is unavailable.                              | A shallow pull-request checkout lacked `origin/main`, so fallback to `HEAD~1` made review report zero changed files and mutation return vacuous evidence. CI now resolves the real event base, and runtime diff discovery rejects missing refs while preserving untracked-file support in unborn repositories.  | Git provides a first-class event-aware changed-file API with equivalent local reproducibility.                   |
 
 ## Progress
 
@@ -83,7 +84,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                                                                                                              |
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                                                                                                                   |
 | Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; all cross-platform contracts and live/browser jobs pass in [run 30142857369](https://github.com/siraht/AgentGauntlet/actions/runs/30142857369).                                 |
-| Coverage and complexity debt   | Active   | 93 tests plus 73 subtests pass; whole-tree coverage is 55.55% / 43.24% with 54 complexity blockers; the prior mutation run was 53.48%; exact-current deep evidence is being regenerated.                                                 |
+| Coverage and complexity debt   | Active   | 94 tests plus 73 subtests pass; whole-tree coverage is 55.62% / 43.27% with 54 complexity blockers; the prior mutation run was 53.48%; exact-current deep evidence is being regenerated.                                                 |
 | End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.                                                                                            |
 | Release and provenance         | Active   | Final artifacts reproduce byte-for-byte and verify; extracted install/doctor/archive hygiene pass; public-main rollback and candidate restoration match exact vendored bytes; keyless CI attestation remains.                            |
 | GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 13 GitHub Actions contexts, including fail-closed `policy-evidence`; merge, Dependabot, secret-scanning, push-protection, and alert controls are configured. |
@@ -197,6 +198,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A required profile job must provision its own complete execution surface. A green
   browser fixture in another job cannot turn a missing browser in the authoritative
   Lighthouse gate into usable evidence.
+- A missing comparison ref is not an empty diff. Changed-code gates must reject it as a
+  configuration error, and hosted workflows must resolve the event's real base before
+  hashing, reviewing, measuring coverage, or selecting mutation scope.
 
 ## Evidence conventions
 
