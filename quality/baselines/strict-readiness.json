@@ -1,0 +1,265 @@
+{
+  "blockers": {
+    "branch_coverage_points": 32.38,
+    "functions_over_complexity_cap": 52,
+    "line_coverage_points": 27.57
+  },
+  "coverage": {
+    "branch_percent": 42.62,
+    "branches": 2114,
+    "covered_branches": 901,
+    "covered_statements": 3189,
+    "line_percent": 57.43,
+    "statements": 5553
+  },
+  "enforcement_mode": "adopt",
+  "generated_at": "2026-07-25T02:25:00Z",
+  "highest_complexity_functions": [
+    {
+      "complexity": 96,
+      "line": 188,
+      "name": "analyze_review",
+      "path": "src/aqg/review.py",
+      "rank": "F"
+    },
+    {
+      "complexity": 47,
+      "line": 782,
+      "name": "build_onboarding",
+      "path": "src/aqg/scaffold.py",
+      "rank": "F"
+    },
+    {
+      "complexity": 35,
+      "line": 1239,
+      "name": "install_toolchains",
+      "path": "src/aqg/scaffold.py",
+      "rank": "E"
+    },
+    {
+      "complexity": 33,
+      "line": 304,
+      "name": "parse_feature",
+      "path": "src/aqg/checks.py",
+      "rank": "E"
+    },
+    {
+      "complexity": 30,
+      "line": 105,
+      "name": "validate_approval",
+      "path": "src/aqg/approvals.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 30,
+      "line": 261,
+      "name": "_check_toolchains",
+      "path": "src/aqg/doctor.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 25,
+      "line": 213,
+      "name": "scan_secrets",
+      "path": "src/aqg/checks.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 25,
+      "line": 761,
+      "name": "_html",
+      "path": "src/aqg/review.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 24,
+      "line": 104,
+      "name": "hook_pretool",
+      "path": "src/aqg/hooks.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 23,
+      "line": 1055,
+      "name": "initialize_project",
+      "path": "src/aqg/scaffold.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 23,
+      "line": 41,
+      "name": "_draw",
+      "path": "src/aqg/tui.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 21,
+      "line": 734,
+      "name": "_js_coverage_metrics",
+      "path": "src/aqg/adapters.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 20,
+      "line": 384,
+      "name": "run_tool_conformance",
+      "path": "src/aqg/conformance.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 20,
+      "line": 658,
+      "name": "_markdown",
+      "path": "src/aqg/review.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 20,
+      "line": 250,
+      "name": "_strip_jsonc",
+      "path": "src/aqg/sbom.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 20,
+      "line": 30,
+      "name": "run_wizard",
+      "path": "src/aqg/wizard.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 19,
+      "line": 685,
+      "name": "_python_coverage_metrics",
+      "path": "src/aqg/adapters.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 19,
+      "line": 791,
+      "name": "_python_crap",
+      "path": "src/aqg/adapters.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 19,
+      "line": 1712,
+      "name": "_reproducible_build",
+      "path": "src/aqg/adapters.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 19,
+      "line": 74,
+      "name": "scan_test_integrity",
+      "path": "src/aqg/checks.py",
+      "rank": "C"
+    }
+  ],
+  "lowest_coverage_modules": [
+    {
+      "branch_percent": 100.0,
+      "line_percent": 0.0,
+      "missing_statements": 2,
+      "path": "src/aqg/__main__.py"
+    },
+    {
+      "branch_percent": 0.0,
+      "line_percent": 17.24,
+      "missing_statements": 96,
+      "path": "src/aqg/acceptance.py"
+    },
+    {
+      "branch_percent": 0.0,
+      "line_percent": 19.12,
+      "missing_statements": 55,
+      "path": "src/aqg/wizard.py"
+    },
+    {
+      "branch_percent": 13.28,
+      "line_percent": 22.0,
+      "missing_statements": 702,
+      "path": "src/aqg/adapters.py"
+    },
+    {
+      "branch_percent": 0.0,
+      "line_percent": 22.73,
+      "missing_statements": 51,
+      "path": "src/aqg/portfolio.py"
+    },
+    {
+      "branch_percent": 0.0,
+      "line_percent": 25.64,
+      "missing_statements": 29,
+      "path": "src/aqg/authoring.py"
+    },
+    {
+      "branch_percent": 4.17,
+      "line_percent": 27.12,
+      "missing_statements": 43,
+      "path": "src/aqg/reporting.py"
+    },
+    {
+      "branch_percent": 17.39,
+      "line_percent": 46.32,
+      "missing_statements": 73,
+      "path": "src/aqg/runner.py"
+    },
+    {
+      "branch_percent": 35.0,
+      "line_percent": 48.17,
+      "missing_statements": 241,
+      "path": "src/aqg/sbom.py"
+    },
+    {
+      "branch_percent": 32.14,
+      "line_percent": 51.61,
+      "missing_statements": 105,
+      "path": "src/aqg/dashboard.py"
+    },
+    {
+      "branch_percent": 28.95,
+      "line_percent": 62.25,
+      "missing_statements": 57,
+      "path": "src/aqg/tui.py"
+    },
+    {
+      "branch_percent": 37.5,
+      "line_percent": 62.93,
+      "missing_statements": 86,
+      "path": "src/aqg/doctor.py"
+    }
+  ],
+  "ready_for_strict": false,
+  "revision": "ba03a206c954928667d3015b58e62b5569f32b57",
+  "schema_version": 1,
+  "switch_contract": [
+    "whole-tree line and branch coverage meet Standard thresholds",
+    "whole-tree structure and CRAP meet Standard caps",
+    "whole-tree mutation meets the Standard target after survivor triage",
+    "all supported adapter, control-surface, and release conformance passes",
+    "no missing, stale, crashed, or silently skipped required evidence"
+  ],
+  "targets": {
+    "coverage": {
+      "allow_missing": false,
+      "branches": 75,
+      "changed_lines": 90,
+      "functions": 80,
+      "lines": 85,
+      "statements": 85
+    },
+    "mutation": {
+      "changed_only": true,
+      "maximum_survivors": 0,
+      "minimum_score": 70
+    },
+    "structure": {
+      "max_crap": 15,
+      "max_cyclomatic_complexity": 10,
+      "max_function_lines": 50,
+      "max_nesting_depth": 4
+    }
+  },
+  "test_count": 62
+}
