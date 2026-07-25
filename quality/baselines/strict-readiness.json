@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 32.38,
+    "branch_coverage_points": 32.37,
     "functions_over_complexity_cap": 52,
-    "line_coverage_points": 27.57
+    "line_coverage_points": 27.54
   },
   "coverage": {
-    "branch_percent": 42.62,
-    "branches": 2114,
-    "covered_branches": 901,
-    "covered_statements": 3189,
-    "line_percent": 57.43,
-    "statements": 5553
+    "branch_percent": 42.63,
+    "branches": 2116,
+    "covered_branches": 902,
+    "covered_statements": 3195,
+    "line_percent": 57.46,
+    "statements": 5560
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-25T02:25:00Z",
+  "generated_at": "2026-07-25T03:30:00Z",
   "highest_complexity_functions": [
     {
       "complexity": 96,
@@ -115,7 +115,7 @@
     },
     {
       "complexity": 20,
-      "line": 250,
+      "line": 252,
       "name": "_strip_jsonc",
       "path": "src/aqg/sbom.py",
       "rank": "C"
@@ -206,9 +206,9 @@
       "path": "src/aqg/runner.py"
     },
     {
-      "branch_percent": 35.0,
-      "line_percent": 48.17,
-      "missing_statements": 241,
+      "branch_percent": 35.12,
+      "line_percent": 48.73,
+      "missing_statements": 242,
       "path": "src/aqg/sbom.py"
     },
     {
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "ba03a206c954928667d3015b58e62b5569f32b57",
+  "revision": "b3a41d755d69984d261506bf9ac63378f8708db7",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 62
+  "test_count": 64
 }

@@ -1,12 +1,12 @@
 # Strict-mode readiness
 
-Revision: `ba03a206c954928667d3015b58e62b5569f32b57` · mode: **adopt** · strict ready: **no**
+Revision: `b3a41d755d69984d261506bf9ac63378f8708db7` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 62
-- Line coverage: 57.43% (gap 27.57 points)
-- Branch coverage: 42.62% (gap 32.38 points)
+- Tests: 64
+- Line coverage: 57.46% (gap 27.54 points)
+- Branch coverage: 42.63% (gap 32.37 points)
 - Functions above complexity cap: 52
 
 ## Lowest coverage modules
@@ -21,7 +21,7 @@ Revision: `ba03a206c954928667d3015b58e62b5569f32b57` · mode: **adopt** · stric
 | `src/aqg/authoring.py` | 25.64% | 0.00% | 29 |
 | `src/aqg/reporting.py` | 27.12% | 4.17% | 43 |
 | `src/aqg/runner.py` | 46.32% | 17.39% | 73 |
-| `src/aqg/sbom.py` | 48.17% | 35.00% | 241 |
+| `src/aqg/sbom.py` | 48.73% | 35.12% | 242 |
 | `src/aqg/dashboard.py` | 51.61% | 32.14% | 105 |
 | `src/aqg/tui.py` | 62.25% | 28.95% | 57 |
 | `src/aqg/doctor.py` | 62.93% | 37.50% | 86 |
@@ -44,7 +44,7 @@ Revision: `ba03a206c954928667d3015b58e62b5569f32b57` · mode: **adopt** · stric
 | `src/aqg/adapters.py:734::_js_coverage_metrics` | 21 | D |
 | `src/aqg/conformance.py:384::run_tool_conformance` | 20 | C |
 | `src/aqg/review.py:658::_markdown` | 20 | C |
-| `src/aqg/sbom.py:250::_strip_jsonc` | 20 | C |
+| `src/aqg/sbom.py:252::_strip_jsonc` | 20 | C |
 | `src/aqg/wizard.py:30::run_wizard` | 20 | C |
 | `src/aqg/adapters.py:685::_python_coverage_metrics` | 19 | C |
 | `src/aqg/adapters.py:791::_python_crap` | 19 | C |

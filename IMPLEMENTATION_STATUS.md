@@ -1,7 +1,7 @@
 # Implementation status
 
-Status date: 2026-07-24  
-Version: 2.0.0  
+Status date: 2026-07-25
+Version: 2.0.0
 Recovery source SHA-256: `8b472df584dee17bc3b72e22bff2d764983cfe47d4617ee4a4dfd8cbc37a757e`
 
 ## Recovery audit
@@ -35,9 +35,11 @@ The following items named in the referenced conversation were absent or incomple
 - Local TUI, authenticated loopback dashboard, and portfolio registry.
 - Project-vendored runtime, agent integrations, GitHub Actions, and CODEOWNERS generation.
 - Deterministic CycloneDX 1.6 inventories from supported committed locks.
-- Deterministic portable release builder.
-- 27 Python source/acceptance tests, one JavaScript dashboard contract test, and internal
-  and installed-tool conformance fixtures.
+- Deterministic portable release builder with local in-toto/SLSA provenance.
+- Keyless GitHub OIDC/Sigstore build-provenance and CycloneDX attestations.
+- PEP 561 typed-package metadata.
+- 64 Python source/acceptance tests, one JavaScript dashboard contract test, and internal,
+  installed-tool, disposable-project, browser, and control-surface conformance fixtures.
 
 ## Locally validated
 
@@ -48,9 +50,13 @@ The following items named in the referenced conversation were absent or incomple
 - Disposable-project initialization.
 - Standalone zipapp initialization with a vendored runtime.
 - Deterministic repeated portable builds and checksum verification.
+- Complete release SBOMs, source-material provenance, and consumer verification contracts.
 - Package metadata and wheel/sdist builds when the standard build frontend is available.
 - Live npm/PyPI tool resolution with exact protected locks.
-- All ten installed-checker fault-injection fixtures.
+- All eighteen internal and installed-checker fault-injection fixtures.
+- Representative Vitest, Jest, Mocha, AVA, Node test runner, pytest, tox, npm, pnpm,
+  Yarn, and Bun projects.
+- Real CLI setup, review artifacts, PTY TUI, and authenticated loopback-dashboard flows.
 - Playwright Chromium installation on the current Linux image.
 - Lighthouse execution against the bundled dashboard (performance `1.00`, accessibility `0.95`).
 - High-severity npm and Python dependency audits.
@@ -59,7 +65,7 @@ The following items named in the referenced conversation were absent or incomple
 
 These cannot be certified by source tests alone:
 
-- all supported native project runners and package-manager variants in representative real repositories;
+- native project runners against every future framework and package-manager release;
 - Playwright browser/E2E behavior on every supported CI image;
 - Stryker and mutmut performance, isolation, and survivor triage at large-project scale;
 - Lighthouse behavior for framework-specific start/build flows;
@@ -79,6 +85,11 @@ AQG includes conformance commands for installed tools, but an organization shoul
 
 ## Recovered-code debt
 
-The recovered implementation does not yet earn its own High-assurance “reduced code review” mode. A full comparison with the recovered baseline reports roughly 34% aggregate Python coverage, changed-line coverage below the 90% target, and multiple functions over the default complexity/CRAP caps. The largest hotspots are CLI dispatch, policy/project validation, toolchain installation, automated review, and dashboard rendering.
+The implementation does not yet earn its own High-assurance “reduced code review” mode.
+Fresh whole-tree evidence reports 57.46% Python line coverage, 42.63% branch coverage,
+and 52 functions over the Standard cyclomatic-complexity cap. This is a material
+improvement over the recovered baseline near 35%, but remains below the 85% line and
+75% branch targets. The largest remaining hotspots are automated diff review, onboarding
+generation, toolchain installation, Gherkin parsing, approvals, and doctor diagnostics.
 
 AQG is therefore published in `adopt`/ratchet mode. New changes must not add debt, while the existing hotspots need focused characterization tests and incremental extraction before switching this repository to full strict enforcement. This limitation affects confidence in AQG’s implementation, not the availability of the CLI, installer, evidence model, dashboard, or supported adapters.
