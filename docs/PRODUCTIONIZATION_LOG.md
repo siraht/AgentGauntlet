@@ -57,6 +57,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-020 | Make empty human and machine invocations self-describing.                                        | Bare `qg` and `qg --json` have no ambiguous product intent and can safely return help or the capabilities contract without repository access or side effects.                          | The CLI gains a different explicit discovery entry point.                       |
 | D-021 | Keep embedded guidance independent of repository discovery.                                      | Read-only playbooks ship inside the binary; requiring an initialized project prevented the cold agents who need them most from reading them.                                         | Guidance gains project-specific extensions.                                     |
 | D-022 | Dogfood every public control surface in a disposable project.                                     | Unit tests cannot prove the real setup executable, curses terminal, loopback HTTP server, token boundary, review artifacts, and CLI process contracts compose end to end.             | A new public control surface or security boundary is added.                      |
+| D-023 | Prioritize inherited-debt tests around governance boundaries.                                      | Hooks, TUI, and dashboard authentication were among the least-covered modules and can silently weaken or misreport the gauntlet if their failure paths are untested.                   | These modules meet strict branch coverage and a lower-risk hotspot dominates.    |
 
 ## Progress
 
@@ -65,7 +66,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                     |
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                          |
 | Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; Linux/macOS/Windows CI matrix added.                                                   |
-| Coverage and complexity debt   | Active   | Fresh baseline: 36.02% lines / 27.17% branches; detector, scaffold, adapter, project, and policy functions touched so far meet Standard limits. |
+| Coverage and complexity debt   | Active   | 62 tests pass; whole-library coverage rose from 36.02% to 53%; hooks are 89%, TUI 56%, dashboard 48%; touched functions meet Standard limits.  |
 | End-to-end dogfood             | Active   | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally.                              |
 | Release and provenance         | Pending  | —                                                                                                                                               |
 | GitHub governance              | Pending  | —                                                                                                                                               |
@@ -115,6 +116,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A useful dashboard test must cross the actual HTTP boundary. Direct server-object
   tests do not prove response headers, token rejection, action routing, or process
   startup and shutdown behavior; the same applies to curses without a real PTY.
+- Coverage remediation is most valuable when it changes confidence at a control
+  boundary. Eight focused tests raised hooks from 11% to 89%, TUI from 10% to 56%,
+  dashboard from 24% to 48%, and whole-library coverage from 49% to 53%.
 
 ## Evidence conventions
 
