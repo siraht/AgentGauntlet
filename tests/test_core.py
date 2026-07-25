@@ -974,12 +974,21 @@ class SetupContractTests(RepoCase):
             minimum_score=85,
             maximum_survivors=0,
         )
+        controlled_timeout, timeout_metrics = _classify_mutmut_results(
+            {"killed": 7, "timeout": 1},
+            run_code=0,
+            results_code=0,
+            minimum_score=100,
+            maximum_survivors=0,
+        )
 
         self.assertEqual(passing, PASS)
         self.assertEqual(passing_metrics["mutation_score"], 87.5)
         self.assertEqual(weak, QUALITY_FAILURE)
         self.assertEqual(weak_metrics["mutation_score"], 75.0)
         self.assertEqual(incomplete, INFRASTRUCTURE_ERROR)
+        self.assertEqual(controlled_timeout, PASS)
+        self.assertEqual(timeout_metrics["killed"], 8)
 
     def test_universal_lock_restores_direct_environment_markers(self) -> None:
         requirements = self.root / "requirements.in"

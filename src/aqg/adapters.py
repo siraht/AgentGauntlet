@@ -1261,17 +1261,18 @@ def _classify_mutmut_results(
     minimum_score: float,
     maximum_survivors: int,
 ) -> tuple[int, dict[str, Any]]:
-    killed = status_counts.get("killed", 0) + status_counts.get("caught by type check", 0)
+    killed = sum(
+        status_counts.get(status, 0)
+        for status in ("killed", "caught by type check", "segfault", "timeout")
+    )
     survivors = status_counts.get("survived", 0) + status_counts.get("no tests", 0)
     denominator = killed + survivors
     score = round(killed * 100 / denominator, 2) if denominator else 0.0
     incomplete_statuses = (
         "check was interrupted by user",
         "not checked",
-        "segfault",
         "skipped",
         "suspicious",
-        "timeout",
     )
     incomplete = sum(status_counts.get(status, 0) for status in incomplete_statuses)
     if run_code not in {0, 1} or results_code not in {0, 1} or not status_counts or incomplete:
@@ -1338,10 +1339,8 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
     incomplete_statuses = (
         "check was interrupted by user",
         "not checked",
-        "segfault",
         "skipped",
         "suspicious",
-        "timeout",
     )
     return code, {
         "scope": "changed",
