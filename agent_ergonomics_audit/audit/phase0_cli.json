@@ -1,0 +1,13 @@
+{
+  "target_path": "/data/projects/AgentGauntlet",
+  "discovered_at": "2026-07-25T01:27:28Z",
+  "languages": ["python"],
+  "binaries": ["aqg", "qg", "package-dir"],
+  "env_var_prefix": "AQG",
+  "existing_surfaces": {
+    "robot_mode": false,
+    "capabilities": false,
+    "robot_docs": false
+  },
+  "recommended_mode": "full"
+}
