@@ -69,6 +69,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-032 | Apply Python debt-marker review only to lexical comments.                                        | Identifiers such as `todo=args.todo` and user-facing strings about TODO feature specifications are valid product code, not unresolved implementation comments; token-aware review preserves the intended warning without noisy false positives.                                    | A language-neutral parsed-comment interface replaces the current scanner.       |
 | D-033 | Bootstrap Yarn fixture locks, then prove an immutable hardened reinstall.                        | Yarn 4 enables hardened mode for public pull requests and immutable installs on CI; explicit trusted lock generation followed by hardened `--immutable` installation tests both setup and the committed-project security contract.                                                 | Yarn provides a dedicated ephemeral-fixture mode with equivalent guarantees.    |
 | D-034 | Count controlled mutant timeouts and crashes as kills.                                           | Source mutation deliberately creates nontermination and invalid execution; when the isolated worker enforces its deadline or observes a crash, the test system has detected the fault. Never-run, interrupted, skipped, and suspicious outcomes remain unusable infrastructure.    | The mutation engine publishes different statuses for harness and mutant faults. |
+| D-035 | Pass an explicit boolean value to mutmut's `results --all` option.                               | Mutmut 3.6 exposes `--all BOOLEAN` rather than a normal flag; omitting the value completed mutation execution but made result normalization fail closed after the run. The protected command contract now uses `--all=true`.                                                       | Mutmut changes `--all` to an `is_flag` option or publishes JSON results.        |
 
 ## Progress
 
@@ -76,8 +77,8 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | ------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.                                                                                                                      |
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                                                                                           |
-| Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; Linux/macOS/Windows CI matrix added.                                                                                                                    |
-| Coverage and complexity debt   | Active   | 88 tests plus 73 subtests pass; whole-library statement coverage is 54.45% and branch coverage 41.55%; governance boundaries improved; 53 inherited complexity blockers remain.                                  |
+| Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; all cross-platform contracts and live/browser jobs pass in [run 30142857369](https://github.com/siraht/AgentGauntlet/actions/runs/30142857369).         |
+| Coverage and complexity debt   | Active   | 88 tests plus 73 subtests pass; whole-library statement coverage is 54.41% and branch coverage 41.51%; governance boundaries improved; 54 inherited complexity blockers remain.                                  |
 | End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.                                                                    |
 | Release and provenance         | Active   | Complete outputs reproduce byte-for-byte; checksum verification and CycloneDX/in-toto contract tests pass; keyless CI attestation is wired.                                                                      |
 | GitHub governance              | Complete | Active ruleset `19719465` has no bypass actors and requires review plus all 12 GitHub Actions contexts; merge methods, Dependabot, secret scanning, push protection, alerts, and automated fixes are configured. |
@@ -166,6 +167,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A mutant timeout is not the same as a checker timeout. Preserve the boundary: an
   isolated mutant that exceeds its enforced deadline is detected, while an incomplete
   overall run remains unusable evidence.
+- Exercise result-export commands as well as mutation execution during checker
+  conformance. A value-taking Click option can look like a normal flag in code review and
+  fail only after an otherwise successful long run.
 
 ## Evidence conventions
 

@@ -1253,6 +1253,10 @@ def _parse_mutmut_results(text: str) -> tuple[dict[str, int], dict[str, list[str
     return counts, lines
 
 
+def _mutmut_results_command(mutmut: str) -> list[str]:
+    return [mutmut, "results", "--all=true"]
+
+
 def _classify_mutmut_results(
     status_counts: dict[str, int],
     *,
@@ -1319,7 +1323,7 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
         env={"PYTHONPATH": python_path, "PYTHONHASHSEED": "0", "TZ": "UTC"},
     )
     results = run_command(
-        [mutmut, "results", "--all"],
+        _mutmut_results_command(mutmut),
         cwd=work,
         timeout=300,
         env={"PYTHONPATH": python_path},

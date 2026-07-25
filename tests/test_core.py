@@ -20,6 +20,7 @@ from aqg.adapters import (
     _classify_mutmut_results,
     _is_test_path,
     _js_mutation_scope,
+    _mutmut_results_command,
     _parse_mutmut_results,
     _python_crap,
     _python_structure_evidence,
@@ -950,6 +951,12 @@ class SetupContractTests(RepoCase):
         self.assertEqual(
             lines["survived"],
             ["aqg.example.x_value__mutmut_2: survived"],
+        )
+
+    def test_mutmut_result_command_supplies_click_boolean_value(self) -> None:
+        self.assertEqual(
+            _mutmut_results_command("/tools/mutmut"),
+            ["/tools/mutmut", "results", "--all=true"],
         )
 
     def test_mutmut_result_classifier_enforces_score_and_completeness(self) -> None:
