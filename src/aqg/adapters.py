@@ -39,6 +39,7 @@ from .util import (
     git_changed_files,
     git_diff,
     iter_files,
+    matches_any,
     read_json,
     run_command,
     sha256_file,
@@ -133,8 +134,20 @@ def _changed_production_files(root: Path, project: dict[str, Any], suffixes: set
         for path in git_changed_files(root, _base_ref(project))
         if Path(path).suffix.lower() in suffixes
         and not _is_test_path(path, project)
+        and _is_governed_source(path, project)
         and (root / path).is_file()
     ]
+
+
+def _is_governed_source(path: str, project: dict[str, Any]) -> bool:
+    normalized = Path(path).as_posix().strip("/")
+    if matches_any(normalized, excludes(project)):
+        return False
+    for value in source_paths(project):
+        source = Path(value).as_posix().strip("/")
+        if source in {"", "."} or normalized == source or normalized.startswith(f"{source}/"):
+            return True
+    return False
 
 
 def _is_test_path(path: str, project: dict[str, Any] | None = None) -> bool:
@@ -673,21 +686,31 @@ def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
     )
 
 
+def _changed_diff_path(line: str, project: dict[str, Any]) -> str:
+    candidate = line[6:] if line.startswith("+++ b/") else ""
+    return candidate if candidate and _is_governed_source(candidate, project) else ""
+
+
 def _changed_lines(root: Path, project: dict[str, Any]) -> dict[str, set[int]]:
     result: dict[str, set[int]] = {}
     path = ""
     line_no = 0
     for line in git_diff(root, _base_ref(project), unified=0).splitlines():
-        if line.startswith("+++ b/"):
-            path = line[6:]
-        elif line.startswith("@@"):
+        if line.startswith("+++ "):
+            path = _changed_diff_path(line, project)
+            continue
+        if line.startswith("@@"):
             match = re.search(r"\+(\d+)", line)
             line_no = int(match.group(1)) if match else 0
-        elif line.startswith("+") and not line.startswith("+++"):
-            result.setdefault(path, set()).add(line_no)
+            continue
+        if line.startswith("-"):
+            continue
+        if line.startswith("+"):
+            if path:
+                result.setdefault(path, set()).add(line_no)
             line_no += 1
-        elif not line.startswith("-"):
-            line_no += 1
+            continue
+        line_no += 1
     return result
 
 
@@ -715,9 +738,7 @@ def _python_coverage_metrics(root: Path, path: Path, project: dict[str, Any]) ->
     changed_pct = None if relevant == 0 else covered * 100 / relevant
     thresholds = _effective_thresholds(project)["coverage"]
     failures: list[str] = []
-    changed_production = [
-        path for path in changed if path.endswith(".py") and not _is_test_path(path, project)
-    ]
+    changed_production = _changed_production_files(root, project, PY_SUFFIXES)
     if not _adopt_mode(project):
         if line_pct < float(thresholds["lines"]):
             failures.append(f"line coverage {line_pct:.1f}% < {thresholds['lines']}%")
@@ -772,11 +793,7 @@ def _js_coverage_metrics(
     metrics["changed_executable_lines"] = relevant
     thresholds = _effective_thresholds(project)["coverage"]
     failures: list[str] = []
-    changed_production = [
-        path
-        for path in changed
-        if Path(path).suffix.lower() in JS_SUFFIXES and not _is_test_path(path, project)
-    ]
+    changed_production = _changed_production_files(root, project, JS_SUFFIXES)
     if not _adopt_mode(project):
         for name in ("lines", "branches", "functions", "statements"):
             if metrics[name] < float(thresholds[name]):

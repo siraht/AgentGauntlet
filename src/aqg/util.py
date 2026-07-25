@@ -356,7 +356,7 @@ def git_diff(root: Path, base: str = "HEAD", unified: int = 0) -> str:
                 + (staged_out if staged_code == 0 else "")
             )
             return tracked + _untracked_diff(root, unified=unified)
-    return ""
+    return _untracked_diff(root, unified=unified)
 
 
 def _untracked_diff(root: Path, *, unified: int) -> str:

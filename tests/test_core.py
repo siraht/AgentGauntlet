@@ -17,6 +17,8 @@ import pytest
 
 from aqg.adapters import (
     _append_mutmut_config,
+    _changed_lines,
+    _changed_production_files,
     _classify_mutmut_results,
     _is_test_path,
     _js_mutation_scope,
@@ -49,7 +51,14 @@ from aqg.scaffold import (
     build_project_config,
     initialize_project,
 )
-from aqg.util import change_fingerprint, detect_base_ref, git_changed_files, read_json, write_json
+from aqg.util import (
+    change_fingerprint,
+    detect_base_ref,
+    git_changed_files,
+    git_diff,
+    read_json,
+    write_json,
+)
 
 
 def git(root: Path, *args: str) -> str:
@@ -818,6 +827,32 @@ class SetupContractTests(RepoCase):
 
         self.assertIn("src/package/module.py", git_changed_files(self.root))
         self.assertNotIn("src/", git_changed_files(self.root))
+
+    def test_changed_coverage_scope_ignores_untracked_aqg_scaffolding(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "quality" / "_aqg").mkdir(parents=True)
+        (self.root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (self.root / "quality" / "qg.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+        (self.root / "quality" / "_aqg" / "runtime.py").write_text(
+            "VERSION = 1\n", encoding="utf-8"
+        )
+        project = {
+            "enforcement": {"base_ref": "HEAD"},
+            "paths": {
+                "source": ["src"],
+                "tests": ["tests"],
+                "exclude": ["quality/qg.py", "quality/_aqg/**"],
+            },
+        }
+
+        diff = git_diff(self.root, "HEAD")
+        self.assertIn("quality/qg.py", diff)
+        self.assertIn("quality/_aqg/runtime.py", diff)
+        self.assertEqual(
+            _changed_production_files(self.root, project, {".py"}),
+            ["src/app.py"],
+        )
+        self.assertEqual(set(_changed_lines(self.root, project)), {"src/app.py"})
 
     def test_empty_changed_scope_does_not_fall_back_to_full_crap_analysis(self) -> None:
         report = _python_crap(
