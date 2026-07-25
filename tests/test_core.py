@@ -26,6 +26,7 @@ from aqg.adapters import (
     run_adapter,
 )
 from aqg.approvals import template, validate_approval
+from aqg.checks import test_feature_traceability as feature_traceability
 from aqg.cli import build_parser
 from aqg.constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE
 from aqg.dashboard import DashboardServer, project_status
@@ -545,6 +546,45 @@ class ReviewAndApprovalTests(RepoCase):
         codes = {finding["code"] for finding in packet["findings"]}
         self.assertIn("production-without-tests", codes)
         self.assertIn("lint-or-type-suppression", codes)
+
+    def test_traceability_ignores_feature_spec_documentation(self) -> None:
+        self._initialized()
+
+        report = feature_traceability(self.root, load_project(self.root))
+
+        self.assertEqual(report["active_specs"], 1)
+        self.assertEqual(report["findings"], [])
+
+    def test_review_ignores_debt_words_inside_python_strings(self) -> None:
+        self._initialized()
+        (self.root / "src" / "app.py").write_text(
+            'MESSAGE = "Create a TODO feature specification."\n'
+            "def calculate(value: int) -> int:\n"
+            "    return value + 1\n",
+            encoding="utf-8",
+        )
+
+        packet = analyze_review(
+            self.root, load_policy(self.root), base="HEAD", require_evidence=False
+        )
+        codes = {finding["code"] for finding in packet["findings"]}
+
+        self.assertNotIn("new-production-debt-marker", codes)
+
+    def test_review_reports_debt_markers_in_python_comments(self) -> None:
+        self._initialized()
+        (self.root / "src" / "app.py").write_text(
+            "def calculate(value: int) -> int:\n"
+            "    return value + 1  # TODO: replace the temporary rule\n",
+            encoding="utf-8",
+        )
+
+        packet = analyze_review(
+            self.root, load_policy(self.root), base="HEAD", require_evidence=False
+        )
+        codes = {finding["code"] for finding in packet["findings"]}
+
+        self.assertIn("new-production-debt-marker", codes)
 
     def test_approval_is_invalidated_by_subsequent_change(self) -> None:
         self._initialized()

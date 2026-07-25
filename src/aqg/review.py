@@ -149,6 +149,24 @@ def _match_is_inside_python_string(root: Path, path: str, line_no: int, column: 
         return False
 
 
+def _match_is_inside_python_comment(root: Path, path: str, line_no: int, column: int) -> bool:
+    if Path(path).suffix.lower() not in {".py", ".pyi"}:
+        return False
+    source = root / path
+    if not source.is_file():
+        return False
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source.read_text(encoding="utf-8")).readline)
+        return any(
+            item.type == token.COMMENT
+            and item.start <= (line_no, column)
+            and (line_no, column) < item.end
+            for item in tokens
+        )
+    except (OSError, UnicodeError, tokenize.TokenError):
+        return False
+
+
 def _risk_factor_path_hints(changed: list[str]) -> dict[str, list[str]]:
     rules = {
         "authentication": re.compile(
@@ -324,11 +342,20 @@ def analyze_review(
             )
         )
 
-    debt_markers = _line_locations(
-        added,
-        re.compile(r"(?i)\b(?:TODO|FIXME|HACK|XXX)\b"),
-        predicate=_is_production_path,
-    )
+    debt_pattern = re.compile(r"(?i)\b(?:TODO|FIXME|HACK|XXX)\b")
+    debt_markers: list[str] = []
+    for path, line_no, line in added:
+        if not _is_production_path(path):
+            continue
+        match = debt_pattern.search(line)
+        if match is None:
+            continue
+        if Path(path).suffix.lower() in {".py", ".pyi"} and not _match_is_inside_python_comment(
+            root, path, line_no, match.start()
+        ):
+            continue
+        debt_markers.append(f"{path}:{line_no}")
+    debt_markers = sorted(set(debt_markers))
     if debt_markers:
         findings.append(
             _finding(

@@ -511,7 +511,11 @@ def lint_features(root: Path) -> dict[str, Any]:
 
 def test_feature_traceability(root: Path, project: dict[str, Any]) -> dict[str, Any]:
     active_specs = (
-        [path for path in (root / "feature-spec").glob("*.md") if not path.name.startswith("TODO.")]
+        [
+            path
+            for path in (root / "feature-spec").glob("*.md")
+            if not path.name.startswith(("README", "EXAMPLE", "TODO."))
+        ]
         if (root / "feature-spec").exists()
         else []
     )
@@ -521,8 +525,6 @@ def test_feature_traceability(root: Path, project: dict[str, Any]) -> dict[str, 
     findings: list[Finding] = []
     for spec in active_specs:
         name = spec.stem
-        if name.startswith("EXAMPLE."):
-            continue
         if name not in test_content:
             findings.append(
                 Finding(

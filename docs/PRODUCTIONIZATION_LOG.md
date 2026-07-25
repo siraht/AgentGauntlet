@@ -63,6 +63,10 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-026 | Resolve Yarn and pnpm matrix runs through the fixture's declared Corepack version.               | A preinstalled Yarn 1 binary can exist while `packageManager` requires Yarn 4; command presence alone does not prove compatibility, and silently choosing the global binary makes conformance host-dependent.                                                                      | Package-manager shims gain an equally deterministic native replacement.         |
 | D-027 | Require an independent review without enabling code-owner review in the single-owner repository. | The author cannot approve their own pull request, while requiring `@siraht` specifically as code owner would deadlock every owner-authored change. There are no bypass actors; enable code-owner enforcement when policy ownership can be assigned to a second maintainer or team. | A second independent policy owner is added.                                     |
 | D-028 | Compare this repository against `origin/main` after publishing its first remote branch.          | Setup correctly used `HEAD` while the recovered folder had no remote, but retaining it after publication made a clean feature branch appear to have zero changed files and invalidated review scope.                                                                               | The repository's default branch or remote name changes.                         |
+| D-029 | Treat only executable pytest suites as Python test roots.                                        | Setup-time heuristics classified `quality` and `src` as test roots, causing mutmut's isolated sandbox to select paths it does not copy and excluding the ten committed CLI ergonomics regressions from ordinary CI.                                                                | The repository adds or moves a pytest suite.                                    |
+| D-030 | Classify authorization controls as affected by this change.                                      | The productionization branch changes policy evaluation and public-branch enforcement, so marking authorization false contradicted the changed surface even though the deterministic profile already resolved to high assurance.                                                    | The policy and repository-governance changes are removed from scope.            |
+| D-031 | Parse each mutation outcome instead of inferring survivors from display text.                    | Mutmut's default results omit killed mutants and list every other status; counting mutant-looking lines mislabeled never-run, timed-out, and skipped work as survivors and could not enforce the configured score.                                                                 | Mutmut publishes a stable machine-readable result schema.                       |
+| D-032 | Apply Python debt-marker review only to lexical comments.                                        | Identifiers such as `todo=args.todo` and user-facing strings about TODO feature specifications are valid product code, not unresolved implementation comments; token-aware review preserves the intended warning without noisy false positives.                                    | A language-neutral parsed-comment interface replaces the current scanner.       |
 
 ## Progress
 
@@ -145,6 +149,14 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - A setup-time `HEAD` comparison is valid only before a durable mainline exists. Reconcile
   the protected base ref immediately after first publication or the review engine will
   faithfully analyze an empty three-dot diff.
+- Test-root detection is a proposal, not permanent truth. Confirm the collected suites
+  after setup: broad source/config directories can look test-like, then fail only inside
+  a mutation tool's narrower sandbox while real regression directories remain unexecuted.
+- Mutation summaries are not a result schema. Normalize explicit per-mutant statuses so
+  killed, survived, uncovered, interrupted, and unusable work retain different meanings.
+- Diff heuristics should be conservative about severity and precise about syntax. Token
+  boundaries prevent ordinary option names and explanatory strings from masquerading as
+  unresolved production comments.
 
 ## Evidence conventions
 
