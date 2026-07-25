@@ -1,23 +1,23 @@
 {
   "blockers": {
-    "branch_coverage_points": 32.34,
-    "functions_over_complexity_cap": 52,
-    "line_coverage_points": 27.5
+    "branch_coverage_points": 33.45,
+    "functions_over_complexity_cap": 53,
+    "line_coverage_points": 30.55
   },
   "coverage": {
-    "branch_percent": 42.66,
-    "branches": 2138,
-    "covered_branches": 912,
-    "covered_statements": 3224,
-    "line_percent": 57.5,
-    "statements": 5607
+    "branch_percent": 41.55,
+    "branches": 2272,
+    "covered_branches": 944,
+    "covered_statements": 3368,
+    "line_percent": 54.45,
+    "statements": 6185
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-25T03:05:00Z",
+  "generated_at": "2026-07-25T03:41:36Z",
   "highest_complexity_functions": [
     {
-      "complexity": 96,
-      "line": 188,
+      "complexity": 101,
+      "line": 206,
       "name": "analyze_review",
       "path": "src/aqg/review.py",
       "rank": "F"
@@ -66,7 +66,7 @@
     },
     {
       "complexity": 25,
-      "line": 761,
+      "line": 788,
       "name": "_html",
       "path": "src/aqg/review.py",
       "rank": "D"
@@ -94,7 +94,7 @@
     },
     {
       "complexity": 21,
-      "line": 734,
+      "line": 743,
       "name": "_js_coverage_metrics",
       "path": "src/aqg/adapters.py",
       "rank": "D"
@@ -108,7 +108,7 @@
     },
     {
       "complexity": 20,
-      "line": 658,
+      "line": 685,
       "name": "_markdown",
       "path": "src/aqg/review.py",
       "rank": "C"
@@ -129,21 +129,21 @@
     },
     {
       "complexity": 19,
-      "line": 685,
+      "line": 694,
       "name": "_python_coverage_metrics",
       "path": "src/aqg/adapters.py",
       "rank": "C"
     },
     {
       "complexity": 19,
-      "line": 791,
+      "line": 800,
       "name": "_python_crap",
       "path": "src/aqg/adapters.py",
       "rank": "C"
     },
     {
       "complexity": 19,
-      "line": 1712,
+      "line": 1834,
       "name": "_reproducible_build",
       "path": "src/aqg/adapters.py",
       "rank": "C"
@@ -157,6 +157,24 @@
     }
   ],
   "lowest_coverage_modules": [
+    {
+      "branch_percent": 0.0,
+      "line_percent": 0.0,
+      "missing_statements": 117,
+      "path": "scripts/build_release.py"
+    },
+    {
+      "branch_percent": 0.0,
+      "line_percent": 0.0,
+      "missing_statements": 171,
+      "path": "scripts/dogfood_control_surfaces.py"
+    },
+    {
+      "branch_percent": 0.0,
+      "line_percent": 0.0,
+      "missing_statements": 59,
+      "path": "scripts/measure_strict_readiness.py"
+    },
     {
       "branch_percent": 100.0,
       "line_percent": 0.0,
@@ -174,12 +192,6 @@
       "line_percent": 19.12,
       "missing_statements": 55,
       "path": "src/aqg/wizard.py"
-    },
-    {
-      "branch_percent": 13.28,
-      "line_percent": 22.0,
-      "missing_statements": 702,
-      "path": "src/aqg/adapters.py"
     },
     {
       "branch_percent": 0.0,
@@ -200,38 +212,26 @@
       "path": "src/aqg/reporting.py"
     },
     {
+      "branch_percent": 8.7,
+      "line_percent": 28.74,
+      "missing_statements": 119,
+      "path": "scripts/project_matrix.py"
+    },
+    {
+      "branch_percent": 19.13,
+      "line_percent": 29.42,
+      "missing_statements": 667,
+      "path": "src/aqg/adapters.py"
+    },
+    {
       "branch_percent": 17.39,
       "line_percent": 46.32,
       "missing_statements": 73,
       "path": "src/aqg/runner.py"
-    },
-    {
-      "branch_percent": 35.12,
-      "line_percent": 48.73,
-      "missing_statements": 242,
-      "path": "src/aqg/sbom.py"
-    },
-    {
-      "branch_percent": 32.14,
-      "line_percent": 51.61,
-      "missing_statements": 105,
-      "path": "src/aqg/dashboard.py"
-    },
-    {
-      "branch_percent": 28.95,
-      "line_percent": 62.25,
-      "missing_statements": 57,
-      "path": "src/aqg/tui.py"
-    },
-    {
-      "branch_percent": 37.5,
-      "line_percent": 62.93,
-      "missing_statements": 86,
-      "path": "src/aqg/doctor.py"
     }
   ],
   "ready_for_strict": false,
-  "revision": "766007116232cf66aa64a76936cb15b052fa553d",
+  "revision": "ca39bdec211fff78094fa171c452913ce2959f66",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 69
+  "test_count": 88
 }
