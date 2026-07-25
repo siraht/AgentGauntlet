@@ -64,6 +64,42 @@ CONVENTIONAL_COMMANDS: dict[str, tuple[str, ...]] = {
 
 GLOBAL_FLAGS = ("--help", "--json", "--root", "--version", "-h")
 
+ROBOT_GUIDE: dict[str, Any] = {
+    "schema_version": 1,
+    "guide_version": "1.0",
+    "purpose": "Operate AQG safely from setup through reviewed release.",
+    "workflows": {
+        "discover": ["qg capabilities --json", "qg robot-docs guide --json"],
+        "setup": [
+            "qg setup . --owner @your-org/quality --mode auto",
+            "qg doctor",
+            "qg onboarding next",
+        ],
+        "daily": ["qg status", "qg check fast", "qg review"],
+        "pull_request": [
+            "qg risk-card",
+            "qg check pr --keep-going",
+            "qg review --write --sarif",
+        ],
+        "high_assurance": [
+            "qg check-risk --keep-going",
+            "qg approval validate --risk-profile high_assurance",
+        ],
+    },
+    "safety_rules": [
+        "Do not weaken policy, thresholds, tests, or evidence to obtain a pass.",
+        "Treat missing, stale, timed-out, and crashed evidence as failure.",
+        "Do not approve your own policy, golden, waiver, or High-assurance review.",
+        "Use AQG_POLICY_MAINTENANCE=1 only for an explicitly reviewed policy task.",
+    ],
+    "exit_codes": {
+        "0": "pass",
+        "1": "quality defect",
+        "2": "configuration or input error",
+        "3": "infrastructure or evidence failure",
+    },
+}
+
 
 def _invalid_token(message: str) -> str | None:
     for expression in (
@@ -368,6 +404,9 @@ def _add_control_parsers(sub: Any) -> None:
         "capabilities",
         help="describe the machine-readable command and output contract",
     )
+    robot_docs = sub.add_parser("robot-docs", help="read the embedded agent operating guide")
+    robot_docs_sub = _nested_subparsers(robot_docs, "robot_docs_command")
+    robot_docs_sub.add_parser("guide", help="show safe setup and review workflows")
     conf = sub.add_parser(
         "conformance", help="prove AQG and optionally installed tools fail on known defects"
     )
@@ -788,6 +827,36 @@ def _dispatch_capabilities(args: argparse.Namespace, root: Path) -> int:
     return PASS
 
 
+def _robot_guide_text() -> str:
+    lines = [
+        "# AQG agent operating guide",
+        "",
+        str(ROBOT_GUIDE["purpose"]),
+        "",
+        "## Workflows",
+        "",
+    ]
+    for name, commands in ROBOT_GUIDE["workflows"].items():
+        lines.extend([f"### {name.replace('_', ' ').title()}", ""])
+        lines.extend(f"- `{command}`" for command in commands)
+        lines.append("")
+    lines.extend(["## Safety rules", ""])
+    lines.extend(f"- {rule}" for rule in ROBOT_GUIDE["safety_rules"])
+    lines.extend(
+        [
+            "",
+            "Exit codes: `0` pass · `1` quality · `2` configuration · `3` infrastructure",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _dispatch_robot_docs(args: argparse.Namespace, root: Path) -> int:
+    del root
+    _json_dump(ROBOT_GUIDE) if args.json else print(_robot_guide_text(), end="")
+    return PASS
+
+
 def _print_guide_search(payload: list[dict[str, Any]]) -> None:
     for item in payload:
         print(f"{item['topic']}: {item['title']}\n  " + "\n  ".join(item["snippets"]))
@@ -1065,6 +1134,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "report": _dispatch_report,
     "review": _dispatch_review,
     "risk-card": _dispatch_risk_card,
+    "robot-docs": _dispatch_robot_docs,
     "status": _dispatch_status,
     "tools": _dispatch_tools,
     "tui": _dispatch_tui,
@@ -1083,7 +1153,8 @@ def dispatch(args: argparse.Namespace) -> int:
     handler = COMMAND_HANDLERS.get(args.command)
     if handler is None:
         raise ConfigurationError(f"unknown command {args.command!r}")
-    return handler(args, _root(args.root, require_initialized=args.command != "capabilities"))
+    rootless = {"capabilities", "robot-docs"}
+    return handler(args, _root(args.root, require_initialized=args.command not in rootless))
 
 
 def _normalize_global_flags(raw: list[str]) -> list[str]:

@@ -50,6 +50,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-013 | Make the CLI dispatcher declarative and JSON failures machine-readable.                          | A 353-line branch chain was difficult to extend safely, and plain-text exceptions made `--json` pipelines unable to distinguish configuration, quality, and infrastructure failures. | The public CLI contract advances to a new major schema version.                 |
 | D-014 | Publish a deterministic, project-independent capabilities contract.                              | Agents need to discover commands, arguments, environment controls, output rules, and exit semantics from the binary instead of relying on stale external instructions.               | The contract schema needs a backwards-incompatible revision.                    |
 | D-015 | Suggest corrections but never auto-execute guessed commands.                                     | Intent recovery should remove retry friction without turning an ambiguous alias into broader write authority or surprising side effects.                                             | A versioned alias becomes an explicitly documented public command.              |
+| D-016 | Keep the agent operating guide embedded and project-independent.                                 | A cold agent must be able to discover safe setup and review workflows before it has a configured repository or external documentation context.                                       | Project-specific guidance needs a separate generated extension.                 |
 
 ## Progress
 

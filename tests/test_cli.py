@@ -160,6 +160,25 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("qg --json check fast", payload["error"]["message"])
         self.assertIn("qg --json check fast", stderr.getvalue())
 
+    def test_robot_docs_is_project_independent_and_copy_pasteable(self) -> None:
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = main(["robot-docs", "guide", "--json"])
+        self.assertEqual(code, PASS)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertIn(
+            "qg setup . --owner @your-org/quality --mode auto", payload["workflows"]["setup"]
+        )
+        self.assertIn("qg check-risk --keep-going", payload["workflows"]["high_assurance"])
+        self.assertTrue(any("Do not weaken policy" in rule for rule in payload["safety_rules"]))
+
+        human = io.StringIO()
+        with contextlib.redirect_stdout(human):
+            self.assertEqual(main(["robot-docs", "guide"]), PASS)
+        self.assertIn("# AQG agent operating guide", human.getvalue())
+        self.assertIn("`qg review --write --sarif`", human.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
