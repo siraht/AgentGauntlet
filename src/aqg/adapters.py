@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import http.client
 import json
 import os
@@ -365,44 +366,64 @@ def _typecheck(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
     )
 
 
+def _expand_project_command(root: Path, command: list[str]) -> list[str]:
+    js_bin = str(root / "quality" / "tools" / "js" / "node_modules" / ".bin")
+    py_bin = str(_bin(root, "python", "python").parent)
+    return [part.replace("$AQG_JS_BIN", js_bin).replace("$AQG_PY_BIN", py_bin) for part in command]
+
+
+def _python_collection_spec(root: Path, project: dict[str, Any]) -> CommandSpec | None:
+    python = project.get("python", {})
+    custom = python.get("collect_command")
+    if isinstance(custom, list) and custom:
+        return (
+            _expand_project_command(root, [str(value) for value in custom]),
+            600,
+            {"PYTHONHASHSEED": "0"},
+        )
+    existing = [
+        path for path in python.get("test_paths", ["tests", "test"]) if (root / path).exists()
+    ]
+    if not existing:
+        return None
+    return (
+        [
+            _tool(root, "pytest", "python"),
+            "--collect-only",
+            "-q",
+            "--strict-config",
+            "--strict-markers",
+            *existing,
+        ],
+        600,
+        {"PYTHONHASHSEED": "0"},
+    )
+
+
+def _javascript_collection_spec(root: Path, project: dict[str, Any]) -> CommandSpec | None:
+    javascript = project.get("javascript", {})
+    custom = javascript.get("collect_command")
+    if not isinstance(custom, list) or not custom:
+        return None
+    return (
+        _expand_project_command(root, [str(value) for value in custom]),
+        600,
+        {"CI": "1", "TZ": "UTC"},
+    )
+
+
+def _collection_specs(root: Path, project: dict[str, Any]) -> list[CommandSpec]:
+    candidates: list[CommandSpec | None] = []
+    if project["stacks"].get("python"):
+        candidates.append(_python_collection_spec(root, project))
+    if project["stacks"].get("javascript"):
+        candidates.append(_javascript_collection_spec(root, project))
+    return [spec for spec in candidates if spec is not None]
+
+
 def _test_integrity(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     scan = scan_test_integrity(root, project)
-    commands: list[tuple[list[str], int, dict[str, str] | None]] = []
-    if project["stacks"].get("python"):
-        pytest = _tool(root, "pytest", "python")
-        existing = [
-            path
-            for path in project.get("python", {}).get("test_paths", ["tests", "test"])
-            if (root / path).exists()
-        ]
-        if existing:
-            commands.append(
-                (
-                    [
-                        pytest,
-                        "--collect-only",
-                        "-q",
-                        "--strict-config",
-                        "--strict-markers",
-                        *existing,
-                    ],
-                    600,
-                    {"PYTHONHASHSEED": "0"},
-                )
-            )
-    if (
-        project["stacks"].get("javascript")
-        and project.get("javascript", {}).get("test_runner") == "vitest"
-    ):
-        vitest = _tool(root, "vitest", "js")
-        commands.append(
-            (
-                [vitest, "list", "--config", "quality/tools/js/config/vitest.config.mjs"],
-                600,
-                {"CI": "1", "TZ": "UTC"},
-            )
-        )
-    command_code, results = _run_many(root, commands)
+    command_code, results = _run_many(root, _collection_specs(root, project))
     code = max(command_code, QUALITY_FAILURE if scan["errors"] else PASS)
     return _write_report(
         root,
@@ -412,118 +433,205 @@ def _test_integrity(root: Path, project: dict[str, Any]) -> tuple[int, dict[str,
     )
 
 
-def _expand_project_command(root: Path, command: list[str]) -> list[str]:
-    js_bin = str(root / "quality" / "tools" / "js" / "node_modules" / ".bin")
-    py_bin = str(_bin(root, "python", "python").parent)
-    return [part.replace("$AQG_JS_BIN", js_bin).replace("$AQG_PY_BIN", py_bin) for part in command]
+def _javascript_unit_spec(root: Path, project: dict[str, Any]) -> CommandSpec:
+    command = project.get("javascript", {}).get("unit_command")
+    argv = (
+        _expand_project_command(root, [str(value) for value in command])
+        if isinstance(command, list) and command
+        else [
+            _tool(root, "vitest", "js"),
+            "run",
+            "--config",
+            "quality/tools/js/config/vitest.config.mjs",
+        ]
+    )
+    return argv, 1800, {"CI": "1", "TZ": "UTC", "FORCE_COLOR": "0"}
 
 
-def _unit(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    commands: list[tuple[list[str], int, dict[str, str] | None]] = []
-    if project["stacks"].get("javascript"):
-        command = project.get("javascript", {}).get("unit_command")
-        if isinstance(command, list) and command:
-            commands.append(
-                (
-                    _expand_project_command(root, [str(value) for value in command]),
-                    1800,
-                    {"CI": "1", "TZ": "UTC", "FORCE_COLOR": "0"},
-                )
-            )
-        else:
-            vitest = _tool(root, "vitest", "js")
-            commands.append(
-                (
-                    [vitest, "run", "--config", "quality/tools/js/config/vitest.config.mjs"],
-                    1800,
-                    {"CI": "1", "TZ": "UTC"},
-                )
-            )
-    if project["stacks"].get("python"):
-        pytest = _tool(root, "pytest", "python")
+def _python_unit_spec(root: Path, project: dict[str, Any]) -> CommandSpec:
+    custom = project.get("python", {}).get("unit_command")
+    if isinstance(custom, list) and custom:
+        argv = _expand_project_command(root, [str(value) for value in custom])
+    else:
         existing = [
             path
             for path in project.get("python", {}).get("test_paths", ["tests", "test"])
             if (root / path).exists()
         ]
-        commands.append(
-            (
-                [pytest, "--strict-config", "--strict-markers", "-ra", "--timeout=120", *existing],
-                1800,
-                {"PYTHONHASHSEED": "0", "TZ": "UTC"},
-            )
-        )
+        argv = [
+            _tool(root, "pytest", "python"),
+            "--strict-config",
+            "--strict-markers",
+            "-ra",
+            "--timeout=120",
+            *existing,
+        ]
+    return argv, 1800, {"PYTHONHASHSEED": "0", "TZ": "UTC"}
+
+
+def _unit(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    commands: list[CommandSpec] = []
+    if project["stacks"].get("javascript"):
+        commands.append(_javascript_unit_spec(root, project))
+    if project["stacks"].get("python"):
+        commands.append(_python_unit_spec(root, project))
     code, results = _run_many(root, commands)
     return _write_report(root, "unit", code, {"applicability": "applicable", "commands": results})
 
 
+def _radon_blocks(payload: dict[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
+    for filename, blocks in payload.items():
+        for block in blocks:
+            if block.get("type") == "class":
+                for method in block.get("methods", []):
+                    yield filename, method
+            elif block.get("type") in {"function", "method"}:
+                yield filename, block
+
+
+def _function_nesting(node: ast.AST, depth: int = 0) -> int:
+    nesting_nodes = (
+        ast.If,
+        ast.For,
+        ast.AsyncFor,
+        ast.While,
+        ast.Try,
+        ast.With,
+        ast.AsyncWith,
+        ast.Match,
+    )
+    maximum = depth
+    for child in ast.iter_child_nodes(node):
+        if (
+            isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+            and child is not node
+        ):
+            continue
+        child_depth = depth + 1 if isinstance(child, nesting_nodes) else depth
+        maximum = max(maximum, _function_nesting(child, child_depth))
+    return maximum
+
+
+def _python_ast_metrics(root: Path, files: list[str]) -> dict[tuple[str, int], dict[str, int]]:
+    metrics: dict[tuple[str, int], dict[str, int]] = {}
+    for filename in files:
+        try:
+            tree = ast.parse((root / filename).read_text(encoding="utf-8"), filename=filename)
+        except (OSError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            end = int(getattr(node, "end_lineno", node.lineno))
+            metrics[(filename, int(node.lineno))] = {
+                "lines": end - int(node.lineno) + 1,
+                "nesting": _function_nesting(node),
+            }
+    return metrics
+
+
+def _python_structure_evidence(
+    root: Path, project: dict[str, Any], files: list[str], payload: dict[str, Any]
+) -> dict[str, Any]:
+    limits = _effective_thresholds(project)["structure"]
+    changed = _changed_lines(root, project) if _adopt_mode(project) else {}
+    ast_metrics = _python_ast_metrics(root, files)
+    functions: list[dict[str, Any]] = []
+    failures: list[str] = []
+    for filename, block in _radon_blocks(payload):
+        start = int(block.get("lineno", 0))
+        end = int(block.get("endline", start))
+        enforced = not _adopt_mode(project) or bool(
+            changed.get(filename, set()) & set(range(start, end + 1))
+        )
+        structural = ast_metrics.get((filename, start), {"lines": end - start + 1, "nesting": 0})
+        item = {
+            "path": filename,
+            "name": block.get("name"),
+            "line": start,
+            "end_line": end,
+            "complexity": int(block.get("complexity", 1)),
+            "lines": structural["lines"],
+            "nesting": structural["nesting"],
+            "enforced": enforced,
+        }
+        functions.append(item)
+        if not enforced:
+            continue
+        for metric, threshold in (
+            ("complexity", "max_cyclomatic_complexity"),
+            ("lines", "max_function_lines"),
+            ("nesting", "max_nesting_depth"),
+        ):
+            if item[metric] > limits[threshold]:
+                failures.append(
+                    f"{filename}:{start} {block.get('name')} {metric} "
+                    f"{item[metric]} > {limits[threshold]}"
+                )
+    return {
+        "functions": sorted(
+            functions, key=lambda item: (item["complexity"], item["lines"]), reverse=True
+        ),
+        "failures": failures,
+        "limits": limits,
+        "scope": "changed-functions" if _adopt_mode(project) else "full",
+    }
+
+
+def _javascript_structure_commands(root: Path, files: list[str]) -> list[CommandSpec]:
+    if not files:
+        return []
+    eslint = _tool(root, "eslint", "js")
+    return [
+        (
+            [
+                eslint,
+                "--config",
+                "quality/tools/js/config/eslint.config.mjs",
+                "--max-warnings",
+                "0",
+                *group,
+            ],
+            900,
+            None,
+        )
+        for group in _chunks(files)
+    ]
+
+
+def _python_structure_analysis(
+    root: Path, project: dict[str, Any], files: list[str]
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if not files:
+        return None, None
+    result = run_command(
+        [_tool(root, "radon", "python"), "cc", "-j", "-s", *files], cwd=root, timeout=900
+    )
+    if result.code != 0:
+        return result.as_dict(), None
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return result.as_dict(), None
+    return result.as_dict(), _python_structure_evidence(root, project, files, payload)
+
+
 def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    commands: list[tuple[list[str], int, dict[str, str] | None]] = []
-    scoped: dict[str, list[str]] = {}
     js_files = _scoped_files(
         root, project, _relative_files(root, JS_SUFFIXES, project, tests=False)
     )
-    scoped["javascript"] = js_files
-    if js_files:
-        eslint = _tool(root, "eslint", "js")
-        for group in _chunks(js_files):
-            commands.append(
-                (
-                    [
-                        eslint,
-                        "--config",
-                        "quality/tools/js/config/eslint.config.mjs",
-                        "--max-warnings",
-                        "0",
-                        *group,
-                    ],
-                    900,
-                    None,
-                )
-            )
-    radon_payload: Any = None
-    radon_dict: dict[str, Any] | None = None
-    if project["stacks"].get("python"):
-        py_files = _scoped_files(
-            root, project, _relative_files(root, PY_SUFFIXES, project, tests=False)
-        )
-        scoped["python"] = py_files
-        if py_files:
-            xenon = _tool(root, "xenon", "python")
-            radon = _tool(root, "radon", "python")
-            commands.append(
-                (
-                    [
-                        xenon,
-                        "--max-absolute",
-                        "B",
-                        "--max-modules",
-                        "B",
-                        "--max-average",
-                        "A",
-                        *py_files,
-                    ],
-                    900,
-                    None,
-                )
-            )
-            radon_result = run_command([radon, "cc", "-j", "-s", *py_files], cwd=root, timeout=900)
-            try:
-                radon_payload = json.loads(radon_result.stdout) if radon_result.code == 0 else None
-            except json.JSONDecodeError:
-                radon_payload = None
-            radon_dict = radon_result.as_dict()
-    code, results = _run_many(root, commands)
-    if radon_dict:
-        results.append(radon_dict)
-        code = max(
-            code,
-            PASS
-            if radon_dict["code"] == 0
-            else QUALITY_FAILURE
-            if radon_dict["code"] == 1
-            else INFRASTRUCTURE_ERROR,
-        )
+    py_files = (
+        _scoped_files(root, project, _relative_files(root, PY_SUFFIXES, project, tests=False))
+        if project["stacks"].get("python")
+        else []
+    )
+    code, results = _run_many(root, _javascript_structure_commands(root, js_files))
+    radon, python_evidence = _python_structure_analysis(root, project, py_files)
+    if radon:
+        results.append(radon)
+        code = max(code, PASS if radon["code"] == 0 else INFRASTRUCTURE_ERROR)
+    if python_evidence and python_evidence["failures"]:
+        code = max(code, QUALITY_FAILURE)
     return _write_report(
         root,
         "structure",
@@ -531,9 +639,9 @@ def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
         {
             "applicability": "applicable",
             "scope": "changed" if _adopt_mode(project) else "full",
-            "scoped_files": scoped,
+            "scoped_files": {"javascript": js_files, "python": py_files},
             "commands": results,
-            "radon": radon_payload,
+            "python": python_evidence,
         },
     )
 

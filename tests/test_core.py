@@ -9,7 +9,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from aqg.adapters import _python_crap, run_adapter
+from aqg.adapters import _python_crap, _python_structure_evidence, run_adapter
 from aqg.approvals import template, validate_approval
 from aqg.cli import build_parser
 from aqg.constants import CONFIGURATION_ERROR, PASS
@@ -25,7 +25,7 @@ from aqg.sbom import (
     python_inventory,
     validate_cyclonedx_document,
 )
-from aqg.scaffold import initialize_project
+from aqg.scaffold import build_project_config, initialize_project
 from aqg.util import change_fingerprint, detect_base_ref, git_changed_files, read_json, write_json
 
 
@@ -78,6 +78,174 @@ class DetectionTests(RepoCase):
         self.assertTrue(detection.css)
         self.assertEqual(detection.js_test_runner, "vitest")
         self.assertIn("tests", detection.test_paths)
+
+    def test_runner_and_package_manager_command_matrix(self) -> None:
+        matrix = {
+            ("npm", "vitest"): ("$AQG_JS_BIN/vitest", "$AQG_JS_BIN/vitest"),
+            ("pnpm", "jest"): ("pnpm", "pnpm"),
+            ("yarn", "mocha"): ("yarn", "$AQG_JS_BIN/c8"),
+            ("bun", "ava"): ("bun", "$AQG_JS_BIN/c8"),
+            ("npm", "node"): ("node", "$AQG_JS_BIN/c8"),
+        }
+        for (manager, runner), (unit_prefix, coverage_prefix) in matrix.items():
+            with self.subTest(manager=manager, runner=runner):
+                case = self.root / f"{manager}-{runner}"
+                (case / "src").mkdir(parents=True)
+                (case / "tests").mkdir()
+                (case / "src" / "answer.js").write_text(
+                    "export const answer = 42;\n", encoding="utf-8"
+                )
+                (case / "tests" / "answer.test.js").write_text(
+                    "export const covered = true;\n", encoding="utf-8"
+                )
+                dependency = "node:test" if runner == "node" else runner
+                package = {
+                    "name": case.name,
+                    "packageManager": f"{manager}@1.0.0",
+                    "devDependencies": {dependency: "1.0.0"},
+                }
+                if runner == "node":
+                    package["scripts"] = {"check": "node --test"}
+                (case / "package.json").write_text(json.dumps(package), encoding="utf-8")
+                detection = detect_project(case)
+                project = build_project_config(case, detection)
+                self.assertEqual(detection.package_manager, manager)
+                self.assertEqual(detection.js_test_runner, runner)
+                self.assertEqual(project["javascript"]["unit_command"][0], unit_prefix)
+                self.assertEqual(project["javascript"]["coverage_command"][0], coverage_prefix)
+                self.assertTrue(project["javascript"]["collect_command"])
+                for command_name in ("unit_command", "collect_command", "coverage_command"):
+                    command = project["javascript"][command_name]
+                    self.assertIsInstance(command, list)
+                    self.assertNotIn("sh", command)
+                    self.assertNotIn("bash", command)
+
+    def test_package_manager_lockfile_precedence(self) -> None:
+        for lockfile, expected in (
+            ("pnpm-lock.yaml", "pnpm"),
+            ("yarn.lock", "yarn"),
+            ("bun.lock", "bun"),
+            ("bun.lockb", "bun"),
+            ("package-lock.json", "npm"),
+            ("npm-shrinkwrap.json", "npm"),
+        ):
+            with self.subTest(lockfile=lockfile):
+                case = self.root / lockfile.replace(".", "-")
+                case.mkdir()
+                (case / "package.json").write_text('{"name":"matrix"}\n', encoding="utf-8")
+                (case / lockfile).write_text("{}\n", encoding="utf-8")
+                self.assertEqual(detect_project(case).package_manager, expected)
+
+    def test_tox_configuration_generates_protected_commands(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        (self.root / "src" / "answer.py").write_text(
+            "def answer() -> int:\n    return 42\n", encoding="utf-8"
+        )
+        (self.root / "tests" / "test_answer.py").write_text(
+            "def test_answer() -> None:\n    assert True\n", encoding="utf-8"
+        )
+        (self.root / "tox.ini").write_text(
+            "[tox]\nenv_list = py\n\n[testenv]\ncommands = pytest {posargs}\n",
+            encoding="utf-8",
+        )
+        detection = detect_project(self.root)
+        project = build_project_config(self.root, detection)
+        self.assertEqual(detection.python_test_runner, "tox")
+        self.assertEqual(project["python"]["test_runner"], "tox")
+        self.assertEqual(project["python"]["unit_command"], ["$AQG_PY_BIN/tox", "run"])
+        self.assertEqual(
+            project["python"]["collect_command"],
+            ["$AQG_PY_BIN/tox", "run", "--", "--collect-only", "-q"],
+        )
+
+
+class StructureRatchetTests(RepoCase):
+    def test_only_changed_functions_are_enforced_in_adopt_mode(self) -> None:
+        source = self.root / "src" / "module.py"
+        source.parent.mkdir()
+        source.write_text(
+            "def inherited_debt():\n"
+            + "".join(f"    value_{index} = {index}\n" for index in range(55))
+            + "    return value_54\n\n"
+            + "def changed_function():\n    return 1\n",
+            encoding="utf-8",
+        )
+        self.commit()
+        source.write_text(
+            source.read_text(encoding="utf-8").replace(
+                "def changed_function():\n    return 1\n",
+                "def changed_function():\n    if True:\n        return 2\n",
+            ),
+            encoding="utf-8",
+        )
+        project = {
+            "enforcement": {"scope": "changed", "base_ref": "HEAD"},
+            "thresholds": {
+                "structure": {
+                    "max_function_lines": 50,
+                    "max_cyclomatic_complexity": 10,
+                    "max_nesting_depth": 4,
+                }
+            },
+            "profile_thresholds": {},
+        }
+        payload = {
+            "src/module.py": [
+                {
+                    "type": "function",
+                    "name": "inherited_debt",
+                    "lineno": 1,
+                    "endline": 57,
+                    "complexity": 20,
+                },
+                {
+                    "type": "function",
+                    "name": "changed_function",
+                    "lineno": 59,
+                    "endline": 61,
+                    "complexity": 2,
+                },
+            ]
+        }
+        evidence = _python_structure_evidence(self.root, project, ["src/module.py"], payload)
+        by_name = {item["name"]: item for item in evidence["functions"]}
+        self.assertFalse(by_name["inherited_debt"]["enforced"])
+        self.assertTrue(by_name["changed_function"]["enforced"])
+        self.assertEqual(evidence["failures"], [])
+
+    def test_changed_function_over_limit_fails_with_metric(self) -> None:
+        source = self.root / "module.py"
+        source.write_text("def risky():\n    return 1\n", encoding="utf-8")
+        self.commit()
+        source.write_text("def risky():\n    if True:\n        return 2\n", encoding="utf-8")
+        project = {
+            "enforcement": {"scope": "changed", "base_ref": "HEAD"},
+            "thresholds": {
+                "structure": {
+                    "max_function_lines": 2,
+                    "max_cyclomatic_complexity": 1,
+                    "max_nesting_depth": 0,
+                }
+            },
+            "profile_thresholds": {},
+        }
+        payload = {
+            "module.py": [
+                {
+                    "type": "function",
+                    "name": "risky",
+                    "lineno": 1,
+                    "endline": 3,
+                    "complexity": 2,
+                }
+            ]
+        }
+        evidence = _python_structure_evidence(self.root, project, ["module.py"], payload)
+        self.assertEqual(len(evidence["failures"]), 3)
+        self.assertTrue(any("complexity 2 > 1" in item for item in evidence["failures"]))
+        self.assertTrue(any("lines 3 > 2" in item for item in evidence["failures"]))
+        self.assertTrue(any("nesting 1 > 0" in item for item in evidence["failures"]))
 
 
 class SetupTests(RepoCase):
@@ -415,6 +583,19 @@ class SetupContractTests(RepoCase):
         self.assertEqual(template_manifest["overrides"]["qs"], "6.15.3")
         self.assertEqual(lock["packages"]["node_modules/qs"]["version"], "6.15.3")
         self.assertNotIn("node_modules/typed-rest-client/node_modules/qs", lock["packages"])
+
+    def test_c8_coverage_runner_uses_audited_major(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        manifest = json.loads(
+            (source_root / "quality" / "tools" / "js" / "package.json").read_text(encoding="utf-8")
+        )
+        lock = json.loads(
+            (source_root / "quality" / "tools" / "js" / "package-lock.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(manifest["devDependencies"]["c8"], "12.0.0")
+        self.assertEqual(lock["packages"]["node_modules/c8"]["version"], "12.0.0")
 
     def test_rendered_policy_contains_every_registered_gate(self) -> None:
         policy = tomllib.loads(render_policy("@quality"))

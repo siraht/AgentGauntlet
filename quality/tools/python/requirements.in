@@ -10,6 +10,7 @@ pytest-timeout
 pytest-xdist
 radon
 ruff
+tox
 vulture
 xenon
 

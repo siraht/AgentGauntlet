@@ -131,10 +131,6 @@ def _infer_web(
     return {"base_url": url, "start_command": start}
 
 
-def _test_files_exist(root: Path, detection: Detection) -> bool:
-    return bool(detection.test_paths)
-
-
 def _feature_files_exist(root: Path) -> bool:
     return any((root / "features").glob("*.feature")) if (root / "features").exists() else False
 
@@ -164,63 +160,104 @@ def _gate(applicable: bool, reason: str, **extra: Any) -> dict[str, Any]:
     return {"applicable": applicable, "reason": reason, **extra}
 
 
-def build_project_config(
-    root: Path,
-    detection: Detection,
-    *,
-    base_url: str | None = None,
-    start_command: str | None = None,
-    mode: str = "adopt",
-) -> dict[str, Any]:
-    if mode not in {"adopt", "greenfield"}:
-        raise ConfigurationError("mode must be adopt or greenfield")
-    has_tests = _test_files_exist(root, detection)
-    has_code = detection.javascript or detection.python
-    has_web = (
-        detection.html
-        or detection.css
-        or any(
-            framework in detection.frameworks
-            for framework in (
-                "react",
-                "vue",
-                "svelte",
-                "sveltekit",
-                "next",
-                "nuxt",
-                "astro",
-                "vite",
-            )
+def _js_exec_command(manager: str | None, executable: str, *arguments: str) -> list[str]:
+    """Build a non-shell package-manager command that works on every supported OS."""
+    if manager == "pnpm":
+        return ["pnpm", "exec", executable, *arguments]
+    if manager == "yarn":
+        return ["yarn", "exec", executable, *arguments]
+    if manager == "bun":
+        return ["bun", "x", executable, *arguments]
+    return ["npm", "exec", "--", executable, *arguments]
+
+
+def _javascript_unit_command(detection: Detection) -> list[str]:
+    manager = detection.package_manager or "npm"
+    runner = detection.js_test_runner or "vitest"
+    if "test" in detection.package_scripts:
+        return [manager, "run", "test"] if manager in {"npm", "bun"} else [manager, "test"]
+    if runner == "vitest":
+        return [
+            "$AQG_JS_BIN/vitest",
+            "run",
+            "--config",
+            "quality/tools/js/config/vitest.config.mjs",
+        ]
+    if runner == "node":
+        return ["node", "--test"]
+    return _js_exec_command(manager, runner)
+
+
+def _javascript_evidence_commands(detection: Detection) -> tuple[list[str], list[str]]:
+    manager = detection.package_manager or "npm"
+    runner = detection.js_test_runner or "vitest"
+    coverage_root = ".aqg/work/coverage/js"
+    if runner == "vitest":
+        collect = [
+            "$AQG_JS_BIN/vitest",
+            "list",
+            "--config",
+            "quality/tools/js/config/vitest.config.mjs",
+        ]
+        coverage = [
+            "$AQG_JS_BIN/vitest",
+            "run",
+            "--coverage",
+            "--config",
+            "quality/tools/js/config/vitest.config.mjs",
+        ]
+        return collect, coverage
+    if runner == "jest":
+        collect = _js_exec_command(manager, "jest", "--listTests")
+        coverage = _js_exec_command(
+            manager,
+            "jest",
+            "--coverage",
+            f"--coverageDirectory={coverage_root}",
+            "--coverageReporters=json",
+            "--coverageReporters=json-summary",
         )
-    )
-    web = (
-        _infer_web(detection, root, start_command, base_url)
-        if has_web
-        else {"base_url": None, "start_command": None}
-    )
-    has_acceptance = has_web or _feature_files_exist(root) or _acceptance_files_exist(root)
-    has_contracts = any(
-        (root / path).exists() for path in ("tests/contracts", "test/contracts", "contracts")
-    )
-    has_build = bool(detection.build_command)
-    js_unit_command = None
-    if detection.javascript:
-        if "test" in detection.package_scripts:
-            manager = detection.package_manager or "npm"
-            js_unit_command = (
-                [manager, "run", "test"] if manager in {"npm", "bun"} else [manager, "test"]
-            )
-        elif detection.js_test_runner == "vitest" or has_tests:
-            js_unit_command = [
-                "$AQG_JS_BIN/vitest",
-                "run",
-                "--config",
-                "quality/tools/js/config/vitest.config.mjs",
-            ]
-    python_sources = [path for path in detection.source_paths if path not in {"tests", "test", "."}]
-    if not python_sources:
-        python_sources = ["."]
-    thresholds = {
+        return collect, coverage
+    target = ["node", "--test"] if runner == "node" else _js_exec_command(manager, runner)
+    collect_args = {
+        "mocha": ["--dry-run", "--reporter", "json"],
+        "ava": ["--tap"],
+        "node": [],
+    }.get(runner, [])
+    coverage = [
+        "$AQG_JS_BIN/c8",
+        f"--reports-dir={coverage_root}",
+        "--reporter=json",
+        "--reporter=json-summary",
+        *target,
+    ]
+    return [*target, *collect_args], coverage
+
+
+def _javascript_commands(detection: Detection) -> dict[str, list[str] | None]:
+    if not detection.javascript:
+        return {"unit": None, "collect": None, "coverage": None}
+    collect, coverage = _javascript_evidence_commands(detection)
+    return {
+        "unit": _javascript_unit_command(detection),
+        "collect": collect,
+        "coverage": coverage,
+    }
+
+
+def _python_commands(detection: Detection) -> dict[str, list[str] | None]:
+    if not detection.python:
+        return {"unit": None, "collect": None}
+    if detection.python_test_runner == "tox":
+        return {
+            "unit": ["$AQG_PY_BIN/tox", "run"],
+            "collect": ["$AQG_PY_BIN/tox", "run", "--", "--collect-only", "-q"],
+        }
+    return {"unit": None, "collect": None}
+
+
+def _default_thresholds() -> dict[str, Any]:
+    return {
         "coverage": {
             "lines": 85,
             "branches": 75,
@@ -239,7 +276,10 @@ def build_project_config(
         "security": {"audit_level": "high", "allow_unreviewed_ignores": False},
         "performance": {"lighthouse_performance": 0.8, "lighthouse_accessibility": 0.95},
     }
-    profile_thresholds = {
+
+
+def _assurance_thresholds() -> dict[str, Any]:
+    return {
         "fast": {},
         "pr": {},
         "deep": {
@@ -277,24 +317,43 @@ def build_project_config(
             "performance": {"lighthouse_performance": 0.95, "lighthouse_accessibility": 0.99},
         },
     }
-    gates = {
-        "format": _gate(
-            has_code or detection.html or detection.css, "No supported source files were detected."
-        ),
-        "lint": _gate(
-            has_code or detection.html or detection.css, "No supported source files were detected."
-        ),
+
+
+def _core_gates(detection: Detection, has_code: bool) -> dict[str, dict[str, Any]]:
+    source_reason = "No supported source files were detected."
+    code_reason = "No JavaScript/TypeScript/Python production source was detected."
+    return {
+        "format": _gate(has_code or detection.html or detection.css, source_reason),
+        "lint": _gate(has_code or detection.html or detection.css, source_reason),
         "typecheck": _gate(
             detection.typescript or detection.python, "No TypeScript or Python source was detected."
         ),
-        "test_integrity": _gate(
-            has_code, "No JavaScript/TypeScript/Python production source was detected."
-        ),
-        "unit": _gate(has_code, "No JavaScript/TypeScript/Python production source was detected."),
-        "structure": _gate(
-            has_code, "No JavaScript/TypeScript/Python production source was detected."
-        ),
+        "test_integrity": _gate(has_code, code_reason),
+        "unit": _gate(has_code, code_reason),
+        "structure": _gate(has_code, code_reason),
         "coverage": _gate(has_code, "No coverable production source was detected."),
+        "mutation_changed": _gate(has_code, "No mutable production source was detected."),
+        "review": _gate(True, "Review analysis is always applicable."),
+        "secrets": _gate(True, "Secret scanning is always applicable."),
+        "security_fast": _gate(
+            has_code, "No supported dependency or source ecosystem was detected."
+        ),
+        "security_deep": _gate(
+            has_code, "No supported dependency or source ecosystem was detected."
+        ),
+    }
+
+
+def _extended_gates(
+    root: Path,
+    detection: Detection,
+    *,
+    has_acceptance: bool,
+    has_contracts: bool,
+    has_web: bool,
+    web: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    return {
         "contracts": _gate(
             has_contracts,
             "No contract-test directory was detected; add tests/contracts or mark a project command.",
@@ -306,18 +365,9 @@ def build_project_config(
         "golden": _gate(
             _golden_configured(root), "No quality/golden/scenarios.json is configured."
         ),
-        "mutation_changed": _gate(has_code, "No mutable production source was detected."),
         "mutation_acceptance": _gate(
             _feature_files_exist(root),
             "No Gherkin Examples-based acceptance specifications were detected.",
-        ),
-        "review": _gate(True, "Review analysis is always applicable."),
-        "secrets": _gate(True, "Secret scanning is always applicable."),
-        "security_fast": _gate(
-            has_code, "No supported dependency or source ecosystem was detected."
-        ),
-        "security_deep": _gate(
-            has_code, "No supported dependency or source ecosystem was detected."
         ),
         "supply_chain": _gate(
             detection.javascript or detection.python,
@@ -326,9 +376,50 @@ def build_project_config(
         "performance": _gate(
             bool(has_web and web.get("start_command")), "No runnable web surface was detected."
         ),
-        "reproducible_build": _gate(has_build, "No deterministic build command was detected."),
+        "reproducible_build": _gate(
+            bool(detection.build_command), "No deterministic build command was detected."
+        ),
         "release_readiness": _gate(True, "Release evidence is always applicable."),
     }
+
+
+def _stack_settings(
+    detection: Detection,
+    js_commands: dict[str, list[str] | None],
+    python_commands: dict[str, list[str] | None],
+) -> dict[str, Any]:
+    python_sources = [
+        path for path in detection.source_paths if path not in {"tests", "test", "."}
+    ] or ["."]
+    return {
+        "javascript": {
+            "package_manager": detection.package_manager,
+            "test_runner": detection.js_test_runner or ("vitest" if detection.javascript else None),
+            "unit_command": js_commands["unit"],
+            "collect_command": js_commands["collect"],
+            "coverage_command": js_commands["coverage"],
+            "build_command": detection.build_command,
+        },
+        "python": {
+            "manager": detection.python_manager,
+            "test_runner": detection.python_test_runner,
+            "source_paths": python_sources,
+            "test_paths": detection.test_paths or ["tests", "test"],
+            "pytest_args": ["--strict-config", "--strict-markers", "-ra"],
+            "unit_command": python_commands["unit"],
+            "collect_command": python_commands["collect"],
+        },
+    }
+
+
+def _has_web_surface(detection: Detection) -> bool:
+    web_frameworks = {"react", "vue", "svelte", "sveltekit", "next", "nuxt", "astro", "vite"}
+    return (
+        detection.html or detection.css or bool(web_frameworks.intersection(detection.frameworks))
+    )
+
+
+def _project_identity(detection: Detection) -> dict[str, Any]:
     return {
         "schema_version": 2,
         "name": detection.name,
@@ -341,35 +432,72 @@ def build_project_config(
             "css": detection.css,
         },
         "frameworks": detection.frameworks,
-        "paths": {
-            "source": detection.source_paths,
-            "tests": detection.test_paths,
-            "html": detection.html_paths,
-            "css": detection.css_paths,
-            "exclude": list(DEFAULT_EXCLUDES),
-        },
-        "javascript": {
-            "package_manager": detection.package_manager,
-            "test_runner": detection.js_test_runner or ("vitest" if detection.javascript else None),
-            "unit_command": js_unit_command,
-            "build_command": detection.build_command,
-        },
-        "python": {
-            "manager": detection.python_manager,
-            "source_paths": python_sources,
-            "test_paths": detection.test_paths or ["tests", "test"],
-            "pytest_args": ["--strict-config", "--strict-markers", "-ra"],
-        },
+    }
+
+
+def _project_paths(detection: Detection) -> dict[str, list[str]]:
+    return {
+        "source": detection.source_paths,
+        "tests": detection.test_paths,
+        "html": detection.html_paths,
+        "css": detection.css_paths,
+        "exclude": list(DEFAULT_EXCLUDES),
+    }
+
+
+def _enforcement_settings(root: Path, mode: str) -> dict[str, Any]:
+    return {
+        "mode": mode,
+        "scope": "changed" if mode == "adopt" else "full",
+        "base_ref": detect_base_ref(root),
+        "new_code_must_meet_current_policy": True,
+        "existing_debt_must_not_increase": True,
+    }
+
+
+def build_project_config(
+    root: Path,
+    detection: Detection,
+    *,
+    base_url: str | None = None,
+    start_command: str | None = None,
+    mode: str = "adopt",
+) -> dict[str, Any]:
+    if mode not in {"adopt", "greenfield"}:
+        raise ConfigurationError("mode must be adopt or greenfield")
+    has_code = detection.javascript or detection.python
+    has_web = _has_web_surface(detection)
+    web = (
+        _infer_web(detection, root, start_command, base_url)
+        if has_web
+        else {"base_url": None, "start_command": None}
+    )
+    has_acceptance = has_web or _feature_files_exist(root) or _acceptance_files_exist(root)
+    has_contracts = any(
+        (root / path).exists() for path in ("tests/contracts", "test/contracts", "contracts")
+    )
+    js_commands = _javascript_commands(detection)
+    python_commands = _python_commands(detection)
+    gates = _core_gates(detection, has_code)
+    gates.update(
+        _extended_gates(
+            root,
+            detection,
+            has_acceptance=has_acceptance,
+            has_contracts=has_contracts,
+            has_web=has_web,
+            web=web,
+        )
+    )
+    stack_settings = _stack_settings(detection, js_commands, python_commands)
+    return {
+        **_project_identity(detection),
+        "paths": _project_paths(detection),
+        **stack_settings,
         "web": web,
-        "enforcement": {
-            "mode": mode,
-            "scope": "changed" if mode == "adopt" else "full",
-            "base_ref": detect_base_ref(root),
-            "new_code_must_meet_current_policy": True,
-            "existing_debt_must_not_increase": True,
-        },
-        "thresholds": thresholds,
-        "profile_thresholds": profile_thresholds,
+        "enforcement": _enforcement_settings(root, mode),
+        "thresholds": _default_thresholds(),
+        "profile_thresholds": _assurance_thresholds(),
         "gates": gates,
         "notes": detection.notes,
     }

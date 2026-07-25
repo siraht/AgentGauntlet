@@ -16,6 +16,7 @@
     "@stryker-mutator/vitest-runner": "latest",
     "@types/node": "latest",
     "@vitest/coverage-v8": "latest",
+    "c8": "latest",
     "dependency-cruiser": "latest",
     "eslint": "latest",
     "eslint-plugin-security": "latest",

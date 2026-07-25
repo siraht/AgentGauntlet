@@ -42,6 +42,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-005 | Prefer attestable automation over a locally stored private signing key.                          | Repository releases must be verifiable without creating or exposing a long-lived secret in the workspace.                                                   | A managed organizational signing identity is provided.                          |
 | D-006 | Pin third-party GitHub Actions to reviewed immutable commits and let Dependabot propose updates. | Mutable major tags allow unreviewed workflow code to change; commit pins plus automated proposals preserve integrity and maintainability.                   | GitHub provides native immutable action references with equivalent automation.  |
 | D-007 | Override Stryker's transitive `qs` dependency to `6.15.3`.                                       | Upstream pins vulnerable `6.15.1`; the patched release removes the findings without replacing the mutation engine.                                          | Stryker removes the dependency or ships a patched version.                      |
+| D-008 | Generate explicit collection, unit, and coverage commands for every advertised test runner.      | Recognition without an executable evidence contract made Jest, Mocha, AVA, Node, and tox support aspirational rather than immediately usable.               | A runner changes its stable noninteractive command contract.                    |
+| D-009 | Enforce Python structure at changed-function granularity in adopt mode.                          | Running Xenon against every function in a touched legacy file blocked unrelated edits and did not use AQG's configured line, complexity, or nesting limits. | The repository reaches strict whole-tree enforcement.                           |
+| D-010 | Require c8 12 for non-Vitest JavaScript coverage.                                                | c8 10.1.3 introduced a high-severity glob/minimatch advisory chain; c8 12 removes it while retaining AQG's machine-readable evidence contract.              | c8 publishes a new reviewed major or a compatible native runner supersedes it.  |
 
 ## Progress
 
@@ -49,8 +52,8 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------ |
 | Baseline and risk contract     | Complete | Goal created; baseline status and public remote verified; productionization branch created.            |
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18. |
-| Cross-stack conformance        | Pending  | —                                                                                                      |
-| Coverage and complexity debt   | Pending  | —                                                                                                      |
+| Cross-stack conformance        | Active   | Runner/manager command contract covers 5 runner and 4 manager combinations plus tox.                   |
+| Coverage and complexity debt   | Active   | Touched high-complexity detector/scaffold/adapter functions refactored below Standard limits.          |
 | End-to-end dogfood             | Pending  | —                                                                                                      |
 | Release and provenance         | Pending  | —                                                                                                      |
 | GitHub governance              | Pending  | —                                                                                                      |
@@ -69,6 +72,11 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
   starts and propagates failures.
 - Immutable action pins need an update mechanism. Dependabot keeps the review boundary
   explicit without freezing security patches indefinitely.
+- A documented adapter is not production support until setup emits its collection, unit,
+  coverage, and freshness contract without requiring the adopter to reverse-engineer it.
+- File-level complexity checks are too coarse for legacy ratchets. Changed-function
+  enforcement preserves inherited-debt visibility while requiring every touched function
+  to meet the current profile.
 
 ## Evidence conventions
 
