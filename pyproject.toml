@@ -36,7 +36,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-aqg = ["templates/**/*", "static/**/*", "guides/**/*"]
+aqg = ["py.typed", "templates/**/*", "static/**/*", "guides/**/*"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers -ra"
