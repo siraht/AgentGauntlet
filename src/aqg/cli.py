@@ -1339,6 +1339,14 @@ def _normalize_global_flags(raw: list[str]) -> list[str]:
     return normalized
 
 
+def _recover_cold_start(raw: list[str]) -> list[str]:
+    if not raw:
+        return ["help"]
+    if raw == ["--json"]:
+        return ["capabilities", "--json"]
+    return raw
+
+
 def _emit_cli_failure(category: str, message: str, code: int, *, json_mode: bool) -> int:
     if json_mode:
         _json_dump(
@@ -1387,7 +1395,7 @@ def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     json_mode = "--json" in raw
     try:
-        normalized = _normalize_global_flags(raw)
+        normalized = _normalize_global_flags(_recover_cold_start(raw))
     except ConfigurationError as exc:
         return _emit_cli_failure(
             "configuration_error", str(exc), CONFIGURATION_ERROR, json_mode=json_mode

@@ -134,6 +134,20 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertEqual(payload["output"]["stdout"], "requested data")
         self.assertEqual(payload["output"]["stderr"], "diagnostics")
 
+    def test_bare_invocation_teaches_humans_and_json_describes_the_contract(self) -> None:
+        human = io.StringIO()
+        with contextlib.redirect_stdout(human):
+            self.assertEqual(main([]), PASS)
+        self.assertIn("Constraint-first quality control", human.getvalue())
+        self.assertIn("capabilities   describe the machine-readable", human.getvalue())
+
+        machine = io.StringIO()
+        with contextlib.redirect_stdout(machine):
+            self.assertEqual(main(["--json"]), PASS)
+        payload = json.loads(machine.getvalue())
+        self.assertEqual(payload["contract_version"], "1.0")
+        self.assertIn("commands", payload)
+
     def test_parse_errors_teach_exact_safe_corrections(self) -> None:
         cases = (
             (["--jsno"], "qg capabilities --json"),

@@ -54,6 +54,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-017 | Make triage a read-only aggregation over existing control models.                                | Daily orientation should collapse multiple calls without creating a second source of truth or allowing the overview command to mutate evidence.                                      | A measured hot-path bottleneck requires a cached projection.                    |
 | D-018 | Support help-first ordering without duplicating command documentation.                           | `qg help COMMAND` is a conventional first guess; resolving it through the real parser prevents a parallel help model from drifting.                                                  | Argparse gains a native equivalent with the same JSON contract.                 |
 | D-019 | Treat natural multi-word guidance as search intent and keep intent probes bounded.               | Agents commonly omit `--search`; accepting the phrase is unambiguous and safe, while audit probes must finish inside the runner's fixed deadline to measure recovery rather than task duration. | Search syntax or the intent-runner deadline changes.                            |
+| D-020 | Make empty human and machine invocations self-describing.                                        | Bare `qg` and `qg --json` have no ambiguous product intent and can safely return help or the capabilities contract without repository access or side effects.                          | The CLI gains a different explicit discovery entry point.                       |
 
 ## Progress
 
@@ -104,6 +105,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Cataloging every nested flag lets a missing-command error suggest a complete valid
   invocation instead of merely reporting that `COMMAND` is absent. Natural multi-word
   documentation queries can also be recovered safely because they are read-only.
+- Cold-start recovery should act only when intent is exact: an empty invocation can show
+  help and `--json` alone can return capabilities, while ambiguous or mutating guesses
+  must continue to stop with a correction.
 
 ## Evidence conventions
 
