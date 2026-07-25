@@ -38,7 +38,7 @@ The following items named in the referenced conversation were absent or incomple
 - Deterministic portable release builder with local in-toto/SLSA provenance.
 - Keyless GitHub OIDC/Sigstore build-provenance and CycloneDX attestations.
 - PEP 561 typed-package metadata.
-- 66 Python source/acceptance tests, one JavaScript dashboard contract test, and internal,
+- 67 Python source/acceptance tests, one JavaScript dashboard contract test, and internal,
   installed-tool, disposable-project, browser, and control-surface conformance fixtures.
 
 ## Locally validated

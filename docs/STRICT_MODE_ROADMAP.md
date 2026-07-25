@@ -1,10 +1,10 @@
 # Strict-mode readiness
 
-Revision: `129dbf50d698317159a6c8aab3ddc2c0f21bfa2d` · mode: **adopt** · strict ready: **no**
+Revision: `0935524e5d91348f06353a80edda44afd7525df3` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 66
+- Tests: 67
 - Line coverage: 57.50% (gap 27.50 points)
 - Branch coverage: 42.66% (gap 32.34 points)
 - Functions above complexity cap: 52
