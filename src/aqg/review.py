@@ -185,7 +185,8 @@ def _loopback_bindings(root: Path, path: str) -> set[str]:
     while True:
         previous = len(safe)
         for assignment in assignments:
-            if _loopback_expression(assignment.value, safe):
+            value = assignment.value
+            if value is not None and _loopback_expression(value, safe):
                 safe.update(_assigned_names(assignment))
         if len(safe) == previous:
             return safe
