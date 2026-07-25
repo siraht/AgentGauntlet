@@ -58,6 +58,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-021 | Keep embedded guidance independent of repository discovery.                                      | Read-only playbooks ship inside the binary; requiring an initialized project prevented the cold agents who need them most from reading them.                                         | Guidance gains project-specific extensions.                                     |
 | D-022 | Dogfood every public control surface in a disposable project.                                     | Unit tests cannot prove the real setup executable, curses terminal, loopback HTTP server, token boundary, review artifacts, and CLI process contracts compose end to end.             | A new public control surface or security boundary is added.                      |
 | D-023 | Prioritize inherited-debt tests around governance boundaries.                                      | Hooks, TUI, and dashboard authentication were among the least-covered modules and can silently weaken or misreport the gauntlet if their failure paths are untested.                   | These modules meet strict branch coverage and a lower-risk hotspot dominates.    |
+| D-024 | Publish deterministic local provenance and keyless hosting attestations as distinct evidence.      | A reproducibility statement remains reviewable offline, while GitHub OIDC and Sigstore authenticate CI-built bytes without a long-lived signing key; neither should be misrepresented as a security verdict. | A managed independent builder or organization signing policy is introduced.      |
 
 ## Progress
 
@@ -67,8 +68,8 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | CI and dependencies            | Complete | Node 24 actions pinned; workflow-pin tests pass; npm audit is clean; checker conformance passes 18/18.                                          |
 | Cross-stack conformance        | Complete | Six default live projects, Bun, and Playwright/axe pass; Linux/macOS/Windows CI matrix added.                                                   |
 | Coverage and complexity debt   | Active   | 62 tests pass; whole-library coverage rose from 36.02% to 53%; hooks are 89%, TUI 56%, dashboard 48%; touched functions meet Standard limits.  |
-| End-to-end dogfood             | Active   | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally.                              |
-| Release and provenance         | Pending  | —                                                                                                                                               |
+| End-to-end dogfood             | Complete | Disposable setup, CLI, review, conformance, PTY TUI, and read-only/authenticated dashboard harness passes locally and runs on Python 3.13 CI.   |
+| Release and provenance         | Active   | Complete outputs reproduce byte-for-byte; checksum verification and CycloneDX/in-toto contract tests pass; keyless CI attestation is wired.    |
 | GitHub governance              | Pending  | —                                                                                                                                               |
 | Final independent verification | Pending  | —                                                                                                                                               |
 
@@ -119,6 +120,12 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Coverage remediation is most valuable when it changes confidence at a control
   boundary. Eight focused tests raised hooks from 11% to 89%, TUI from 10% to 56%,
   dashboard from 24% to 48%, and whole-library coverage from 49% to 53%.
+- A standards-valid document may still fail at a consumer boundary. GitHub's current
+  attestation action detects CycloneDX by requiring a serial number, so AQG now emits a
+  content-derived RFC 4122 UUID that preserves reproducibility and signer compatibility.
+- Local provenance and authenticated provenance answer different questions. The local
+  statement makes the build inputs inspectable; the hosting attestation authenticates the
+  builder identity and binds its output digests using a short-lived certificate.
 
 ## Evidence conventions
 
