@@ -23,7 +23,7 @@
   "risk_factors": {
     "data_loss": false,
     "authentication": false,
-    "authorization": false,
+    "authorization": true,
     "privacy": false,
     "money": false,
     "external_contract": true,
