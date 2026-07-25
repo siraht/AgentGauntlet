@@ -48,6 +48,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-011 | Require both cross-platform command contracts and live disposable-project conformance.           | Static detection tests cannot expose runner discovery, module resolution, coverage-report, package-manager, browser-port, or generated-template failures.                            | The supported language or runner matrix changes.                                |
 | D-012 | Decompose validators without changing diagnostic text or order.                                  | Configuration diagnostics are part of the operator and automation contract; reducing complexity must not make failures less stable or actionable.                                    | A versioned machine-readable diagnostic schema replaces text compatibility.     |
 | D-013 | Make the CLI dispatcher declarative and JSON failures machine-readable.                          | A 353-line branch chain was difficult to extend safely, and plain-text exceptions made `--json` pipelines unable to distinguish configuration, quality, and infrastructure failures. | The public CLI contract advances to a new major schema version.                 |
+| D-014 | Publish a deterministic, project-independent capabilities contract.                              | Agents need to discover commands, arguments, environment controls, output rules, and exit semantics from the binary instead of relying on stale external instructions.               | The contract schema needs a backwards-incompatible revision.                    |
 
 ## Progress
 
@@ -89,6 +90,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Public-control-surface dogfooding found an output-contract gap that internal calls hid:
   `--json` success paths were structured, but exceptions were stderr-only. Robot mode
   must cover failures as rigorously as successes.
+- Deterministic-width help, explicit command sections, nested-command descriptions, and
+  hidden internal verbs make human discovery and automated surface inventory more
+  reliable; framework-default help formatting was not sufficient as a machine contract.
 
 ## Evidence conventions
 

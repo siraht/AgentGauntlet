@@ -113,6 +113,26 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertEqual(code, PASS)
         self.assertEqual(json.loads(stdout.getvalue())["project"]["name"], self.root.name)
 
+    def test_capabilities_is_complete_deterministic_and_project_independent(self) -> None:
+        outputs: list[str] = []
+        for _ in range(2):
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                code = main(["capabilities", "--json"])
+            self.assertEqual(code, PASS)
+            outputs.append(stdout.getvalue())
+        self.assertEqual(outputs[0], outputs[1])
+        payload = json.loads(outputs[0])
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["contract_version"], "1.0")
+        self.assertEqual(set(payload["exit_codes"]), {"0", "1", "2", "3"})
+        paths = {command["path"] for command in payload["commands"]}
+        self.assertIn("check", paths)
+        self.assertIn("onboarding refresh", paths)
+        self.assertIn("capabilities", paths)
+        self.assertEqual(payload["output"]["stdout"], "requested data")
+        self.assertEqual(payload["output"]["stderr"], "diagnostics")
+
 
 if __name__ == "__main__":
     unittest.main()

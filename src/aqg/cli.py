@@ -49,7 +49,18 @@ from .util import (
 from .wizard import run_wizard
 
 
+class StableHelpFormatter(argparse.HelpFormatter):
+    """Render help at a deterministic width suitable for humans and discovery tools."""
+
+    def __init__(self, prog: str) -> None:
+        super().__init__(prog, max_help_position=30, width=120)
+
+
 class ArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("formatter_class", StableHelpFormatter)
+        super().__init__(*args, **kwargs)
+
     def error(self, message: str) -> Never:
         self.print_usage(sys.stderr)
         raise ConfigurationError(message)
@@ -114,21 +125,11 @@ def _print_status(root: Path, payload: dict[str, Any]) -> None:
         print("Latest: no evidence run")
 
 
-def build_parser() -> ArgumentParser:
-    parser = ArgumentParser(
-        prog="qg", description="Constraint-first quality control for agentic coding"
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("--root", help="repository root; auto-detected for initialized projects")
-    parser.add_argument(
-        "--json", action="store_true", help="emit machine-readable JSON where supported"
-    )
-    sub = parser.add_subparsers(dest="command", required=True)
-
+def _add_setup_parsers(sub: Any) -> None:
     wizard = sub.add_parser("wizard", help="guided one-command setup for non-specialists")
     wizard.add_argument("path", nargs="?", default=".")
 
-    setup = sub.add_parser("setup", help="one-command initialize, install, diagnose, and verify")
+    setup = sub.add_parser("setup", help="initialize and verify a project with optional tools")
     setup.add_argument("path", nargs="?", default=".")
     setup.add_argument("--owner")
     setup.add_argument("--mode", choices=("auto", "adopt", "greenfield"), default="auto")
@@ -169,22 +170,31 @@ def build_parser() -> ArgumentParser:
     detect.add_argument("--base-url")
     detect.add_argument("--start-command")
 
-    sub.add_parser("status", help="show risk, latest evidence, and gate status")
-    doctor = sub.add_parser(
-        "doctor", help="validate configuration, toolchains, locks, and governance"
-    )
+
+def _hide_subparser_help(sub: Any, name: str) -> None:
+    choices = getattr(sub, "_choices_actions", [])
+    sub._choices_actions = [choice for choice in choices if choice.dest != name]
+
+
+def _nested_subparsers(parser: ArgumentParser, dest: str) -> Any:
+    return parser.add_subparsers(dest=dest, required=True, title="commands", metavar="COMMAND")
+
+
+def _add_execution_parsers(sub: Any) -> None:
+    sub.add_parser("status", help="show risk plus latest evidence and gate status")
+    doctor = sub.add_parser("doctor", help="validate project readiness and governance")
     doctor.add_argument("--strict-tools", action="store_true")
 
     tools = sub.add_parser("tools", help="manage isolated project quality toolchains")
-    tools_sub = tools.add_subparsers(dest="tools_command", required=True)
-    install = tools_sub.add_parser("install")
+    tools_sub = _nested_subparsers(tools, "tools_command")
+    install = tools_sub.add_parser("install", help="install protected quality toolchains")
     install.add_argument("--ci", action="store_true")
     install.add_argument(
         "--browsers",
         action="store_true",
         help="install Playwright Chromium when browser gates apply",
     )
-    tools_sub.add_parser("status")
+    tools_sub.add_parser("status", help="show protected quality toolchain readiness")
 
     check = sub.add_parser("check", help="run an execution profile")
     check.add_argument("profile", choices=("fast", "pr", "deep", "release"))
@@ -196,6 +206,7 @@ def build_parser() -> ArgumentParser:
 
     adapter = sub.add_parser("adapter", help=argparse.SUPPRESS)
     adapter.add_argument("name", choices=sorted(HANDLERS))
+    _hide_subparser_help(sub, "adapter")
 
     check_risk = sub.add_parser(
         "check-risk", help="resolve the risk card and run every required profile"
@@ -207,6 +218,8 @@ def build_parser() -> ArgumentParser:
     risk = sub.add_parser("risk-card", help="validate and resolve the change-risk card")
     risk.add_argument("--card", default="quality/change-risk.json")
 
+
+def _add_review_parsers(sub: Any) -> None:
     review = sub.add_parser(
         "review", help="classify the current diff and generate review artifacts"
     )
@@ -230,26 +243,28 @@ def build_parser() -> ArgumentParser:
     guidance.add_argument("--list", action="store_true")
     guidance.add_argument("--search")
 
-    onboarding = sub.add_parser(
-        "onboarding", help="show, refresh, or advance the generated setup control flow"
-    )
-    onboarding_sub = onboarding.add_subparsers(dest="onboarding_command", required=True)
-    onboarding_sub.add_parser("show")
-    onboarding_sub.add_parser("refresh")
-    onboarding_sub.add_parser("next")
+    onboarding = sub.add_parser("onboarding", help="show or refresh guided setup progress")
+    onboarding_sub = _nested_subparsers(onboarding, "onboarding_command")
+    onboarding_sub.add_parser("show", help="show the complete onboarding state")
+    onboarding_sub.add_parser("refresh", help="recompute and store onboarding state")
+    onboarding_sub.add_parser("next", help="show the next recommended setup action")
 
+
+def _add_evidence_parsers(sub: Any) -> None:
     golden = sub.add_parser("golden", help="run or explicitly update deterministic golden sessions")
     golden.add_argument("--update", action="store_true")
     golden.add_argument("--scenario")
 
     acceptance = sub.add_parser("acceptance", help="lint Gherkin or run acceptance mutation")
-    acceptance_sub = acceptance.add_subparsers(dest="acceptance_command", required=True)
-    acceptance_sub.add_parser("lint")
-    acceptance_sub.add_parser("mutate")
+    acceptance_sub = _nested_subparsers(acceptance, "acceptance_command")
+    acceptance_sub.add_parser("lint", help="validate strict Gherkin feature files")
+    acceptance_sub.add_parser("mutate", help="mutate examples to prove behavioral wiring")
 
     baseline = sub.add_parser("baseline", help="create a narrow, reviewable legacy-debt baseline")
-    baseline_sub = baseline.add_subparsers(dest="baseline_command", required=True)
-    baseline_test = baseline_sub.add_parser("test-integrity")
+    baseline_sub = _nested_subparsers(baseline, "baseline_command")
+    baseline_test = baseline_sub.add_parser(
+        "test-integrity", help="review and record current test-integrity debt"
+    )
     baseline_test.add_argument(
         "--confirm", action="store_true", help="required to write the baseline"
     )
@@ -257,30 +272,40 @@ def build_parser() -> ArgumentParser:
     approval = sub.add_parser(
         "approval", help="create templates or validate human approval records"
     )
-    approval_sub = approval.add_subparsers(dest="approval_command", required=True)
-    approval_template = approval_sub.add_parser("template")
+    approval_sub = _nested_subparsers(approval, "approval_command")
+    approval_template = approval_sub.add_parser(
+        "template", help="create an unapproved human-review template"
+    )
     approval_template.add_argument("kind", choices=sorted(KINDS))
     approval_template.add_argument("--reviewer")
     approval_template.add_argument("--force", action="store_true")
-    approval_validate = approval_sub.add_parser("validate")
+    approval_validate = approval_sub.add_parser(
+        "validate", help="validate approval records for a risk profile"
+    )
     approval_validate.add_argument("kind", nargs="?", choices=sorted(KINDS))
     approval_validate.add_argument(
         "--risk-profile", choices=("experiment", "standard", "high_assurance", "critical")
     )
 
     new = sub.add_parser("new", help="create behavior and QA authoring templates")
-    new_sub = new.add_subparsers(dest="new_command", required=True)
-    spec = new_sub.add_parser("spec")
+    new_sub = _nested_subparsers(new, "new_command")
+    spec = new_sub.add_parser("spec", help="create a feature specification")
     spec.add_argument("name")
     spec.add_argument("--todo", action="store_true")
     spec.add_argument("--force", action="store_true")
-    gherkin = new_sub.add_parser("feature")
+    gherkin = new_sub.add_parser("feature", help="create a Gherkin feature")
     gherkin.add_argument("name")
     gherkin.add_argument("--force", action="store_true")
-    qa = new_sub.add_parser("qa")
+    qa = new_sub.add_parser("qa", help="create a manual QA procedure")
     qa.add_argument("name")
     qa.add_argument("--force", action="store_true")
 
+
+def _add_control_parsers(sub: Any) -> None:
+    sub.add_parser(
+        "capabilities",
+        help="describe the machine-readable command and output contract",
+    )
     conf = sub.add_parser(
         "conformance", help="prove AQG and optionally installed tools fail on known defects"
     )
@@ -300,24 +325,45 @@ def build_parser() -> ArgumentParser:
     sub.add_parser("tui", help="open the terminal control surface")
 
     portfolio = sub.add_parser("portfolio", help="register and aggregate multiple repositories")
-    portfolio_sub = portfolio.add_subparsers(dest="portfolio_command", required=True)
-    port_add = portfolio_sub.add_parser("add")
+    portfolio_sub = _nested_subparsers(portfolio, "portfolio_command")
+    port_add = portfolio_sub.add_parser("add", help="register a project")
     port_add.add_argument("path", nargs="?", default=".")
     port_add.add_argument("--name")
     port_add.add_argument("--tag", action="append", default=[])
-    port_remove = portfolio_sub.add_parser("remove")
+    port_remove = portfolio_sub.add_parser("remove", help="remove a registered project")
     port_remove.add_argument("value")
-    portfolio_sub.add_parser("list")
-    portfolio_sub.add_parser("scan")
+    portfolio_sub.add_parser("list", help="list registered projects")
+    portfolio_sub.add_parser("scan", help="aggregate registered project status")
 
     upgrade = sub.add_parser("upgrade", help="replace the vendored runtime and managed templates")
     upgrade.add_argument("--install", action="store_true")
 
     hook_pre = sub.add_parser("hook-pretool", help=argparse.SUPPRESS)
     hook_pre.set_defaults(hidden=True)
+    _hide_subparser_help(sub, "hook-pretool")
     hook_stop_parser = sub.add_parser("hook-stop", help=argparse.SUPPRESS)
     hook_stop_parser.set_defaults(hidden=True)
+    _hide_subparser_help(sub, "hook-stop")
 
+
+def build_parser() -> ArgumentParser:
+    parser = ArgumentParser(
+        prog="qg", description="Constraint-first quality control for agentic coding"
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--root", help="repository root; auto-detected for initialized projects")
+    parser.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON where supported"
+    )
+    sub = parser.add_subparsers(dest="command", required=True, title="commands", metavar="COMMAND")
+    for builder in (
+        _add_setup_parsers,
+        _add_execution_parsers,
+        _add_review_parsers,
+        _add_evidence_parsers,
+        _add_control_parsers,
+    ):
+        builder(sub)
     return parser
 
 
@@ -385,6 +431,101 @@ def _status_payload(root: Path) -> dict[str, Any]:
         "risk_errors": errors,
         "latest": runs[0] if runs else None,
         "runs": runs,
+    }
+
+
+def _subparser_choices(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    for action in parser._actions:
+        choices = getattr(action, "choices", None)
+        if isinstance(choices, dict) and choices:
+            return {
+                str(name): child
+                for name, child in choices.items()
+                if isinstance(child, argparse.ArgumentParser)
+            }
+    return {}
+
+
+def _parser_arguments(parser: argparse.ArgumentParser) -> list[dict[str, Any]]:
+    arguments: list[dict[str, Any]] = []
+    for action in parser._actions:
+        if action.help is argparse.SUPPRESS or isinstance(getattr(action, "choices", None), dict):
+            continue
+        names = list(action.option_strings) or [action.dest]
+        choices = list(action.choices) if action.choices is not None else None
+        arguments.append(
+            {
+                "names": names,
+                "required": bool(action.required),
+                "choices": choices,
+                "nargs": action.nargs,
+                "help": action.help,
+            }
+        )
+    return sorted(arguments, key=lambda item: item["names"][-1])
+
+
+def _command_descriptions(parser: argparse.ArgumentParser) -> dict[str, str]:
+    descriptions = dict.fromkeys(_subparser_choices(parser), "")
+    for action in parser._actions:
+        choices = getattr(action, "_choices_actions", None)
+        if choices is not None:
+            for choice in choices:
+                if choice.help != argparse.SUPPRESS:
+                    descriptions[str(choice.dest)] = str(choice.help or "")
+                else:
+                    descriptions.pop(str(choice.dest), None)
+    return descriptions
+
+
+def _command_contracts(parser: argparse.ArgumentParser, prefix: str = "") -> list[dict[str, Any]]:
+    contracts: list[dict[str, Any]] = []
+    descriptions = _command_descriptions(parser)
+    for name, child in sorted(_subparser_choices(parser).items()):
+        if name not in descriptions:
+            continue
+        path = f"{prefix} {name}".strip()
+        contracts.append(
+            {
+                "path": path,
+                "description": descriptions[name],
+                "arguments": _parser_arguments(child),
+            }
+        )
+        contracts.extend(_command_contracts(child, path))
+    return contracts
+
+
+def capabilities_payload() -> dict[str, Any]:
+    parser = build_parser()
+    return {
+        "schema_version": 1,
+        "contract_version": "1.0",
+        "tool": {"name": "qg", "version": __version__},
+        "commands": _command_contracts(parser),
+        "global_arguments": _parser_arguments(parser),
+        "exit_codes": {
+            "0": "measurement ran and passed",
+            "1": "measurement ran and found a quality defect",
+            "2": "policy, configuration, or input is invalid",
+            "3": "checker, environment, timeout, or evidence failed",
+        },
+        "environment": {
+            "AQG_DIFF_BASE": "override the comparison Git ref",
+            "AQG_RUN_ID": "supply a caller-owned gate run identifier",
+            "AQG_POLICY_MAINTENANCE": "authorize explicitly reviewed policy maintenance",
+            "AQG_ALLOW_GOLDEN_UPDATE": "authorize explicitly reviewed golden updates",
+        },
+        "output": {
+            "json_flag": "--json",
+            "json_error_envelope": {
+                "schema_version": 1,
+                "status": "error",
+                "error": {"category": "string", "message": "string", "exit_code": "integer"},
+            },
+            "stdout": "requested data",
+            "stderr": "diagnostics",
+        },
     }
 
 
@@ -569,6 +710,19 @@ def _dispatch_changed_files(args: argparse.Namespace, root: Path) -> int:
     base = _comparison_base(root, args.base)
     files = git_changed_files(root, base)
     _json_dump({"base": base, "files": files}) if args.json else print("\n".join(files))
+    return PASS
+
+
+def _dispatch_capabilities(args: argparse.Namespace, root: Path) -> int:
+    del root
+    payload = capabilities_payload()
+    if args.json:
+        _json_dump(payload)
+    else:
+        print(f"qg {payload['tool']['version']} · contract {payload['contract_version']}")
+        print(f"Commands: {len(payload['commands'])}")
+        print("Exit codes: 0 pass · 1 quality · 2 configuration · 3 infrastructure")
+        print("Run `qg capabilities --json` for the complete machine-readable contract.")
     return PASS
 
 
@@ -830,6 +984,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "adapter": _dispatch_adapter,
     "approval": _dispatch_approval,
     "baseline": _dispatch_baseline,
+    "capabilities": _dispatch_capabilities,
     "changed-files": _dispatch_changed_files,
     "check": _dispatch_check,
     "check-risk": _dispatch_check_risk,
@@ -866,7 +1021,7 @@ def dispatch(args: argparse.Namespace) -> int:
     handler = COMMAND_HANDLERS.get(args.command)
     if handler is None:
         raise ConfigurationError(f"unknown command {args.command!r}")
-    return handler(args, _root(args.root))
+    return handler(args, _root(args.root, require_initialized=args.command != "capabilities"))
 
 
 def _normalize_global_flags(raw: list[str]) -> list[str]:
