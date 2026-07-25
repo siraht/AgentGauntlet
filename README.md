@@ -124,7 +124,14 @@ The builder fixes archive timestamps, path order, file modes, and compression se
 
 - `dist/aqg.pyz`;
 - `dist/agent-quality-gauntlet-2.0.0-portable.zip`;
+- deterministic runtime, JavaScript-checker, and Python-checker CycloneDX 1.6 inventories;
+- an in-toto/SLSA reproducibility statement with source-material digests;
 - checksum sidecars and `dist/SHA256SUMS`.
+
+The release workflow independently rebuilds the complete output set, verifies every checksum, and
+uses GitHub Actions OIDC to create keyless Sigstore provenance and SBOM attestations. Follow
+[docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) before executing a published
+artifact.
 
 ## Repository map
 
@@ -138,6 +145,7 @@ scripts/build_release.py         deterministic portable builder
 ARCHITECTURE.md                  planes, trust boundaries, and data flow
 IMPLEMENTATION_STATUS.md         recovered/validated/missing status
 docs/CONTROL_SURFACE.md          CLI, TUI, and dashboard workflows
+docs/RELEASE_VERIFICATION.md     checksum, provenance, and SBOM verification
 docs/RESEARCH_REPORT_2026.md     research-to-control synthesis
 BLUEPRINT.md                     full design and adoption model
 docs/SOURCE_SYNTHESIS.md         source-by-source mechanism analysis

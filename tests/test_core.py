@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import subprocess
@@ -8,6 +9,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+import zipfile
 from pathlib import Path
 
 from aqg.adapters import _python_crap, _python_structure_evidence, run_adapter
@@ -33,6 +35,21 @@ from aqg.util import change_fingerprint, detect_base_ref, git_changed_files, rea
 def git(root: Path, *args: str) -> str:
     result = subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, check=True)
     return result.stdout.strip()
+
+
+def build_release(source_root: Path, output: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(source_root / "scripts" / "build_release.py"),
+            "--output",
+            str(output),
+        ],
+        cwd=source_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 class RepoCase(unittest.TestCase):
@@ -582,6 +599,10 @@ class SupplyChainTests(RepoCase):
         )
         document = read_json(self.root / payload["artifacts"][0]["artifact"])
         self.assertEqual(validate_cyclonedx_document(document), [])
+        self.assertRegex(
+            document["serialNumber"],
+            r"^urn:uuid:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+        )
 
     def test_javascript_dependencies_without_lock_fail_closed(self) -> None:
         (self.root / "package.json").write_text(
@@ -614,6 +635,18 @@ class SupplyChainTests(RepoCase):
         initial = artifact.read_bytes()
         second = generate_sboms(self.root, project, include_toolchains=False)
         self.assertEqual(initial, (self.root / second["artifacts"][0]["artifact"]).read_bytes())
+
+    def test_sbom_serial_number_changes_with_inventory_content(self) -> None:
+        requirement = self.root / "requirements.txt"
+        requirement.write_text("idna==3.10\n", encoding="utf-8")
+        project = {"stacks": {"javascript": False, "python": True}}
+        first = generate_sboms(self.root, project, include_toolchains=False)
+        first_serial = read_json(self.root / first["artifacts"][0]["artifact"])["serialNumber"]
+
+        requirement.write_text("idna==3.11\n", encoding="utf-8")
+        second = generate_sboms(self.root, project, include_toolchains=False)
+        second_serial = read_json(self.root / second["artifacts"][0]["artifact"])["serialNumber"]
+        self.assertNotEqual(first_serial, second_serial)
 
     def test_supply_chain_adapter_returns_configuration_error_for_missing_lock(self) -> None:
         (self.root / "package.json").write_text(
@@ -779,18 +812,7 @@ class SetupContractTests(RepoCase):
         output = self.root / "release"
         target = self.root / "target"
         target.mkdir()
-        build = subprocess.run(
-            [
-                sys.executable,
-                str(source_root / "scripts" / "build_release.py"),
-                "--output",
-                str(output),
-            ],
-            cwd=source_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        build = build_release(source_root, output)
         self.assertEqual(build.returncode, 0, build.stderr)
         command = subprocess.run(
             [sys.executable, str(output / "aqg.pyz"), "init", str(target), "--no-ci"],
@@ -802,6 +824,48 @@ class SetupContractTests(RepoCase):
         self.assertEqual(command.returncode, 0, command.stderr)
         self.assertTrue((target / "quality" / "_aqg" / "cli.py").exists())
         self.assertTrue((target / "quality" / "qg.py").exists())
+
+    def test_release_contains_complete_inventory_and_provenance(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        output = self.root / "release"
+        build = build_release(source_root, output)
+        self.assertEqual(build.returncode, 0, build.stderr)
+
+        artifact_names = {
+            "aqg.pyz",
+            "agent-quality-gauntlet-2.0.0-portable.zip",
+            "aqg-runtime.cdx.json",
+            "aqg-javascript-toolchain.cdx.json",
+            "aqg-python-toolchain.cdx.json",
+            "provenance.intoto.json",
+        }
+        checksums = (output / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+        self.assertEqual({line.split("  ", 1)[1] for line in checksums}, artifact_names)
+        for line in checksums:
+            expected, name = line.split("  ", 1)
+            self.assertEqual(hashlib.sha256((output / name).read_bytes()).hexdigest(), expected)
+
+        for name in artifact_names:
+            if name.endswith(".cdx.json"):
+                self.assertEqual(validate_cyclonedx_document(read_json(output / name)), [])
+        provenance = read_json(output / "provenance.intoto.json")
+        self.assertEqual(provenance["_type"], "https://in-toto.io/Statement/v1")
+        self.assertEqual(provenance["predicateType"], "https://slsa.dev/provenance/v1")
+        self.assertEqual(
+            {item["name"] for item in provenance["subject"]},
+            artifact_names - {"provenance.intoto.json"},
+        )
+        definition = provenance["predicate"]["buildDefinition"]
+        material_names = {item.get("name") for item in definition["resolvedDependencies"]}
+        self.assertIn("scripts/build_release.py", material_names)
+        self.assertIn("src/aqg/py.typed", material_names)
+        self.assertIsInstance(definition["internalParameters"]["sourceDirty"], bool)
+
+        with zipfile.ZipFile(output / "agent-quality-gauntlet-2.0.0-portable.zip") as archive:
+            self.assertIn("LICENSE", archive.namelist())
+            self.assertIn("aqg-runtime.cdx.json", archive.namelist())
+        with zipfile.ZipFile(output / "aqg.pyz") as archive:
+            self.assertIn("aqg/py.typed", archive.namelist())
 
 
 if __name__ == "__main__":

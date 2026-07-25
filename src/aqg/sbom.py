@@ -8,9 +8,11 @@ separate gate because an SBOM is an inventory, not a security verdict.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import tomllib
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -528,10 +530,23 @@ def cyclonedx_document(root: Path, inventory: Inventory) -> dict[str, Any]:
         )
     if inventory.reason:
         source_properties.append({"name": "aqg:inventory-note", "value": inventory.reason})
+    serial_seed = json.dumps(
+        {
+            "component": {"type": kind, "name": name, "version": version},
+            "ecosystem": inventory.ecosystem,
+            "source": inventory.source.name if inventory.source else None,
+            "source_sha256": sha256_file(inventory.source) if inventory.source else None,
+            "components": inventory.components,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    serial_digest = hashlib.sha256(serial_seed).hexdigest()
     return {
         "$schema": "https://cyclonedx.org/schema/bom-1.6.schema.json",
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
+        "serialNumber": f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, serial_digest)}",
         "version": 1,
         "metadata": {
             "tools": {
@@ -567,6 +582,12 @@ def validate_cyclonedx_document(document: dict[str, Any]) -> list[str]:
         errors.append("specVersion must be 1.6")
     if document.get("version") != 1:
         errors.append("version must be 1")
+    serial_number = document.get("serialNumber")
+    if not isinstance(serial_number, str) or not re.fullmatch(
+        r"urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+        serial_number,
+    ):
+        errors.append("serialNumber must be a deterministic RFC 4122 UUID URN")
     metadata = document.get("metadata")
     if not isinstance(metadata, dict) or not isinstance(metadata.get("component"), dict):
         errors.append("metadata.component is required")
