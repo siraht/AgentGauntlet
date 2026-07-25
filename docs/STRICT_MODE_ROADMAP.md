@@ -1,12 +1,12 @@
 # Strict-mode readiness
 
-Revision: `ff2f2c2201e0758712290ab97585e9bba0986158` · mode: **adopt** · strict ready: **no**
+Revision: `e420750d9e2e9fe458c273e0a7bc92ff3e7ff836` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 89
-- Line coverage: 54.43% (gap 30.57 points)
-- Branch coverage: 41.51% (gap 33.49 points)
+- Tests: 91
+- Line coverage: 55.41% (gap 29.59 points)
+- Branch coverage: 43.05% (gap 31.95 points)
 - Functions above complexity cap: 54
 
 ## Lowest coverage modules
@@ -30,20 +30,20 @@ Revision: `ff2f2c2201e0758712290ab97585e9bba0986158` · mode: **adopt** · stric
 
 | Function                                            | Complexity | Rank |
 | --------------------------------------------------- | ---------: | :--: |
-| `src/aqg/review.py:206::analyze_review`             |        101 |  F   |
+| `src/aqg/review.py:304::analyze_review`             |        101 |  F   |
 | `src/aqg/scaffold.py:785::build_onboarding`         |         47 |  F   |
 | `src/aqg/scaffold.py:1307::install_toolchains`      |         35 |  E   |
 | `src/aqg/checks.py:304::parse_feature`              |         33 |  E   |
 | `src/aqg/approvals.py:105::validate_approval`       |         30 |  D   |
 | `src/aqg/doctor.py:261::_check_toolchains`          |         30 |  D   |
 | `src/aqg/checks.py:213::scan_secrets`               |         25 |  D   |
-| `src/aqg/review.py:788::_html`                      |         25 |  D   |
+| `src/aqg/review.py:894::_html`                      |         25 |  D   |
 | `src/aqg/hooks.py:104::hook_pretool`                |         24 |  D   |
 | `src/aqg/scaffold.py:1058::initialize_project`      |         23 |  D   |
 | `src/aqg/tui.py:41::_draw`                          |         23 |  D   |
 | `src/aqg/adapters.py:743::_js_coverage_metrics`     |         21 |  D   |
 | `src/aqg/conformance.py:384::run_tool_conformance`  |         20 |  C   |
-| `src/aqg/review.py:685::_markdown`                  |         20 |  C   |
+| `src/aqg/review.py:791::_markdown`                  |         20 |  C   |
 | `src/aqg/sbom.py:252::_strip_jsonc`                 |         20 |  C   |
 | `src/aqg/wizard.py:30::run_wizard`                  |         20 |  C   |
 | `src/aqg/adapters.py:694::_python_coverage_metrics` |         19 |  C   |
