@@ -7,6 +7,9 @@
 - AQG MUST return exit `0` only when the requested measurement completed and passed.
 - AQG MUST distinguish quality failure, configuration failure, and infrastructure failure with exits `1`, `2`, and `3`.
 - AQG MUST NOT treat a missing, stale, malformed, timed-out, crashed, or unexpectedly empty measurement as passing evidence.
+- Changed-code mutation MUST account for executable deletions and MUST NOT pass
+  vacuously when comparison-side production behavior was removed but no current
+  mutation selector can represent that change.
 - AQG MUST compute a deterministic minimum risk profile and MUST NOT accept a weaker selected profile.
 - AQG MUST keep policy-plane and human-review-plane changes visible and separately governed.
 - AQG MUST create an executable project-local `./aqg` command and retain
