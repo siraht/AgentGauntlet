@@ -1403,9 +1403,9 @@ class SetupContractTests(RepoCase):
         self.assertEqual(report["status_counts"], {"killed": 1})
         self.assertEqual(report["scope"], "changed")
         self.assertEqual(report["mutated_files"], ["src/module.py"])
-        self.assertEqual(report["changed_production_lines"], 1)
+        self.assertEqual(report["changed_production_lines"], 2)
         self.assertTrue(report["selection_complete"])
-        self.assertEqual(report["mapped_changed_lines"], 1)
+        self.assertEqual(report["mapped_changed_lines"], 2)
         self.assertEqual(report["unmapped_changed_lines"], {})
         self.assertEqual(report["selection_coverage"], 100.0)
         self.assertEqual(report["minimum_selection_coverage"], 73.0)
@@ -1459,8 +1459,8 @@ class SetupContractTests(RepoCase):
         self.assertTrue(report["scope_refused"])
         self.assertIs(report["campaign_complete"], False)
         self.assertEqual(report["incomplete_reason"], "insufficient_function_selection_coverage")
-        self.assertEqual(report["mapped_changed_lines"], 1)
-        self.assertEqual(report["nontrivial_changed_lines"], 4)
+        self.assertEqual(report["mapped_changed_lines"], 2)
+        self.assertEqual(report["nontrivial_changed_lines"], 8)
         self.assertEqual(report["selection_coverage"], 25.0)
         self.assertEqual(report["minimum_selection_coverage"], 80.0)
         self.assertIn("25.0% is below the protected minimum 80.0%", report["reason"])
@@ -1499,6 +1499,304 @@ class SetupContractTests(RepoCase):
         self.assertEqual(report["mutant_selectors"], [])
         self.assertEqual(report["selection_coverage"], 100.0)
         self.assertEqual(report["reason"], "no changed executable Python production lines")
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_selects_surviving_function_for_deletion_only_edits(
+        self,
+    ) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "authorization.py"
+        module.write_text(
+            "def allowed(user) -> bool:\n"
+            "    if not user.is_admin:\n"
+            "        return False\n"
+            "    return True\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "def allowed(user) -> bool:\n    return True\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project()
+        selector = "authorization.x_allowed__mutmut_*"
+        run_result = CommandResult(
+            command=["mutmut", "run", selector],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="",
+            stderr="",
+            duration_ms=10,
+        )
+        results_result = CommandResult(
+            command=["mutmut", "results", "--all=true"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="authorization.x_allowed__mutmut_1: killed\n",
+            stderr="",
+            duration_ms=5,
+        )
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut"),
+            patch("aqg.adapters._append_mutmut_config"),
+            patch("aqg.adapters._tool", return_value="/tools/mutmut"),
+            patch(
+                "aqg.adapters.run_command",
+                side_effect=[run_result, results_result],
+            ) as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertEqual(report["changed_production_lines"], 2)
+        self.assertEqual(report["nontrivial_added_lines_by_file"], {})
+        self.assertEqual(
+            report["nontrivial_deleted_lines_by_file"],
+            {"src/authorization.py": 2},
+        )
+        self.assertEqual(
+            report["selected_functions"],
+            {"src/authorization.py": ["allowed"]},
+        )
+        self.assertEqual(report["mapped_changed_lines"], 2)
+        self.assertEqual(report["unmapped_deleted_lines"], {})
+        self.assertEqual(report["selection_coverage"], 100.0)
+        self.assertEqual(
+            run_command.call_args_list[0].args[0],
+            ["/tools/mutmut", "run", selector],
+        )
+
+    def test_python_mutation_passes_comment_only_deletions_without_sandboxing(
+        self,
+    ) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text(
+            "# Explain the stable behavior.\ndef value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "def value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertFalse(report["scope_refused"])
+        self.assertTrue(report["campaign_complete"])
+        self.assertEqual(report["changed_production_lines"], 1)
+        self.assertEqual(report["nontrivial_changed_lines"], 0)
+        self.assertEqual(report["mutant_selectors"], [])
+        self.assertEqual(report["selection_coverage"], 100.0)
+        self.assertEqual(report["reason"], "no changed executable Python production lines")
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_refuses_deletion_only_module_level_logic(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "authorization.py"
+        module.write_text(
+            "REQUIRE_ADMIN = True\n\ndef allowed() -> bool:\n    return REQUIRE_ADMIN\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "def allowed() -> bool:\n    return True\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertFalse(report["campaign_complete"])
+        self.assertEqual(
+            report["incomplete_reason"],
+            "deleted_lines_outside_mutable_functions",
+        )
+        self.assertEqual(report["unmapped_deleted_lines"], {"src/authorization.py": [1]})
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_refuses_deleted_production_files(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "authorization.py"
+        module.write_text(
+            "def allowed() -> bool:\n    return False\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.unlink()
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertFalse(report["campaign_complete"])
+        self.assertEqual(report["scope"], "changed")
+        self.assertEqual(report["incomplete_reason"], "deleted_production_files")
+        self.assertEqual(report["deleted_production_files"], ["src/authorization.py"])
+        self.assertEqual(report["mutated_files"], [])
+        self.assertEqual(report["changed_production_lines"], 2)
+        self.assertEqual(
+            report["changed_production_lines_by_file"],
+            {"src/authorization.py": 2},
+        )
+        self.assertEqual(report["deletion_evidence_errors"], {})
+        self.assertIn("cannot be mutation-tested", report["reason"])
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_ignores_deleted_test_and_ungoverned_paths(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        tests = self.root / "tests"
+        tests.mkdir()
+        support = source / "support"
+        support.mkdir()
+        (source / "keep.py").write_text("def keep() -> int:\n    return 1\n", encoding="utf-8")
+        (tests / "test_sample.py").write_text(
+            "def test_ok() -> None:\n    assert True\n", encoding="utf-8"
+        )
+        (support / "helper.py").write_text("def helper() -> int:\n    return 1\n", encoding="utf-8")
+        (self.root / "scratch.py").write_text("def noise() -> int:\n    return 0\n", encoding="utf-8")
+        self.commit("baseline")
+        (tests / "test_sample.py").unlink()
+        (support / "helper.py").unlink()
+        (self.root / "scratch.py").unlink()
+        project = self._python_mutation_project()
+        project["paths"]["tests"] = ["tests", "src/support"]
+        project["python"]["test_paths"] = ["tests", "src/support"]
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertEqual(report["changed_production_lines"], 0)
+        self.assertNotIn("deleted_production_files", report)
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_empty_scope_report_is_exact(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        (self.root / "src" / "module.py").write_text(
+            "def value() -> int:\n    return 1\n", encoding="utf-8"
+        )
+        self.commit("baseline")
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertEqual(
+            report,
+            {
+                "scope": "changed",
+                "scope_refused": False,
+                "campaign_complete": True,
+                "mutated_files": [],
+                "changed_production_lines": 0,
+                "reason": "no changed Python production files",
+            },
+        )
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_ignores_an_added_then_deleted_file_with_no_net_change(
+        self,
+    ) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        (self.root / "README.md").write_text("baseline\n", encoding="utf-8")
+        self.commit("baseline")
+        base = git(self.root, "rev-parse", "HEAD")
+        module = self.root / "src" / "temporary.py"
+        module.write_text(
+            "def transient() -> bool:\n    return True\n",
+            encoding="utf-8",
+        )
+        self.commit("add temporary production module")
+        module.unlink()
+        project = self._python_mutation_project()
+
+        with (
+            patch.dict(os.environ, {"AQG_DIFF_BASE": base}),
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertEqual(report["changed_production_lines"], 0)
+        self.assertNotIn("deleted_production_files", report)
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_counts_deleted_lines_against_scope_budget(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text(
+            "def value() -> int:\n"
+            + "".join(f"    item_{index} = {index}\n" for index in range(8))
+            + "    return item_7\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "def value() -> int:\n    return 7\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project(max_changed_lines=5)
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertEqual(report["incomplete_reason"], "scope_refused_before_mutmut")
+        self.assertGreater(report["changed_production_lines"], 5)
         copy_sandbox.assert_not_called()
         run_command.assert_not_called()
 
@@ -1664,7 +1962,7 @@ class SetupContractTests(RepoCase):
         self.assertEqual(selection["unmapped_changed_lines"], {})
         self.assertEqual(selection["selection_errors"], {})
         self.assertTrue(selection["selection_complete"])
-        self.assertEqual(selection["mapped_changed_lines"], 2)
+        self.assertEqual(selection["mapped_changed_lines"], 4)
         self.assertEqual(selection["selection_coverage"], 100.0)
 
     def test_python_mutation_rejects_nontrivial_module_level_changes(self) -> None:

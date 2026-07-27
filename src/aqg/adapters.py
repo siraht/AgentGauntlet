@@ -34,6 +34,39 @@ from .errors import ConfigurationError
 from .golden import run_goldens
 from .policy import load_policy, risk_summary
 from .project import excludes, gate_applicable, load_project, source_paths
+from .python_mutation_diff import (
+    comparison_ref as _python_mutation_comparison_ref_for_base,
+)
+from .python_mutation_diff import (
+    deleted_file_line_counts as _python_mutation_deleted_file_line_counts,
+)
+from .python_mutation_diff import (
+    deleted_names as _python_mutation_deleted_names,
+)
+from .python_mutation_diff import (
+    line_changes as _python_mutation_line_changes_for_base,
+)
+from .python_mutation_diff import (
+    nontrivial_line_numbers as _nontrivial_line_numbers,
+)
+from .python_mutation_reports import (
+    apply_changed_selection as _apply_changed_python_mutation_selection,
+)
+from .python_mutation_reports import (
+    deleted_files_report as _deleted_python_mutation_report_core,
+)
+from .python_mutation_reports import (
+    empty_mutation_report as _empty_python_mutation_report,
+)
+from .python_mutation_reports import (
+    mark_full_scope as _mark_full_python_mutation_scope,
+)
+from .python_mutation_selection import (
+    function_selection as _python_mutation_function_selection_core,
+)
+from .python_mutation_selection import (
+    selection_refusal as _python_mutation_selection_refusal_core,
+)
 from .review import analyze_review, review_exit_code, write_review_packet
 from .sbom import generate_sboms
 from .util import (
@@ -1441,15 +1474,14 @@ def _python_mutation_max_changed_lines(project: dict[str, Any]) -> int:
 def _count_changed_python_production_lines(
     root: Path, project: dict[str, Any]
 ) -> tuple[int, dict[str, int]]:
-    """Count added/changed production Python lines in the governed diff."""
+    """Count added and deleted production Python lines in the governed diff."""
     counts: dict[str, int] = {}
-    for path, lines in sorted(_changed_lines(root, project).items()):
-        if Path(path).suffix.lower() not in PY_SUFFIXES:
-            continue
-        if _is_test_path(path, project):
-            continue
-        if lines:
-            counts[path] = len(lines)
+    changed = _changed_production_files(root, project, PY_SUFFIXES)
+    changes, _ = _python_mutation_line_changes_for_base(root, _base_ref(project), changed)
+    for path, evidence in sorted(changes.items()):
+        count = len(evidence["added"]) + len(evidence["deleted"])
+        if count:
+            counts[path] = count
     return sum(counts.values()), counts
 
 
@@ -1517,6 +1549,30 @@ def _python_mutation_targets(root: Path, project: dict[str, Any]) -> tuple[list[
     return _relative_files(root, PY_SUFFIXES, project, tests=False), False
 
 
+def _deleted_python_production_files(root: Path, project: dict[str, Any]) -> list[str]:
+    return [
+        path
+        for path in _python_mutation_deleted_names(root, _base_ref(project), suffixes=PY_SUFFIXES)
+        if not _is_test_path(path, project) and _is_governed_source(path, project)
+    ]
+
+
+def _deleted_python_mutation_report(
+    root: Path,
+    project: dict[str, Any],
+    changed: list[str],
+    deleted_files: list[str],
+) -> dict[str, Any]:
+    comparison = _python_mutation_comparison_ref_for_base(root, _base_ref(project))
+    counts, errors = _python_mutation_deleted_file_line_counts(root, comparison, deleted_files)
+    return _deleted_python_mutation_report_core(
+        changed=changed,
+        deleted_files=deleted_files,
+        deleted_line_counts=counts,
+        deletion_errors=errors,
+    )
+
+
 _MUTMUT_NEVER_MUTATES = {"__getattribute__", "__setattr__", "__new__"}
 
 
@@ -1577,96 +1633,26 @@ def _mutmut_function_candidates(path: str, tree: ast.Module) -> list[tuple[str, 
 
 
 def _nontrivial_changed_lines(path: Path, changed_lines: set[int]) -> set[int]:
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return {
-        line_no
-        for line_no in changed_lines
-        if 0 < line_no <= len(lines)
-        and (content := lines[line_no - 1].strip())
-        and not content.startswith("#")
-    }
+    source = path.read_text(encoding="utf-8", errors="replace")
+    return _nontrivial_line_numbers(source, changed_lines)
 
 
 def _python_mutation_function_selection(
     root: Path, project: dict[str, Any], changed: list[str]
 ) -> dict[str, Any]:
-    """Map changed lines to the exact mutmut function selectors that contain them."""
-    changed_by_file = _changed_lines(root, project)
-    selectors: set[str] = set()
-    selected_functions: dict[str, list[str]] = {}
-    unmapped: dict[str, list[int]] = {}
-    mapped_counts: dict[str, int] = {}
-    relevant_counts: dict[str, int] = {}
-    parse_errors: dict[str, str] = {}
-    for path in sorted(changed):
-        source_path = root / path
-        relevant_lines = _nontrivial_changed_lines(source_path, changed_by_file.get(path, set()))
-        if not relevant_lines:
-            continue
-        relevant_counts[path] = len(relevant_lines)
-        try:
-            tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=path)
-        except (OSError, SyntaxError, UnicodeError) as exc:
-            parse_errors[path] = str(exc)
-            continue
-        mapped_lines: set[int] = set()
-        names: set[str] = set()
-        for selector, name, start, end in _mutmut_function_candidates(path, tree):
-            contained = {line_no for line_no in relevant_lines if start <= line_no <= end}
-            if not contained:
-                continue
-            selectors.add(selector)
-            names.add(name)
-            mapped_lines.update(contained)
-        missing = relevant_lines - mapped_lines
-        if names:
-            selected_functions[path] = sorted(names)
-        if mapped_lines:
-            mapped_counts[path] = len(mapped_lines)
-        if missing:
-            unmapped[path] = sorted(missing)
-    mapped_total = sum(mapped_counts.values())
-    relevant_total = sum(relevant_counts.values())
-    return {
-        "selection_mode": "changed_functions",
-        "mutant_selectors": sorted(selectors),
-        "selected_functions": selected_functions,
-        "mapped_changed_lines": mapped_total,
-        "mapped_changed_lines_by_file": mapped_counts,
-        "nontrivial_changed_lines": relevant_total,
-        "nontrivial_changed_lines_by_file": relevant_counts,
-        "unmapped_changed_lines": unmapped,
-        "unmapped_changed_lines_count": relevant_total - mapped_total,
-        "selection_coverage": (
-            round(mapped_total * 100 / relevant_total, 2) if relevant_total else 100.0
-        ),
-        "selection_complete": mapped_total == relevant_total,
-        "selection_errors": parse_errors,
-    }
+    """Map net additions and deletions to exact surviving mutmut selectors."""
+    changes, comparison = _python_mutation_line_changes_for_base(
+        root, _base_ref(project), changed
+    )
+    return _python_mutation_function_selection_core(
+        root, comparison, changed, changes, _mutmut_function_candidates
+    )
 
 
 def _python_mutation_selection_refusal(
     selection: dict[str, Any], minimum_coverage: float
 ) -> tuple[str, str] | None:
-    if selection["selection_errors"]:
-        return (
-            "mutation_selection_error",
-            "changed Python production files could not be parsed into a mutmut selection",
-        )
-    if not selection["mutant_selectors"]:
-        return (
-            "changed_lines_outside_mutable_functions",
-            "no mutmut-selectable changed function or method could be established",
-        )
-    if float(selection["selection_coverage"]) < minimum_coverage:
-        return (
-            "insufficient_function_selection_coverage",
-            (
-                f"changed-function selection coverage {selection['selection_coverage']}% is below "
-                f"the protected minimum {minimum_coverage}%"
-            ),
-        )
-    return None
+    return _python_mutation_selection_refusal_core(selection, minimum_coverage)
 
 
 def _run_mutmut_campaign(
@@ -1828,24 +1814,21 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
             "configuration_error": "mutmut requires fork support; run the mutation gate inside WSL on Windows"
         }
     changed, changed_only = _python_mutation_targets(root, project)
+    deleted_files = _deleted_python_production_files(root, project) if changed_only else []
+    if deleted_files:
+        return CONFIGURATION_ERROR, _deleted_python_mutation_report(
+            root, project, changed, deleted_files
+        )
     if not changed:
-        return PASS, {
-            "scope": "changed" if changed_only else "full",
-            "scope_refused": False,
-            "campaign_complete": True,
-            "mutated_files": [],
-            "changed_production_lines": 0,
-            "reason": "no changed Python production files",
-        }
+        return PASS, _empty_python_mutation_report(changed_only)
     line_count, line_counts = _python_mutation_scope_lines(
         root, project, changed, changed_only=changed_only
     )
-    maximum = _python_mutation_max_changed_lines(project)
     scope = _python_mutation_scope_report(
         changed=changed,
         line_count=line_count,
         line_counts=line_counts,
-        maximum=maximum,
+        maximum=_python_mutation_max_changed_lines(project),
         changed_only=changed_only,
     )
     if scope["scope_refused"]:
@@ -1856,39 +1839,17 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
         minimum_selection = float(
             _effective_thresholds(project)["mutation"].get("minimum_selection_coverage", 80)
         )
-        selection["minimum_selection_coverage"] = minimum_selection
-        scope.update(selection)
-        if selection["nontrivial_changed_lines"] == 0:
-            scope.update(
-                {
-                    "campaign_complete": True,
-                    "reason": "no changed executable Python production lines",
-                }
-            )
-            return PASS, scope
-        mutant_selectors = selection["mutant_selectors"]
-        refusal = _python_mutation_selection_refusal(selection, minimum_selection)
-        if refusal is not None:
-            incomplete_reason, reason = refusal
-            scope.update(
-                {
-                    "scope_refused": True,
-                    "campaign_complete": False,
-                    "incomplete_reason": incomplete_reason,
-                    "reason": reason,
-                }
-            )
-            return CONFIGURATION_ERROR, scope
-    else:
-        scope.update(
-            {
-                "selection_mode": "full",
-                "mutant_selectors": [],
-                "selected_functions": {},
-                "unmapped_changed_lines": {},
-                "selection_errors": {},
-            }
+        early_code, mutant_selectors = _apply_changed_python_mutation_selection(
+            selection,
+            scope,
+            minimum_selection,
+            pass_code=PASS,
+            configuration_error=CONFIGURATION_ERROR,
         )
+        if early_code is not None:
+            return early_code, scope
+    else:
+        _mark_full_python_mutation_scope(scope)
     run, results = _run_mutmut_campaign(root, project, changed, mutant_selectors)
     return _python_mutation_campaign_report(
         scope=scope,
