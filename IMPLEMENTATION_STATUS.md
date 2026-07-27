@@ -99,7 +99,7 @@ and none were incomplete. The 54.70% score is below the 70% Standard target and 
 zero-survivor policy, so AQG correctly reports a quality failure. A focused campaign over
 the release-isolation slice completed all 58 mutants with 38 killed, 19 survived, one
 uncovered, and zero incomplete for a 65.52% score. A changed-only campaign now refuses
-scopes above the protected 250-line limit before invoking mutmut. The current 4,134-line
+scopes above the protected 250-line limit before invoking mutmut. The current 4,163-line
 productionization branch therefore returns structured exit-2 configuration evidence
 instead of consuming the outer two-hour gate and losing its adapter report. Accepted
 campaigns reserve 6,300 seconds for mutation, 300 seconds for result export, 300 seconds
