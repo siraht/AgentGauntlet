@@ -11,6 +11,8 @@
 - AQG MUST keep policy-plane and human-review-plane changes visible and separately governed.
 - AQG MUST create an executable project-local `./aqg` command and retain
   `python3 quality/qg.py` as its portable fallback during setup and upgrade.
+- Invoking the project-local runtime and Python test tools MUST NOT dirty a
+  clean repository with interpreter or checker cache artifacts.
 - AQG MUST keep ordinary golden comparison separate from explicitly authorized expected-output updates.
 - AQG MUST generate review and evidence artifacts from the same normalized state used by its CLI, TUI, dashboard, and CI.
 - AQG MUST fail the supply-chain gate when declared JavaScript or Python dependencies lack a supported reproducible lock input.

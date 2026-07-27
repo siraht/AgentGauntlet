@@ -12,7 +12,8 @@
     "The beta release includes deterministic portable artifacts, checksums, CycloneDX inventories, provenance, and verifiable signatures or attestations.",
     "Dogfood evidence covers setup, CLI, review, dashboard, TUI, acceptance mutation, release, rollback, and clean-clone operation.",
     "Oversized Python mutation scopes fail deterministically before execution, while bounded campaigns reserve separate execution, result-export, overhead, and safety budgets and preserve structured incomplete evidence.",
-    "Portable setup and upgrade create a protected executable ./aqg command while retaining python3 quality/qg.py as the cross-platform fallback."
+    "Portable setup and upgrade create a protected executable ./aqg command while retaining python3 quality/qg.py as the cross-platform fallback.",
+    "Generated ignore rules cover Python interpreter, test, type-checker, linter, environment, and JavaScript dependency caches so invoking the installed gauntlet does not manufacture workspace-integrity failures."
   ],
   "behavior_preserved": [
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",

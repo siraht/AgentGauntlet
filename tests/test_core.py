@@ -506,6 +506,17 @@ class SetupTests(RepoCase):
         )
         self.assertEqual(convenience.returncode, 0, convenience.stderr)
         self.assertIn("2.0.0", convenience.stdout)
+        self.assertIn("__pycache__/", (self.root / ".gitignore").read_text(encoding="utf-8"))
+        self.commit("install AQG")
+        repeated = subprocess.run(
+            [str(self.root / "aqg"), "doctor", "--json"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertEqual(git(self.root, "status", "--porcelain"), "")
 
     def test_static_web_setup_generates_isolated_web_pack(self) -> None:
         (self.root / "index.html").write_text(
