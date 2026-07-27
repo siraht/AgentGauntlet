@@ -1641,9 +1641,7 @@ def _python_mutation_function_selection(
     root: Path, project: dict[str, Any], changed: list[str]
 ) -> dict[str, Any]:
     """Map net additions and deletions to exact surviving mutmut selectors."""
-    changes, comparison = _python_mutation_line_changes_for_base(
-        root, _base_ref(project), changed
-    )
+    changes, comparison = _python_mutation_line_changes_for_base(root, _base_ref(project), changed)
     return _python_mutation_function_selection_core(
         root, comparison, changed, changes, _mutmut_function_candidates
     )

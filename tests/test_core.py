@@ -1688,7 +1688,9 @@ class SetupContractTests(RepoCase):
             "def test_ok() -> None:\n    assert True\n", encoding="utf-8"
         )
         (support / "helper.py").write_text("def helper() -> int:\n    return 1\n", encoding="utf-8")
-        (self.root / "scratch.py").write_text("def noise() -> int:\n    return 0\n", encoding="utf-8")
+        (self.root / "scratch.py").write_text(
+            "def noise() -> int:\n    return 0\n", encoding="utf-8"
+        )
         self.commit("baseline")
         (tests / "test_sample.py").unlink()
         (support / "helper.py").unlink()

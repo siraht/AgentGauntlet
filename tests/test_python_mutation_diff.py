@@ -205,9 +205,7 @@ class DiffHelperUnitTests(unittest.TestCase):
     def test_path_header_creates_change_bucket_with_fallback_old_path(self) -> None:
         state = {"old_path": "", "path": "", "in_hunk": False}
         changes: dict[str, dict[str, object]] = {}
-        self.assertTrue(
-            _diff_path_header("+++ b/src/module.py", state, {"src/module.py"}, changes)
-        )
+        self.assertTrue(_diff_path_header("+++ b/src/module.py", state, {"src/module.py"}, changes))
         self.assertEqual(state["path"], "src/module.py")
         self.assertEqual(changes["src/module.py"]["old_path"], "src/module.py")
         self.assertEqual(changes["src/module.py"]["added"], set())
@@ -254,9 +252,7 @@ class DiffHelperUnitTests(unittest.TestCase):
             "new_line": 2,
             "in_hunk": True,
         }
-        changes = {
-            "src/module.py": {"added": set(), "deleted": set(), "old_path": "src/module.py"}
-        }
+        changes = {"src/module.py": {"added": set(), "deleted": set(), "old_path": "src/module.py"}}
         _diff_body("-old", state, changes)
         self.assertEqual(changes["src/module.py"]["deleted"], {2})
         self.assertEqual(state["old_line"], 3)

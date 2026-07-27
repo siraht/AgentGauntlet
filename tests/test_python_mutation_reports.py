@@ -116,7 +116,6 @@ class MutationReportTests(unittest.TestCase):
         self.assertTrue(scope["scope_refused"])
         self.assertEqual(scope["incomplete_reason"], "deleted_lines_outside_mutable_functions")
 
-
     def test_apply_changed_selection_returns_selectors_when_complete(self) -> None:
         selection = {
             "nontrivial_changed_lines": 2,

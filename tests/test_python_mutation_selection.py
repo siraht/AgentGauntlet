@@ -45,9 +45,7 @@ class SelectionHelperTests(unittest.TestCase):
             # Use path_selection with empty deleted and verify added path instead,
             # then use function_selection after crafting evidence via path_evidence.
             evidence = {"added": {2}, "deleted": set(), "old_path": path}
-            result = path_selection(
-                root, None, path, evidence, _mutmut_function_candidates
-            )
+            result = path_selection(root, None, path, evidence, _mutmut_function_candidates)
             self.assertEqual(result["names"], {"allowed"})
             self.assertEqual(result["added_count"], 1)
             self.assertEqual(result["deleted_count"], 0)
@@ -62,9 +60,7 @@ class SelectionHelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
             evidence = {"added": set(), "deleted": {2, 3}, "old_path": path}
-            result = path_selection(
-                root, None, path, evidence, _mutmut_function_candidates
-            )
+            result = path_selection(root, None, path, evidence, _mutmut_function_candidates)
             self.assertIn(f"{path}@base", result["errors"])
             self.assertEqual(result["mapped_count"], 0)
 
@@ -120,9 +116,7 @@ class SelectionHelperTests(unittest.TestCase):
                 encoding="utf-8",
             )
             changes = {path: {"added": {2}, "deleted": set(), "old_path": path}}
-            selection = function_selection(
-                root, None, [path], changes, _mutmut_function_candidates
-            )
+            selection = function_selection(root, None, [path], changes, _mutmut_function_candidates)
             self.assertEqual(selection["selected_functions"], {path: ["value"]})
             self.assertEqual(selection["mapped_changed_lines"], 1)
             self.assertEqual(selection["unmapped_deleted_lines"], {})
@@ -162,7 +156,9 @@ class SelectionHelperTests(unittest.TestCase):
         self.assertEqual(mapped, {2, 3})
 
     def test_deleted_candidate_matches_rejects_gone_function_selectors(self) -> None:
-        previous = "def removed() -> bool:\n    return False\n\ndef kept() -> bool:\n    return True\n"
+        previous = (
+            "def removed() -> bool:\n    return False\n\ndef kept() -> bool:\n    return True\n"
+        )
         selectors, names, mapped, error = deleted_candidate_matches(
             "module.py",
             previous,

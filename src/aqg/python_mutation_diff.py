@@ -131,9 +131,7 @@ def parse_mutation_diff(diff: str, changed: list[str]) -> dict[str, dict[str, An
     return changes
 
 
-def add_untracked_lines(
-    root: Path, changed: list[str], changes: dict[str, dict[str, Any]]
-) -> None:
+def add_untracked_lines(root: Path, changed: list[str], changes: dict[str, dict[str, Any]]) -> None:
     """Treat fully untracked targets as pure additions of every current line."""
     for path in sorted(untracked_targets(root, changed)):
         if path in changes:
@@ -159,9 +157,7 @@ def line_changes(
     return changes, ref
 
 
-def old_source(
-    root: Path, comparison: str | None, path: str
-) -> tuple[str | None, str | None]:
+def old_source(root: Path, comparison: str | None, path: str) -> tuple[str | None, str | None]:
     """Load a path's contents at the comparison commit."""
     if comparison is None:
         return None, "comparison source is unavailable"
@@ -203,9 +199,7 @@ def deleted_names(root: Path, base: str, *, suffixes: set[str]) -> list[str]:
     ref = comparison_ref(root, base)
     if ref is None:
         return []
-    code, stdout, _ = git_output(
-        root, ["diff", "--diff-filter=D", "--name-only", "-z", ref, "--"]
-    )
+    code, stdout, _ = git_output(root, ["diff", "--diff-filter=D", "--name-only", "-z", ref, "--"])
     if code != 0:
         return []
     return [

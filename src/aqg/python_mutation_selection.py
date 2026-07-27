@@ -155,9 +155,7 @@ def selection_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
     relevant_total = sum(relevant_counts.values())
     return {
         "selection_mode": "changed_functions",
-        "mutant_selectors": sorted(
-            {value for result in results for value in result["selectors"]}
-        ),
+        "mutant_selectors": sorted({value for result in results for value in result["selectors"]}),
         "selected_functions": {
             result["path"]: sorted(result["names"]) for result in results if result["names"]
         },
@@ -201,9 +199,7 @@ def function_selection(
     return selection_summary(results)
 
 
-def selection_refusal(
-    selection: dict[str, Any], minimum_coverage: float
-) -> tuple[str, str] | None:
+def selection_refusal(selection: dict[str, Any], minimum_coverage: float) -> tuple[str, str] | None:
     """Return a fail-closed refusal when selection is incomplete or unmapped."""
     if selection["selection_errors"]:
         return (
