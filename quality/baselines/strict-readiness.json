@@ -1,27 +1,20 @@
 {
   "blockers": {
-    "branch_coverage_points": 29.56,
-    "functions_over_complexity_cap": 42,
-    "line_coverage_points": 26.74
+    "branch_coverage_points": 24.56,
+    "functions_over_complexity_cap": 50,
+    "line_coverage_points": 22.34
   },
   "coverage": {
-    "branch_percent": 45.44,
-    "branches": 2454,
-    "covered_branches": 1115,
-    "covered_statements": 3849,
-    "line_percent": 58.26,
-    "statements": 6607
+    "branch_percent": 50.44,
+    "branches": 2522,
+    "covered_branches": 1272,
+    "covered_statements": 4364,
+    "line_percent": 62.66,
+    "statements": 6965
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-27T13:13:20Z",
+  "generated_at": "2026-07-27T22:47:59Z",
   "highest_complexity_functions": [
-    {
-      "complexity": 101,
-      "line": 305,
-      "name": "analyze_review",
-      "path": "src/aqg/review.py",
-      "rank": "F"
-    },
     {
       "complexity": 47,
       "line": 825,
@@ -37,15 +30,15 @@
       "rank": "E"
     },
     {
-      "complexity": 33,
-      "line": 304,
-      "name": "parse_feature",
-      "path": "src/aqg/checks.py",
-      "rank": "E"
+      "complexity": 30,
+      "line": 105,
+      "name": "validate_approval",
+      "path": "src/aqg/approvals.py",
+      "rank": "D"
     },
     {
       "complexity": 30,
-      "line": 273,
+      "line": 320,
       "name": "_check_toolchains",
       "path": "src/aqg/doctor.py",
       "rank": "D"
@@ -59,9 +52,16 @@
     },
     {
       "complexity": 25,
-      "line": 895,
+      "line": 1120,
       "name": "_html",
       "path": "src/aqg/review.py",
+      "rank": "D"
+    },
+    {
+      "complexity": 24,
+      "line": 104,
+      "name": "hook_pretool",
+      "path": "src/aqg/hooks.py",
       "rank": "D"
     },
     {
@@ -72,10 +72,10 @@
       "rank": "D"
     },
     {
-      "complexity": 21,
-      "line": 84,
-      "name": "diagnose",
-      "path": "src/aqg/doctor.py",
+      "complexity": 23,
+      "line": 41,
+      "name": "_draw",
+      "path": "src/aqg/tui.py",
       "rank": "D"
     },
     {
@@ -87,7 +87,7 @@
     },
     {
       "complexity": 20,
-      "line": 792,
+      "line": 1017,
       "name": "_markdown",
       "path": "src/aqg/review.py",
       "rank": "C"
@@ -100,15 +100,22 @@
       "rank": "C"
     },
     {
+      "complexity": 20,
+      "line": 30,
+      "name": "run_wizard",
+      "path": "src/aqg/wizard.py",
+      "rank": "C"
+    },
+    {
       "complexity": 19,
-      "line": 848,
+      "line": 881,
       "name": "_python_crap",
       "path": "src/aqg/adapters.py",
       "rank": "C"
     },
     {
       "complexity": 19,
-      "line": 2372,
+      "line": 2331,
       "name": "_reproducible_build",
       "path": "src/aqg/adapters.py",
       "rank": "C"
@@ -121,38 +128,31 @@
       "rank": "C"
     },
     {
+      "complexity": 19,
+      "line": 140,
+      "name": "_run",
+      "path": "src/aqg/tui.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 18,
+      "line": 149,
+      "name": "run_profile",
+      "path": "src/aqg/runner.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 17,
+      "line": 111,
+      "name": "run_acceptance_mutation",
+      "path": "src/aqg/acceptance.py",
+      "rank": "C"
+    },
+    {
       "complexity": 17,
       "line": 532,
       "name": "_initialize",
       "path": "src/aqg/cli.py",
-      "rank": "C"
-    },
-    {
-      "complexity": 17,
-      "line": 577,
-      "name": "validate_cyclonedx_document",
-      "path": "src/aqg/sbom.py",
-      "rank": "C"
-    },
-    {
-      "complexity": 16,
-      "line": 727,
-      "name": "_python_coverage_metrics",
-      "path": "src/aqg/adapters.py",
-      "rank": "C"
-    },
-    {
-      "complexity": 16,
-      "line": 1930,
-      "name": "_mutation_js",
-      "path": "src/aqg/adapters.py",
-      "rank": "C"
-    },
-    {
-      "complexity": 16,
-      "line": 536,
-      "name": "_check_onboarding",
-      "path": "src/aqg/doctor.py",
       "rank": "C"
     }
   ],
@@ -200,12 +200,6 @@
       "path": "src/aqg/authoring.py"
     },
     {
-      "branch_percent": 4.17,
-      "line_percent": 27.12,
-      "missing_statements": 43,
-      "path": "src/aqg/reporting.py"
-    },
-    {
       "branch_percent": 8.33,
       "line_percent": 27.91,
       "missing_statements": 124,
@@ -218,20 +212,26 @@
       "path": "scripts/build_release.py"
     },
     {
-      "branch_percent": 17.39,
-      "line_percent": 46.32,
-      "missing_statements": 73,
-      "path": "src/aqg/runner.py"
+      "branch_percent": 31.94,
+      "line_percent": 45.19,
+      "missing_statements": 633,
+      "path": "src/aqg/adapters.py"
     },
     {
-      "branch_percent": 34.43,
-      "line_percent": 46.37,
-      "missing_statements": 636,
-      "path": "src/aqg/adapters.py"
+      "branch_percent": 25.0,
+      "line_percent": 47.46,
+      "missing_statements": 31,
+      "path": "src/aqg/reporting.py"
+    },
+    {
+      "branch_percent": 35.12,
+      "line_percent": 48.73,
+      "missing_statements": 242,
+      "path": "src/aqg/sbom.py"
     }
   ],
   "ready_for_strict": false,
-  "revision": "3d088ff6505147b4618619392da94cb04df5f83c",
+  "revision": "30a3b1d83575c0c4b384c4cbca0f1cd765784fb3",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -262,5 +262,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 125
+  "test_count": 292
 }
