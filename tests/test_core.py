@@ -507,6 +507,13 @@ class SetupTests(RepoCase):
         )
         self.assertEqual(command.returncode, 0, command.stderr)
         self.assertIn("2.0.0", command.stdout)
+        self.assertIn("__pycache__/", (self.root / ".gitignore").read_text(encoding="utf-8"))
+
+    @pytest.mark.mutation_incompatible
+    def test_project_launchers_execute_copied_runtime_without_dirtying_repository(self) -> None:
+        """Exercise the copied runtime outside mutmut's in-process instrumentation."""
+        (self.root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+        initialize_project(self.root, owner="@quality-owner", install=False, ci=False, mode="adopt")
         convenience = subprocess.run(
             [str(self.root / "aqg"), "--version"],
             cwd=self.root,
@@ -516,7 +523,6 @@ class SetupTests(RepoCase):
         )
         self.assertEqual(convenience.returncode, 0, convenience.stderr)
         self.assertIn("2.0.0", convenience.stdout)
-        self.assertIn("__pycache__/", (self.root / ".gitignore").read_text(encoding="utf-8"))
         self.commit("install AQG")
         repeated = subprocess.run(
             [str(self.root / "aqg"), "doctor", "--json"],
