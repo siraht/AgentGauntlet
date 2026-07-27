@@ -520,6 +520,115 @@ def _findings_debt_markers(
     ]
 
 
+_NETWORK_TEST_PATTERN = re.compile(
+    r"\b(?:fetch|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch)|urllib\.request\.urlopen)\s*\(",
+    re.IGNORECASE,
+)
+_NONDETERMINISTIC_TEST_PATTERN = re.compile(
+    rf"(?:\b(?:time\.sleep|asyncio\.sleep|setTimeout|setInterval|Date\.now|datetime\.(?:now|utcnow)|time\.time|Math\.random|random\.(?:random|randint|choice)|uuid\.uuid4)\s*\(|{_NETWORK_TEST_PATTERN.pattern})",
+    re.IGNORECASE,
+)
+_WEAK_ASSERTION_PATTERN = re.compile(
+    r"(?:\.toBeTruthy\s*\(\s*\)|\.toBeDefined\s*\(\s*\)|\.toBe(?:GreaterThan|GreaterThanOrEqual)\s*\(\s*0\s*\)|^\s*assert\s+[A-Za-z_][A-Za-z0-9_.]*\s*(?:#.*)?$)"
+)
+_LIFECYCLE_SCRIPT_PATTERN = re.compile(r'"(?:preinstall|install|postinstall|prepare)"\s*:')
+
+
+def _findings_nondeterministic_tests(
+    root: Path, added: list[tuple[str, int, str]]
+) -> list[dict[str, Any]]:
+    nondeterministic_tests = _nondeterministic_test_locations(
+        root,
+        added,
+        _NONDETERMINISTIC_TEST_PATTERN,
+        _NETWORK_TEST_PATTERN,
+    )
+    if not nondeterministic_tests:
+        return []
+    return [
+        _finding(
+            "test-nondeterminism-introduced",
+            "warning",
+            "Changed tests appear to depend on uncontrolled time, randomness, delay, or network",
+            "Real clocks, random generators, sleeps, and live network calls make tests timing-sensitive and can let a retry mask the behavior the test was meant to prove.",
+            nondeterministic_tests,
+            "Inject or freeze the varying dependency, wait on an observable condition instead of sleeping, and keep a separately labeled live probe only when the real dependency is the subject of the test.",
+        )
+    ]
+
+
+def _findings_weak_oracles(added: list[tuple[str, int, str]]) -> list[dict[str, Any]]:
+    weak_assertions = _line_locations(added, _WEAK_ASSERTION_PATTERN, predicate=_is_test)
+    if not weak_assertions:
+        return []
+    return [
+        _finding(
+            "weak-test-oracle",
+            "warning",
+            "Changed tests contain low-specificity assertions",
+            "Truthiness, existence, nonzero-count, and bare-object assertions can pass while the returned value, state transition, side effects, ordering, or authorization behavior is wrong.",
+            weak_assertions,
+            "Assert the exact domain result and critical side effects, then confirm the assertion kills a plausible mutation rather than merely observing that some value exists.",
+        )
+    ]
+
+
+def _public_contract_paths(changed: list[str]) -> list[str]:
+    return [
+        path
+        for path in changed
+        if re.search(
+            r"(?i)(?:^|/)(?:api|routes?|schemas?|contracts?|openapi|swagger|graphql|proto)(?:/|\.|$)",
+            path,
+        )
+        or Path(path).suffix.lower() in {".proto", ".graphql", ".gql"}
+        or re.search(r"(?i)(openapi|swagger).*(?:json|ya?ml)$", path)
+    ]
+
+
+def _findings_public_contracts(changed: list[str], tests: list[str]) -> list[dict[str, Any]]:
+    public_contracts = _public_contract_paths(changed)
+    contract_evidence = [
+        path
+        for path in tests
+        if re.search(r"(?i)(contract|schema|api|route|openapi|graphql|proto)", path)
+    ]
+    if not public_contracts or contract_evidence:
+        return []
+    return [
+        _finding(
+            "public-contract-without-contract-test",
+            "review",
+            "A likely public interface changed without changed contract evidence",
+            "API routes, schemas, protocol definitions, and public data shapes can remain unit-test green while breaking consumers, compatibility, error semantics, or authorization boundaries.",
+            public_contracts,
+            "Review the interface diff and add or update consumer-visible contract tests, compatibility fixtures, versioning/migration evidence, and negative authorization cases as applicable.",
+            automated=False,
+        )
+    ]
+
+
+def _findings_lifecycle_scripts(added: list[tuple[str, int, str]]) -> list[dict[str, Any]]:
+    lifecycle_scripts = _line_locations(
+        added,
+        _LIFECYCLE_SCRIPT_PATTERN,
+        predicate=lambda path: Path(path).name == "package.json",
+    )
+    if not lifecycle_scripts:
+        return []
+    return [
+        _finding(
+            "dependency-lifecycle-script-change",
+            "review",
+            "A package lifecycle script was added or changed",
+            "Install and prepare hooks execute during dependency setup and can alter the build environment, fetch code, expose credentials, or bypass the ordinary quality command surface.",
+            lifecycle_scripts,
+            "Inspect the exact command and transitive tools, require a deterministic offline-safe path where practical, and ensure CI and developer setup execute the same reviewed behavior.",
+            automated=False,
+        )
+    ]
+
+
 def analyze_review(
     root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
 ) -> dict[str, Any]:
@@ -541,97 +650,10 @@ def analyze_review(
     # do not claim semantic proof where a parser, runtime, or domain oracle is required.
     findings.extend(_findings_swallowed_exceptions(added))
     findings.extend(_findings_debt_markers(root, added))
-
-    network_test_patterns = re.compile(
-        r"\b(?:fetch|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch)|urllib\.request\.urlopen)\s*\(",
-        re.IGNORECASE,
-    )
-    nondeterministic_test_patterns = re.compile(
-        rf"(?:\b(?:time\.sleep|asyncio\.sleep|setTimeout|setInterval|Date\.now|datetime\.(?:now|utcnow)|time\.time|Math\.random|random\.(?:random|randint|choice)|uuid\.uuid4)\s*\(|{network_test_patterns.pattern})",
-        re.IGNORECASE,
-    )
-    nondeterministic_tests = _nondeterministic_test_locations(
-        root,
-        added,
-        nondeterministic_test_patterns,
-        network_test_patterns,
-    )
-    if nondeterministic_tests:
-        findings.append(
-            _finding(
-                "test-nondeterminism-introduced",
-                "warning",
-                "Changed tests appear to depend on uncontrolled time, randomness, delay, or network",
-                "Real clocks, random generators, sleeps, and live network calls make tests timing-sensitive and can let a retry mask the behavior the test was meant to prove.",
-                nondeterministic_tests,
-                "Inject or freeze the varying dependency, wait on an observable condition instead of sleeping, and keep a separately labeled live probe only when the real dependency is the subject of the test.",
-            )
-        )
-
-    weak_assertions = _line_locations(
-        added,
-        re.compile(
-            r"(?:\.toBeTruthy\s*\(\s*\)|\.toBeDefined\s*\(\s*\)|\.toBe(?:GreaterThan|GreaterThanOrEqual)\s*\(\s*0\s*\)|^\s*assert\s+[A-Za-z_][A-Za-z0-9_.]*\s*(?:#.*)?$)"
-        ),
-        predicate=_is_test,
-    )
-    if weak_assertions:
-        findings.append(
-            _finding(
-                "weak-test-oracle",
-                "warning",
-                "Changed tests contain low-specificity assertions",
-                "Truthiness, existence, nonzero-count, and bare-object assertions can pass while the returned value, state transition, side effects, ordering, or authorization behavior is wrong.",
-                weak_assertions,
-                "Assert the exact domain result and critical side effects, then confirm the assertion kills a plausible mutation rather than merely observing that some value exists.",
-            )
-        )
-
-    public_contracts = [
-        path
-        for path in changed
-        if re.search(
-            r"(?i)(?:^|/)(?:api|routes?|schemas?|contracts?|openapi|swagger|graphql|proto)(?:/|\.|$)",
-            path,
-        )
-        or Path(path).suffix.lower() in {".proto", ".graphql", ".gql"}
-        or re.search(r"(?i)(openapi|swagger).*(?:json|ya?ml)$", path)
-    ]
-    contract_evidence = [
-        path
-        for path in tests
-        if re.search(r"(?i)(contract|schema|api|route|openapi|graphql|proto)", path)
-    ]
-    if public_contracts and not contract_evidence:
-        findings.append(
-            _finding(
-                "public-contract-without-contract-test",
-                "review",
-                "A likely public interface changed without changed contract evidence",
-                "API routes, schemas, protocol definitions, and public data shapes can remain unit-test green while breaking consumers, compatibility, error semantics, or authorization boundaries.",
-                public_contracts,
-                "Review the interface diff and add or update consumer-visible contract tests, compatibility fixtures, versioning/migration evidence, and negative authorization cases as applicable.",
-                automated=False,
-            )
-        )
-
-    lifecycle_scripts = _line_locations(
-        added,
-        re.compile(r'"(?:preinstall|install|postinstall|prepare)"\s*:'),
-        predicate=lambda path: Path(path).name == "package.json",
-    )
-    if lifecycle_scripts:
-        findings.append(
-            _finding(
-                "dependency-lifecycle-script-change",
-                "review",
-                "A package lifecycle script was added or changed",
-                "Install and prepare hooks execute during dependency setup and can alter the build environment, fetch code, expose credentials, or bypass the ordinary quality command surface.",
-                lifecycle_scripts,
-                "Inspect the exact command and transitive tools, require a deterministic offline-safe path where practical, and ensure CI and developer setup execute the same reviewed behavior.",
-                automated=False,
-            )
-        )
+    findings.extend(_findings_nondeterministic_tests(root, added))
+    findings.extend(_findings_weak_oracles(added))
+    findings.extend(_findings_public_contracts(changed, tests))
+    findings.extend(_findings_lifecycle_scripts(added))
 
     deleted_case_markers = _line_locations(
         deleted,
