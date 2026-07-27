@@ -629,6 +629,124 @@ def _findings_lifecycle_scripts(added: list[tuple[str, int, str]]) -> list[dict[
     ]
 
 
+_TEST_CASE_MARKER_PATTERN = re.compile(
+    r"(?:\b(?:it|test)\s*\(|^\s*(?:async\s+)?def\s+test_|^\s*class\s+Test)"
+)
+_DEPENDENCY_NAMES = {
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
+    "pyproject.toml",
+    "uv.lock",
+    "Pipfile",
+    "Pipfile.lock",
+}
+
+
+def _findings_test_case_reduction(
+    production: list[str],
+    added: list[tuple[str, int, str]],
+    deleted: list[tuple[str, int, str]],
+) -> list[dict[str, Any]]:
+    deleted_case_markers = _line_locations(
+        deleted, _TEST_CASE_MARKER_PATTERN, predicate=_is_test
+    )
+    added_case_markers = _line_locations(added, _TEST_CASE_MARKER_PATTERN, predicate=_is_test)
+    if not production or len(deleted_case_markers) <= len(added_case_markers):
+        return []
+    return [
+        _finding(
+            "test-case-count-reduced",
+            "review",
+            "The changed diff removes more test cases than it adds",
+            "Test count alone is not quality, but a net reduction alongside production changes can shrink the behavioral oracle or remove a distinct equivalence class.",
+            deleted_case_markers,
+            "Map every removed case to preserved or stronger evidence and inspect mutation, boundary, and failure-path coverage before accepting the reduction.",
+            automated=False,
+        )
+    ]
+
+
+def _findings_expected_outputs(changed: list[str]) -> list[dict[str, Any]]:
+    snapshots = [
+        path
+        for path in changed
+        if re.search(r"(?i)(golden|snapshot|__snapshots__|fixture|cassette)", path)
+    ]
+    if not snapshots:
+        return []
+    return [
+        _finding(
+            "expected-output-change",
+            "review",
+            "Expected-output artifacts changed",
+            "Regenerated snapshots and goldens can approve a regression as easily as they can record an intended change.",
+            snapshots,
+            "Review the full semantic diff and its source behavior; do not approve a bulk update solely because the test command requested it.",
+            automated=False,
+        )
+    ]
+
+
+def _dependency_paths(changed: list[str]) -> list[str]:
+    return [
+        path
+        for path in changed
+        if Path(path).name in _DEPENDENCY_NAMES
+        or re.match(r"requirements.*\.txt", Path(path).name)
+    ]
+
+
+def _findings_dependencies(changed: list[str]) -> list[dict[str, Any]]:
+    dependencies = _dependency_paths(changed)
+    if not dependencies:
+        return []
+    return [
+        _finding(
+            "dependency-change",
+            "review",
+            "Dependency or lockfile surface changed",
+            "Dependency changes alter executable supply-chain input and can invalidate cached test and mutation evidence even when application source is unchanged.",
+            dependencies,
+            "Inspect direct and transitive changes, provenance, license/security findings, lockfile integrity, and whether mutation or golden caches were invalidated.",
+            automated=False,
+        )
+    ]
+
+
+def _diff_heuristic_findings(
+    root: Path,
+    policy: dict[str, Any],
+    changed: list[str],
+    diff: str,
+    added: list[tuple[str, int, str]],
+    deleted: list[tuple[str, int, str]],
+    production: list[str],
+    tests: list[str],
+) -> list[dict[str, Any]]:
+    # Review heuristics are intentionally conservative: they surface likely weak points but
+    # do not claim semantic proof where a parser, runtime, or domain oracle is required.
+    return [
+        *_findings_policy_plane(changed, policy),
+        *_findings_human_review_plane(changed, policy),
+        *_findings_production_without_tests(production, tests),
+        *_findings_test_expectation_deleted(diff),
+        *_findings_quality_suppressions(root, added),
+        *_findings_swallowed_exceptions(added),
+        *_findings_debt_markers(root, added),
+        *_findings_nondeterministic_tests(root, added),
+        *_findings_weak_oracles(added),
+        *_findings_public_contracts(changed, tests),
+        *_findings_lifecycle_scripts(added),
+        *_findings_test_case_reduction(production, added, deleted),
+        *_findings_expected_outputs(changed),
+        *_findings_dependencies(changed),
+    ]
+
+
 def analyze_review(
     root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
 ) -> dict[str, Any]:
@@ -638,94 +756,9 @@ def analyze_review(
     added = _added_lines(diff)
     deleted = _deleted_lines(diff)
     production, tests = _partition_changed_paths(changed)
-    findings: list[dict[str, Any]] = [
-        *_findings_policy_plane(changed, policy),
-        *_findings_human_review_plane(changed, policy),
-        *_findings_production_without_tests(production, tests),
-        *_findings_test_expectation_deleted(diff),
-        *_findings_quality_suppressions(root, added),
-    ]
-
-    # Review heuristics are intentionally conservative: they surface likely weak points but
-    # do not claim semantic proof where a parser, runtime, or domain oracle is required.
-    findings.extend(_findings_swallowed_exceptions(added))
-    findings.extend(_findings_debt_markers(root, added))
-    findings.extend(_findings_nondeterministic_tests(root, added))
-    findings.extend(_findings_weak_oracles(added))
-    findings.extend(_findings_public_contracts(changed, tests))
-    findings.extend(_findings_lifecycle_scripts(added))
-
-    deleted_case_markers = _line_locations(
-        deleted,
-        re.compile(r"(?:\b(?:it|test)\s*\(|^\s*(?:async\s+)?def\s+test_|^\s*class\s+Test)"),
-        predicate=_is_test,
+    findings: list[dict[str, Any]] = _diff_heuristic_findings(
+        root, policy, changed, diff, added, deleted, production, tests
     )
-    added_case_markers = _line_locations(
-        added,
-        re.compile(r"(?:\b(?:it|test)\s*\(|^\s*(?:async\s+)?def\s+test_|^\s*class\s+Test)"),
-        predicate=_is_test,
-    )
-    if production and len(deleted_case_markers) > len(added_case_markers):
-        findings.append(
-            _finding(
-                "test-case-count-reduced",
-                "review",
-                "The changed diff removes more test cases than it adds",
-                "Test count alone is not quality, but a net reduction alongside production changes can shrink the behavioral oracle or remove a distinct equivalence class.",
-                deleted_case_markers,
-                "Map every removed case to preserved or stronger evidence and inspect mutation, boundary, and failure-path coverage before accepting the reduction.",
-                automated=False,
-            )
-        )
-
-    snapshots = [
-        path
-        for path in changed
-        if re.search(r"(?i)(golden|snapshot|__snapshots__|fixture|cassette)", path)
-    ]
-    if snapshots:
-        findings.append(
-            _finding(
-                "expected-output-change",
-                "review",
-                "Expected-output artifacts changed",
-                "Regenerated snapshots and goldens can approve a regression as easily as they can record an intended change.",
-                snapshots,
-                "Review the full semantic diff and its source behavior; do not approve a bulk update solely because the test command requested it.",
-                automated=False,
-            )
-        )
-
-    dependencies = [
-        path
-        for path in changed
-        if Path(path).name
-        in {
-            "package.json",
-            "package-lock.json",
-            "pnpm-lock.yaml",
-            "yarn.lock",
-            "bun.lock",
-            "bun.lockb",
-            "pyproject.toml",
-            "uv.lock",
-            "Pipfile",
-            "Pipfile.lock",
-        }
-        or re.match(r"requirements.*\.txt", Path(path).name)
-    ]
-    if dependencies:
-        findings.append(
-            _finding(
-                "dependency-change",
-                "review",
-                "Dependency or lockfile surface changed",
-                "Dependency changes alter executable supply-chain input and can invalidate cached test and mutation evidence even when application source is unchanged.",
-                dependencies,
-                "Inspect direct and transitive changes, provenance, license/security findings, lockfile integrity, and whether mutation or golden caches were invalidated.",
-                automated=False,
-            )
-        )
 
     risk_errors: list[str] = []
     risk_payload: dict[str, Any] | None = None
