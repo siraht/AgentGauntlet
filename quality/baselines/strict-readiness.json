@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 30.74,
-    "functions_over_complexity_cap": 51,
-    "line_coverage_points": 27.49
+    "branch_coverage_points": 29.56,
+    "functions_over_complexity_cap": 42,
+    "line_coverage_points": 26.74
   },
   "coverage": {
-    "branch_percent": 44.26,
-    "branches": 2404,
-    "covered_branches": 1064,
-    "covered_statements": 3734,
-    "line_percent": 57.51,
-    "statements": 6493
+    "branch_percent": 45.44,
+    "branches": 2454,
+    "covered_branches": 1115,
+    "covered_statements": 3849,
+    "line_percent": 58.26,
+    "statements": 6607
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-27T05:43:26Z",
+  "generated_at": "2026-07-27T13:13:20Z",
   "highest_complexity_functions": [
     {
       "complexity": 101,
@@ -24,14 +24,14 @@
     },
     {
       "complexity": 47,
-      "line": 800,
+      "line": 825,
       "name": "build_onboarding",
       "path": "src/aqg/scaffold.py",
       "rank": "F"
     },
     {
       "complexity": 35,
-      "line": 1334,
+      "line": 1359,
       "name": "install_toolchains",
       "path": "src/aqg/scaffold.py",
       "rank": "E"
@@ -42,13 +42,6 @@
       "name": "parse_feature",
       "path": "src/aqg/checks.py",
       "rank": "E"
-    },
-    {
-      "complexity": 30,
-      "line": 105,
-      "name": "validate_approval",
-      "path": "src/aqg/approvals.py",
-      "rank": "D"
     },
     {
       "complexity": 30,
@@ -72,24 +65,10 @@
       "rank": "D"
     },
     {
-      "complexity": 24,
-      "line": 104,
-      "name": "hook_pretool",
-      "path": "src/aqg/hooks.py",
-      "rank": "D"
-    },
-    {
       "complexity": 23,
-      "line": 1073,
+      "line": 1098,
       "name": "initialize_project",
       "path": "src/aqg/scaffold.py",
-      "rank": "D"
-    },
-    {
-      "complexity": 23,
-      "line": 41,
-      "name": "_draw",
-      "path": "src/aqg/tui.py",
       "rank": "D"
     },
     {
@@ -101,7 +80,7 @@
     },
     {
       "complexity": 20,
-      "line": 384,
+      "line": 389,
       "name": "run_tool_conformance",
       "path": "src/aqg/conformance.py",
       "rank": "C"
@@ -121,22 +100,15 @@
       "rank": "C"
     },
     {
-      "complexity": 20,
-      "line": 30,
-      "name": "run_wizard",
-      "path": "src/aqg/wizard.py",
-      "rank": "C"
-    },
-    {
       "complexity": 19,
-      "line": 847,
+      "line": 848,
       "name": "_python_crap",
       "path": "src/aqg/adapters.py",
       "rank": "C"
     },
     {
       "complexity": 19,
-      "line": 2163,
+      "line": 2372,
       "name": "_reproducible_build",
       "path": "src/aqg/adapters.py",
       "rank": "C"
@@ -149,10 +121,38 @@
       "rank": "C"
     },
     {
-      "complexity": 19,
-      "line": 140,
-      "name": "_run",
-      "path": "src/aqg/tui.py",
+      "complexity": 17,
+      "line": 532,
+      "name": "_initialize",
+      "path": "src/aqg/cli.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 17,
+      "line": 577,
+      "name": "validate_cyclonedx_document",
+      "path": "src/aqg/sbom.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 16,
+      "line": 727,
+      "name": "_python_coverage_metrics",
+      "path": "src/aqg/adapters.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 16,
+      "line": 1930,
+      "name": "_mutation_js",
+      "path": "src/aqg/adapters.py",
+      "rank": "C"
+    },
+    {
+      "complexity": 16,
+      "line": 536,
+      "name": "_check_onboarding",
+      "path": "src/aqg/doctor.py",
       "rank": "C"
     }
   ],
@@ -218,20 +218,20 @@
       "path": "scripts/build_release.py"
     },
     {
-      "branch_percent": 26.47,
-      "line_percent": 40.74,
-      "missing_statements": 637,
-      "path": "src/aqg/adapters.py"
-    },
-    {
       "branch_percent": 17.39,
       "line_percent": 46.32,
       "missing_statements": 73,
       "path": "src/aqg/runner.py"
+    },
+    {
+      "branch_percent": 34.43,
+      "line_percent": 46.37,
+      "missing_statements": 636,
+      "path": "src/aqg/adapters.py"
     }
   ],
   "ready_for_strict": false,
-  "revision": "5284ee18e09f2c16def9d0562aa63a3d96243634",
+  "revision": "3d088ff6505147b4618619392da94cb04df5f83c",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -252,8 +252,8 @@
     "mutation": {
       "changed_only": true,
       "maximum_survivors": 0,
-      "minimum_selection_coverage": 80,
-      "minimum_score": 70
+      "minimum_score": 70,
+      "minimum_selection_coverage": 80
     },
     "structure": {
       "max_crap": 15,
@@ -262,5 +262,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 108
+  "test_count": 125
 }

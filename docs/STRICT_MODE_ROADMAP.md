@@ -1,13 +1,13 @@
 # Strict-mode readiness
 
-Revision: `5284ee18e09f2c16def9d0562aa63a3d96243634` · mode: **adopt** · strict ready: **no**
+Revision: `3d088ff6505147b4618619392da94cb04df5f83c` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 108
-- Line coverage: 57.51% (gap 27.49 points)
-- Branch coverage: 44.26% (gap 30.74 points)
-- Functions above complexity cap: 51
+- Tests: 125
+- Line coverage: 58.26% (gap 26.74 points)
+- Branch coverage: 45.44% (gap 29.56 points)
+- Functions above complexity cap: 42
 
 ## Lowest coverage modules
 
@@ -23,33 +23,33 @@ Revision: `5284ee18e09f2c16def9d0562aa63a3d96243634` · mode: **adopt** · stric
 | `src/aqg/reporting.py`                | 27.12% |    4.17% |                 43 |
 | `scripts/project_matrix.py`           | 27.91% |    8.33% |                124 |
 | `scripts/build_release.py`            | 33.94% |   23.81% |                109 |
-| `src/aqg/adapters.py`                 | 40.74% |   26.47% |                637 |
 | `src/aqg/runner.py`                   | 46.32% |   17.39% |                 73 |
+| `src/aqg/adapters.py`                 | 46.37% |   34.43% |                636 |
 
 ## Highest complexity functions
 
-| Function                                           | Complexity | Rank |
-| -------------------------------------------------- | ---------: | :--: |
-| `src/aqg/review.py:305::analyze_review`            |        101 |  F   |
-| `src/aqg/scaffold.py:800::build_onboarding`        |         47 |  F   |
-| `src/aqg/scaffold.py:1334::install_toolchains`     |         35 |  E   |
-| `src/aqg/checks.py:304::parse_feature`             |         33 |  E   |
-| `src/aqg/approvals.py:105::validate_approval`      |         30 |  D   |
-| `src/aqg/doctor.py:273::_check_toolchains`         |         30 |  D   |
-| `src/aqg/checks.py:213::scan_secrets`              |         25 |  D   |
-| `src/aqg/review.py:895::_html`                     |         25 |  D   |
-| `src/aqg/hooks.py:104::hook_pretool`               |         24 |  D   |
-| `src/aqg/scaffold.py:1073::initialize_project`     |         23 |  D   |
-| `src/aqg/tui.py:41::_draw`                         |         23 |  D   |
-| `src/aqg/doctor.py:84::diagnose`                   |         21 |  D   |
-| `src/aqg/conformance.py:384::run_tool_conformance` |         20 |  C   |
-| `src/aqg/review.py:792::_markdown`                 |         20 |  C   |
-| `src/aqg/sbom.py:252::_strip_jsonc`                |         20 |  C   |
-| `src/aqg/wizard.py:30::run_wizard`                 |         20 |  C   |
-| `src/aqg/adapters.py:847::_python_crap`            |         19 |  C   |
-| `src/aqg/adapters.py:2163::_reproducible_build`    |         19 |  C   |
-| `src/aqg/checks.py:74::scan_test_integrity`        |         19 |  C   |
-| `src/aqg/tui.py:140::_run`                         |         19 |  C   |
+| Function                                            | Complexity | Rank |
+| --------------------------------------------------- | ---------: | :--: |
+| `src/aqg/review.py:305::analyze_review`             |        101 |  F   |
+| `src/aqg/scaffold.py:825::build_onboarding`         |         47 |  F   |
+| `src/aqg/scaffold.py:1359::install_toolchains`      |         35 |  E   |
+| `src/aqg/checks.py:304::parse_feature`              |         33 |  E   |
+| `src/aqg/doctor.py:273::_check_toolchains`          |         30 |  D   |
+| `src/aqg/checks.py:213::scan_secrets`               |         25 |  D   |
+| `src/aqg/review.py:895::_html`                      |         25 |  D   |
+| `src/aqg/scaffold.py:1098::initialize_project`      |         23 |  D   |
+| `src/aqg/doctor.py:84::diagnose`                    |         21 |  D   |
+| `src/aqg/conformance.py:389::run_tool_conformance`  |         20 |  C   |
+| `src/aqg/review.py:792::_markdown`                  |         20 |  C   |
+| `src/aqg/sbom.py:252::_strip_jsonc`                 |         20 |  C   |
+| `src/aqg/adapters.py:848::_python_crap`             |         19 |  C   |
+| `src/aqg/adapters.py:2372::_reproducible_build`     |         19 |  C   |
+| `src/aqg/checks.py:74::scan_test_integrity`         |         19 |  C   |
+| `src/aqg/cli.py:532::_initialize`                   |         17 |  C   |
+| `src/aqg/sbom.py:577::validate_cyclonedx_document`  |         17 |  C   |
+| `src/aqg/adapters.py:727::_python_coverage_metrics` |         16 |  C   |
+| `src/aqg/adapters.py:1930::_mutation_js`            |         16 |  C   |
+| `src/aqg/doctor.py:536::_check_onboarding`          |         16 |  C   |
 
 ## Switch contract
 
