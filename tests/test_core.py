@@ -1686,7 +1686,8 @@ class SetupContractTests(RepoCase):
 
     def test_release_builds_from_an_isolated_copy_without_git_metadata(self) -> None:
         source_root = Path(__file__).resolve().parents[1]
-        source_copy = self.root / "source-copy"
+        source_copy = self.root / ".isolated" / "source-copy"
+        source_copy.parent.mkdir()
         shutil.copytree(
             source_root,
             source_copy,

@@ -120,7 +120,10 @@ def _package_source_files() -> list[Path]:
                 path
                 for path in package.rglob("*")
                 if path.is_file()
-                and not any(part.startswith(".") or part == "__pycache__" for part in path.parts)
+                and not any(
+                    part.startswith(".") or part == "__pycache__"
+                    for part in path.relative_to(package).parts
+                )
                 and path.suffix != ".pyc"
             ),
             key=lambda item: item.relative_to(ROOT).as_posix(),
