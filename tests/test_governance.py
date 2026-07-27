@@ -70,10 +70,18 @@ class GitHubGovernanceContractTests(unittest.TestCase):
 
         self.assertIn("fetch-depth: 0", workflow)
         self.assertIn("AQG_DIFF_BASE=$AQG_BASE", workflow)
+        self.assertIn('github.event_name }}" == "workflow_dispatch"', workflow)
+        self.assertIn("github.event.repository.default_branch", workflow)
+        self.assertIn('AQG_BASE="origin/$AQG_TARGET"', workflow)
+        self.assertNotIn('AQG_BASE="HEAD~1"', workflow)
         self.assertIn("tools install --ci --browsers", workflow)
         self.assertIn(".aqg/work/*/report.json", workflow)
         self.assertIn(".aqg/work/coverage/*.json", workflow)
         self.assertIn(".aqg/work/supply_chain/sbom/*.json", workflow)
+
+        release = workflow.split("  release-build:\n", 1)[1]
+        self.assertIn("needs: [test, policy-evidence]", release)
+        self.assertIn("Attest release provenance", release)
 
 
 if __name__ == "__main__":

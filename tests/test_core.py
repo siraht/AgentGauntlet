@@ -985,6 +985,10 @@ class SetupContractTests(RepoCase):
         )
         self.assertIn("tools install --ci --browsers", workflow)
         self.assertEqual(workflow.count("continue-on-error: true"), 1)
+        self.assertIn('github.event_name }}" == "workflow_dispatch"', workflow)
+        self.assertIn("github.event.repository.default_branch", workflow)
+        self.assertIn('AQG_BASE="origin/$AQG_TARGET"', workflow)
+        self.assertNotIn('AQG_BASE="HEAD~1"', workflow)
         references = re.findall(
             r"uses:\s+[\w.-]+/[\w.-]+(?:/[\w.-]+)?@([^\s#]+)",
             workflow,

@@ -650,13 +650,25 @@ jobs:
           if [[ "${{{{ github.event_name }}}}" == "pull_request" ]]; then
             git fetch --no-tags origin "${{{{ github.base_ref }}}}"
             AQG_BASE="origin/${{{{ github.base_ref }}}}"
+          elif [[ "${{{{ github.event_name }}}}" == "workflow_dispatch" ]]; then
+            AQG_TARGET="${{{{ github.event.repository.default_branch }}}}"
+            if [[ -z "$AQG_TARGET" ]]; then
+              echo "Repository default branch is unavailable; refusing manual dispatch." >&2
+              exit 2
+            fi
+            git fetch --no-tags origin "$AQG_TARGET"
+            AQG_BASE="origin/$AQG_TARGET"
           else
             AQG_BASE="${{{{ github.event.before }}}}"
             if [[ -z "$AQG_BASE" || "$AQG_BASE" =~ ^0+$ ]] || ! git cat-file -e "$AQG_BASE^{{commit}}" 2>/dev/null; then
-              AQG_BASE="HEAD~1"
-              git cat-file -e "$AQG_BASE^{{commit}}" 2>/dev/null || AQG_BASE="HEAD"
+              echo "Push comparison base is unavailable; refusing non-authoritative evidence." >&2
+              exit 2
             fi
           fi
+          git cat-file -e "$AQG_BASE^{{commit}}" 2>/dev/null || {{
+            echo "Comparison base does not resolve: $AQG_BASE" >&2
+            exit 2
+          }}
           echo "AQG_DIFF_BASE=$AQG_BASE" >> "$GITHUB_ENV"
           echo "Comparison base: $AQG_BASE"
       - name: Install locked AQG toolchains
