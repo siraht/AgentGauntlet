@@ -305,6 +305,14 @@ _UNSUPPORTED_GHERKIN_REMEDIATION = (
 )
 
 
+@dataclass(slots=True)
+class _FeatureParseState:
+    feature: dict[str, Any]
+    scenario: dict[str, Any] | None = None
+    section: str = "none"
+    headers: list[str] | None = None
+
+
 def _empty_feature() -> dict[str, Any]:
     return {"name": "", "background": [], "scenarios": []}
 
@@ -325,6 +333,127 @@ def _step_payload(match: re.Match[str], line_no: int) -> dict[str, Any]:
         "line": line_no,
         "parameters": PLACEHOLDER_RE.findall(text),
     }
+
+
+def _apply_feature_declaration(
+    line: str,
+    line_no: int,
+    state: _FeatureParseState,
+    findings: list[Finding],
+    path: Path,
+) -> None:
+    if state.feature["name"]:
+        findings.append(
+            Finding(
+                "multiple-features",
+                "error",
+                "One file must contain exactly one Feature declaration.",
+                str(path),
+                line_no,
+            )
+        )
+    state.feature["name"] = line.removeprefix("Feature:").strip()
+
+
+def _apply_scenario_declaration(line: str, state: _FeatureParseState) -> None:
+    name = line.split(":", 1)[1].strip()
+    state.scenario = _new_scenario(name)
+    state.feature["scenarios"].append(state.scenario)
+    # Exit Background/Examples modes. Labels "feature"/"scenario" are never read.
+    state.section = "none"
+
+
+def _apply_examples_declaration(
+    line_no: int,
+    state: _FeatureParseState,
+    findings: list[Finding],
+    path: Path,
+) -> None:
+    if state.scenario is None:
+        findings.append(
+            Finding(
+                "examples-outside-scenario",
+                "error",
+                "Examples must be inside a scenario.",
+                str(path),
+                line_no,
+            )
+        )
+    state.section = "examples"
+    state.headers = None
+
+
+def _ingest_examples_row(
+    line: str,
+    line_no: int,
+    state: _FeatureParseState,
+    findings: list[Finding],
+    path: Path,
+) -> None:
+    if state.section != "examples" or state.scenario is None:
+        findings.append(
+            Finding(
+                "table-outside-examples",
+                "error",
+                "Table rows are allowed only inside Examples.",
+                str(path),
+                line_no,
+            )
+        )
+        return
+    cells = _table_cells(line)
+    if state.headers is None:
+        state.headers = cells
+        if len(set(state.headers)) != len(state.headers):
+            findings.append(
+                Finding(
+                    "duplicate-example-header",
+                    "error",
+                    "Examples headers must be unique.",
+                    str(path),
+                    line_no,
+                )
+            )
+        return
+    if len(cells) != len(state.headers):
+        findings.append(
+            Finding(
+                "example-width",
+                "error",
+                "Examples row width does not match the header.",
+                str(path),
+                line_no,
+            )
+        )
+        return
+    # Width is validated above; pair by index (equivalent to zip of equal-length sequences).
+    state.scenario["examples"].append(
+        {state.headers[index]: cells[index] for index in range(len(state.headers))}
+    )
+
+
+def _append_step(
+    payload: dict[str, Any],
+    line_no: int,
+    state: _FeatureParseState,
+    findings: list[Finding],
+    path: Path,
+) -> None:
+    if state.section == "background":
+        state.feature["background"].append(payload)
+        return
+    if state.scenario is not None:
+        state.scenario["steps"].append(payload)
+        return
+    findings.append(
+        Finding(
+            "step-outside-scenario",
+            "error",
+            "Step is outside Background or Scenario.",
+            str(path),
+            line_no,
+        )
+    )
 
 
 def _scenario_placeholders(feature: dict[str, Any], scenario: dict[str, Any]) -> set[str]:
@@ -398,109 +527,31 @@ def _validate_parsed_feature(
 
 def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
     findings: list[Finding] = []
-    feature: dict[str, Any] = _empty_feature()
-    scenario: dict[str, Any] | None = None
-    section = "none"
-    headers: list[str] | None = None
+    state = _FeatureParseState(feature=_empty_feature())
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     for line_no, raw in enumerate(lines, 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("Feature:"):
-            if feature["name"]:
-                findings.append(
-                    Finding(
-                        "multiple-features",
-                        "error",
-                        "One file must contain exactly one Feature declaration.",
-                        str(path),
-                        line_no,
-                    )
-                )
-            feature["name"] = line.removeprefix("Feature:").strip()
-            section = "feature"
+            _apply_feature_declaration(line, line_no, state, findings, path)
             continue
         if line == "Background:":
-            section = "background"
-            scenario = None
+            state.section = "background"
+            state.scenario = None
             continue
         if line.startswith("Scenario Outline:") or line.startswith("Scenario:"):
-            name = line.split(":", 1)[1].strip()
-            scenario = _new_scenario(name)
-            feature["scenarios"].append(scenario)
-            section = "scenario"
-            headers = None
+            _apply_scenario_declaration(line, state)
             continue
         if line == "Examples:":
-            if scenario is None:
-                findings.append(
-                    Finding(
-                        "examples-outside-scenario",
-                        "error",
-                        "Examples must be inside a scenario.",
-                        str(path),
-                        line_no,
-                    )
-                )
-            section = "examples"
-            headers = None
+            _apply_examples_declaration(line_no, state, findings, path)
             continue
         if line.startswith("|"):
-            if section != "examples" or scenario is None:
-                findings.append(
-                    Finding(
-                        "table-outside-examples",
-                        "error",
-                        "Table rows are allowed only inside Examples.",
-                        str(path),
-                        line_no,
-                    )
-                )
-                continue
-            cells = _table_cells(line)
-            if headers is None:
-                headers = cells
-                if len(set(headers)) != len(headers):
-                    findings.append(
-                        Finding(
-                            "duplicate-example-header",
-                            "error",
-                            "Examples headers must be unique.",
-                            str(path),
-                            line_no,
-                        )
-                    )
-            elif len(cells) != len(headers):
-                findings.append(
-                    Finding(
-                        "example-width",
-                        "error",
-                        "Examples row width does not match the header.",
-                        str(path),
-                        line_no,
-                    )
-                )
-            else:
-                scenario["examples"].append(dict(zip(headers, cells, strict=True)))
+            _ingest_examples_row(line, line_no, state, findings, path)
             continue
         step = STEP_RE.match(line)
         if step:
-            payload = _step_payload(step, line_no)
-            if section == "background":
-                feature["background"].append(payload)
-            elif scenario is not None:
-                scenario["steps"].append(payload)
-            else:
-                findings.append(
-                    Finding(
-                        "step-outside-scenario",
-                        "error",
-                        "Step is outside Background or Scenario.",
-                        str(path),
-                        line_no,
-                    )
-                )
+            _append_step(_step_payload(step, line_no), line_no, state, findings, path)
             continue
         findings.append(
             Finding(
@@ -512,8 +563,8 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
                 _UNSUPPORTED_GHERKIN_REMEDIATION,
             )
         )
-    _validate_parsed_feature(feature, findings, path)
-    return feature, findings
+    _validate_parsed_feature(state.feature, findings, path)
+    return state.feature, findings
 
 
 def lint_features(root: Path) -> dict[str, Any]:
