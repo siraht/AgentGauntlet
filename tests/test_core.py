@@ -1358,6 +1358,7 @@ class SetupContractTests(RepoCase):
             encoding="utf-8",
         )
         project = self._python_mutation_project(max_changed_lines=50)
+        project["thresholds"]["mutation"]["minimum_selection_coverage"] = 73
         selector = "module.x_value__mutmut_*"
         run_result = CommandResult(
             command=["mutmut", "run", selector],
@@ -1398,11 +1399,14 @@ class SetupContractTests(RepoCase):
         self.assertEqual(report["mutant_selectors"], [selector])
         self.assertEqual(report["selected_functions"], {"src/module.py": ["value"]})
         self.assertEqual(report["status_counts"], {"killed": 1})
+        self.assertEqual(report["scope"], "changed")
+        self.assertEqual(report["mutated_files"], ["src/module.py"])
+        self.assertEqual(report["changed_production_lines"], 1)
         self.assertTrue(report["selection_complete"])
         self.assertEqual(report["mapped_changed_lines"], 1)
         self.assertEqual(report["unmapped_changed_lines"], {})
         self.assertEqual(report["selection_coverage"], 100.0)
-        self.assertEqual(report["minimum_selection_coverage"], 80.0)
+        self.assertEqual(report["minimum_selection_coverage"], 73.0)
         self.assertEqual(report["mutmut_run_timeout_seconds"], PYTHON_MUTATION_RUN_TIMEOUT_SECONDS)
         self.assertEqual(run_command.call_count, 2)
         work = self.root / ".aqg" / "work" / "mutation" / "python-project"
@@ -1451,7 +1455,7 @@ class SetupContractTests(RepoCase):
 
         self.assertEqual(code, CONFIGURATION_ERROR)
         self.assertTrue(report["scope_refused"])
-        self.assertFalse(report["campaign_complete"])
+        self.assertIs(report["campaign_complete"], False)
         self.assertEqual(report["incomplete_reason"], "insufficient_function_selection_coverage")
         self.assertEqual(report["mapped_changed_lines"], 1)
         self.assertEqual(report["nontrivial_changed_lines"], 4)
@@ -1601,7 +1605,7 @@ class SetupContractTests(RepoCase):
             code, report = _mutation_python(self.root, project)
 
         self.assertEqual(code, INFRASTRUCTURE_ERROR)
-        self.assertFalse(report["campaign_complete"])
+        self.assertIs(report["campaign_complete"], False)
         self.assertTrue(report["run_timed_out"])
         self.assertEqual(report["incomplete_reason"], "mutmut_budget_exhausted")
         self.assertGreaterEqual(report["incomplete_mutants"], 1)
@@ -1688,6 +1692,28 @@ class SetupContractTests(RepoCase):
         copy_sandbox.assert_not_called()
         run_command.assert_not_called()
 
+    def test_python_mutation_uses_protected_selection_coverage_default(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text(
+            "def value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "# Comment-only change.\ndef value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project()
+        del project["thresholds"]["mutation"]["minimum_selection_coverage"]
+
+        code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertEqual(report["minimum_selection_coverage"], 80.0)
+
     def test_python_mutation_rejects_selection_parse_errors_before_sandboxing(self) -> None:
         source = self.root / "src"
         source.mkdir()
@@ -1711,6 +1737,64 @@ class SetupContractTests(RepoCase):
         self.assertIn("could not be parsed", report["reason"])
         copy_sandbox.assert_not_called()
         run_command.assert_not_called()
+
+    def test_python_mutation_rejects_windows_before_resolving_scope(self) -> None:
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters.os.name", "nt"),
+            patch("aqg.adapters._python_mutation_targets") as targets,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertIn("mutmut requires fork support", report["configuration_error"])
+        targets.assert_not_called()
+
+    def test_python_mutation_full_scope_runs_without_selector_arguments(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text("def value() -> int:\n    return 1\n", encoding="utf-8")
+        self.commit("baseline")
+        project = self._python_mutation_project(max_changed_lines=50)
+        project["thresholds"]["mutation"]["changed_only"] = False
+        run_result = CommandResult(
+            command=["mutmut", "run"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="",
+            stderr="",
+            duration_ms=10,
+        )
+        results_result = CommandResult(
+            command=["mutmut", "results", "--all=true"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="module.x_value__mutmut_1: killed\n",
+            stderr="",
+            duration_ms=5,
+        )
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut"),
+            patch("aqg.adapters._append_mutmut_config"),
+            patch("aqg.adapters._tool", return_value="/tools/mutmut"),
+            patch("aqg.adapters.run_command", side_effect=[run_result, results_result]) as run,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertEqual(report["scope"], "full")
+        self.assertEqual(report["mutated_files"], ["src/module.py"])
+        self.assertEqual(report["changed_production_lines"], 2)
+        self.assertEqual(report["selection_mode"], "full")
+        self.assertEqual(report["mutant_selectors"], [])
+        self.assertTrue(report["campaign_complete"])
+        self.assertEqual(run.call_args_list[0].args[0], ["/tools/mutmut", "run"])
 
     def test_mutmut_module_name_matches_mutmut_path_conventions(self) -> None:
         self.assertEqual(_mutmut_module_name("src/aqg/scaffold.py"), "aqg.scaffold")

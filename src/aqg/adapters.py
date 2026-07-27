@@ -1857,9 +1857,7 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
         if selection["nontrivial_changed_lines"] == 0:
             scope.update(
                 {
-                    "scope_refused": False,
                     "campaign_complete": True,
-                    "incomplete_reason": None,
                     "reason": "no changed executable Python production lines",
                 }
             )
