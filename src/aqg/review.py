@@ -361,9 +361,7 @@ def _findings_production_without_tests(
     ]
 
 
-_TEST_EXPECTATION_PATTERN = re.compile(
-    r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)"
-)
+_TEST_EXPECTATION_PATTERN = re.compile(r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)")
 
 
 def _test_expectation_key(path: str, line: str) -> str | None:
