@@ -810,53 +810,61 @@ def _findings_traceability(root: Path, project: dict[str, Any]) -> list[dict[str
     return findings
 
 
-def analyze_review(
-    root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
-) -> dict[str, Any]:
-    project = load_project(root)
-    changed = git_changed_files(root, base)
-    diff = git_diff(root, base, unified=1)
-    added = _added_lines(diff)
-    deleted = _deleted_lines(diff)
-    production, tests = _partition_changed_paths(changed)
-    findings: list[dict[str, Any]] = _diff_heuristic_findings(
-        root, policy, changed, diff, added, deleted, production, tests
-    )
+def _matching_current_run(
+    runs: list[dict[str, Any]],
+    profile: str,
+    revision: str,
+    change_fp: str,
+    control_fp: str,
+) -> dict[str, Any] | None:
+    for run in runs:
+        if (
+            run.get("profile") == profile
+            and run.get("status") == "pass"
+            and run.get("revision") == revision
+            and run.get("change_fingerprint") == change_fp
+            and run.get("control_fingerprint") == control_fp
+        ):
+            return run
+    return None
 
-    risk_errors, risk_payload = _load_risk_payload(root, policy)
-    findings.extend(_findings_invalid_risk_card(risk_errors))
-    findings.extend(_findings_risk_factor_mismatches(changed, risk_payload))
-    findings.extend(_findings_traceability(root, project))
 
-    runs = list_runs(root, limit=100)
-    current_revision = git_revision(root)
-    current_change_fingerprint = change_fingerprint(root, base)
-    current_control_fingerprint = control_fingerprint(root)
-    evidence_matrix: list[dict[str, Any]] = []
+def _build_evidence_matrix(
+    runs: list[dict[str, Any]],
+    risk_payload: dict[str, Any] | None,
+    revision: str,
+    change_fp: str,
+    control_fp: str,
+) -> list[dict[str, Any]]:
     required_profiles = (
         list(risk_payload.get("required_execution_profiles", [])) if risk_payload else []
     )
+    matrix: list[dict[str, Any]] = []
     for profile in required_profiles:
-        matching = next(
-            (
-                run
-                for run in runs
-                if run.get("profile") == profile
-                and run.get("status") == "pass"
-                and run.get("revision") == current_revision
-                and run.get("change_fingerprint") == current_change_fingerprint
-                and run.get("control_fingerprint") == current_control_fingerprint
-            ),
-            None,
-        )
-        evidence_matrix.append(
+        matching = _matching_current_run(runs, profile, revision, change_fp, control_fp)
+        matrix.append(
             {
                 "profile": profile,
                 "status": "current_pass" if matching else "missing_or_stale",
                 "run_id": matching.get("run_id") if matching else None,
             }
         )
-    if require_evidence and not required_profiles:
+    return matrix
+
+
+def _findings_evidence_requirements(
+    evidence_matrix: list[dict[str, Any]],
+    risk_payload: dict[str, Any] | None,
+    require_evidence: bool,
+    runs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not require_evidence:
+        return []
+    findings: list[dict[str, Any]] = []
+    required_profiles = (
+        list(risk_payload.get("required_execution_profiles", [])) if risk_payload else []
+    )
+    if not required_profiles:
         findings.append(
             _finding(
                 "no-required-profile",
@@ -868,7 +876,7 @@ def analyze_review(
             )
         )
     for item in evidence_matrix:
-        if require_evidence and item["status"] != "current_pass":
+        if item["status"] != "current_pass":
             findings.append(
                 _finding(
                     f"missing-current-{item['profile']}-evidence",
@@ -879,27 +887,8 @@ def analyze_review(
                     f"Run `python3 quality/qg.py check {item['profile']} --keep-going` after the final change, then regenerate the review packet.",
                 )
             )
-    approvals: dict[str, Any] = {"required": [], "results": {}, "errors": [], "exit_code": 0}
-    if risk_payload:
-        approvals = validate_required_approvals(
-            root, str(risk_payload.get("selected_risk_profile") or "standard")
-        )
-    if require_evidence:
-        for message in approvals.get("errors", []):
-            findings.append(
-                _finding(
-                    "missing-or-stale-human-approval",
-                    "blocker",
-                    "Required human approval is missing, incomplete, or stale",
-                    str(message),
-                    ["quality/approvals"],
-                    "Use `python3 quality/qg.py approval template <kind>`, complete the concrete scope/procedure/evidence as the named human reviewer, then validate it against the unchanged revision.",
-                    automated=False,
-                )
-            )
-
     latest = runs[0] if runs else None
-    if require_evidence and latest is None and not evidence_matrix:
+    if latest is None and not evidence_matrix:
         findings.append(
             _finding(
                 "no-quality-evidence",
@@ -910,16 +899,69 @@ def analyze_review(
                 "Run `python3 quality/qg.py check-risk --keep-going` after the final code and test changes.",
             )
         )
+    return findings
 
+
+def _load_approvals(
+    root: Path, risk_payload: dict[str, Any] | None
+) -> dict[str, Any]:
+    if not risk_payload:
+        return {"required": [], "results": {}, "errors": [], "exit_code": 0}
+    return validate_required_approvals(
+        root, str(risk_payload.get("selected_risk_profile") or "standard")
+    )
+
+
+def _findings_approvals(
+    approvals: dict[str, Any], require_evidence: bool
+) -> list[dict[str, Any]]:
+    if not require_evidence:
+        return []
+    findings: list[dict[str, Any]] = []
+    for message in approvals.get("errors", []):
+        findings.append(
+            _finding(
+                "missing-or-stale-human-approval",
+                "blocker",
+                "Required human approval is missing, incomplete, or stale",
+                str(message),
+                ["quality/approvals"],
+                "Use `python3 quality/qg.py approval template <kind>`, complete the concrete scope/procedure/evidence as the named human reviewer, then validate it against the unchanged revision.",
+                automated=False,
+            )
+        )
+    return findings
+
+
+def _sort_review_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     severity_order = {"blocker": 0, "review": 1, "warning": 2, "info": 3}
-    findings.sort(key=lambda item: (severity_order.get(item["severity"], 9), item["code"]))
+    return sorted(
+        findings, key=lambda item: (severity_order.get(item["severity"], 9), item["code"])
+    )
+
+
+def _build_review_packet(
+    *,
+    base: str,
+    revision: str,
+    change_fp: str,
+    control_fp: str,
+    changed: list[str],
+    production: list[str],
+    tests: list[str],
+    risk_payload: dict[str, Any] | None,
+    evidence_matrix: list[dict[str, Any]],
+    approvals: dict[str, Any],
+    runs: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+) -> dict[str, Any]:
     return {
         "schema_version": 3,
         "generated_at": utc_now(),
         "base": base,
-        "revision": current_revision,
-        "change_fingerprint": current_change_fingerprint,
-        "control_fingerprint": current_control_fingerprint,
+        "revision": revision,
+        "change_fingerprint": change_fp,
+        "control_fingerprint": control_fp,
         "changed_files": changed,
         "summary": {
             "changed": len(changed),
@@ -940,6 +982,51 @@ def analyze_review(
         "latest_runs": runs,
         "findings": findings,
     }
+
+
+def analyze_review(
+    root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
+) -> dict[str, Any]:
+    project = load_project(root)
+    changed = git_changed_files(root, base)
+    diff = git_diff(root, base, unified=1)
+    added = _added_lines(diff)
+    deleted = _deleted_lines(diff)
+    production, tests = _partition_changed_paths(changed)
+    findings: list[dict[str, Any]] = _diff_heuristic_findings(
+        root, policy, changed, diff, added, deleted, production, tests
+    )
+    risk_errors, risk_payload = _load_risk_payload(root, policy)
+    findings.extend(_findings_invalid_risk_card(risk_errors))
+    findings.extend(_findings_risk_factor_mismatches(changed, risk_payload))
+    findings.extend(_findings_traceability(root, project))
+    runs = list_runs(root, limit=100)
+    revision = git_revision(root)
+    change_fp = change_fingerprint(root, base)
+    control_fp = control_fingerprint(root)
+    evidence_matrix = _build_evidence_matrix(
+        runs, risk_payload, revision, change_fp, control_fp
+    )
+    findings.extend(
+        _findings_evidence_requirements(evidence_matrix, risk_payload, require_evidence, runs)
+    )
+    approvals = _load_approvals(root, risk_payload)
+    findings.extend(_findings_approvals(approvals, require_evidence))
+    findings = _sort_review_findings(findings)
+    return _build_review_packet(
+        base=base,
+        revision=revision,
+        change_fp=change_fp,
+        control_fp=control_fp,
+        changed=changed,
+        production=production,
+        tests=tests,
+        risk_payload=risk_payload,
+        evidence_matrix=evidence_matrix,
+        approvals=approvals,
+        runs=runs,
+        findings=findings,
+    )
 
 
 def _markdown(packet: dict[str, Any]) -> str:
