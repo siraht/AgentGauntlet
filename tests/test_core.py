@@ -1008,6 +1008,10 @@ class SetupContractTests(RepoCase):
         self.assertIn("github.event.repository.default_branch", workflow)
         self.assertIn('AQG_BASE="origin/$AQG_TARGET"', workflow)
         self.assertNotIn('AQG_BASE="HEAD~1"', workflow)
+        self.assertIn(
+            "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+            workflow,
+        )
         references = re.findall(
             r"uses:\s+[\w.-]+/[\w.-]+(?:/[\w.-]+)?@([^\s#]+)",
             workflow,

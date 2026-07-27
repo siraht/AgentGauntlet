@@ -83,6 +83,29 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         self.assertIn("needs: [test, policy-evidence]", release)
         self.assertIn("Attest release provenance", release)
 
+    def test_hosted_workflows_checkout_the_exact_candidate_revision(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        paths = [
+            *sorted((root / ".github" / "workflows").glob("*.yml")),
+            root / "ci" / "github-actions-quality.yml.example",
+        ]
+        exact_candidate_ref = (
+            "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
+        )
+
+        for path in paths:
+            workflow = path.read_text(encoding="utf-8")
+            checkout_count = workflow.count("uses: actions/checkout@")
+            self.assertGreater(checkout_count, 0, path.relative_to(root).as_posix())
+            self.assertEqual(
+                workflow.count(exact_candidate_ref),
+                checkout_count,
+                (
+                    f"{path.relative_to(root).as_posix()} must bind every checkout "
+                    "to the pull-request head SHA instead of GitHub's synthetic merge commit"
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
