@@ -13,18 +13,18 @@
     "statements": 6973
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-27T23:21:13Z",
+  "generated_at": "2026-07-27T23:48:55Z",
   "highest_complexity_functions": [
     {
       "complexity": 47,
-      "line": 825,
+      "line": 826,
       "name": "build_onboarding",
       "path": "src/aqg/scaffold.py",
       "rank": "F"
     },
     {
       "complexity": 35,
-      "line": 1359,
+      "line": 1360,
       "name": "install_toolchains",
       "path": "src/aqg/scaffold.py",
       "rank": "E"
@@ -66,7 +66,7 @@
     },
     {
       "complexity": 23,
-      "line": 1098,
+      "line": 1099,
       "name": "initialize_project",
       "path": "src/aqg/scaffold.py",
       "rank": "D"
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "07571d936617500906a9f2404094940db7e8f09c",
+  "revision": "f725e0f2b24d67eec49dd2d23e81b720feb58d3f",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -262,5 +262,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 293
+  "test_count": 294
 }
