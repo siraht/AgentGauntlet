@@ -94,6 +94,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-057 | Put observable characterization before hotspot extraction and classify only demonstrably equivalent survivors. | Parser and doctor decomposition preserve public diagnostics while reducing their entry points from complexity 33 and 21 to 4 and 3. Tests precede production edits, public-contract mutation killed every behaviorally distinct mutant, and the few survivors have explicit identical-behavior explanations rather than a waiver or weakened threshold.                                       | A versioned public diagnostic schema makes text-level compatibility unnecessary.                                      |
 | D-058 | Retain review mutation survivors as debt unless an independent oracle proves equivalence.                      | Characterization-first extraction reduced `analyze_review` from complexity 101 to 1 and killed 1,091 of 1,175 focused mutants. The remaining 84 include difficult output and coupling paths; a high aggregate score is not evidence that every survivor is equivalent. They remain visible debt with no waiver or threshold change.                                                           | The review packet has independent semantic oracles for every retained path.                                           |
 | D-059 | Pair identical added and deleted test expectations before reporting oracle deletion.                           | Final branch dogfood moved unchanged tests and exposed a false blocker from line-oriented diff analysis. Multiset pairing recognizes a preserved test case or assertion even when it moves between modules, while unmatched or duplicate deletions still block. Exact low-specificity assertions were strengthened instead of suppressing the review warning.                                 | Parsed test identities and semantic assertion models replace line-oriented pairing.                                   |
+| D-060 | Bind pull-request checkouts to the candidate head SHA instead of the synthetic merge ref.                       | Downloaded hosted policy evidence was attached to candidate `f34ad40` in the check UI but recorded GitHub's synthetic merge commit `2c06af7` as its executed revision. Repository, example, and generated workflows now select `github.event.pull_request.head.sha`, with `github.sha` retained for push and manual events; a governance contract covers every checkout step.                       | GitHub exposes a first-class immutable candidate-ref field that checkout uses by default.                              |
 
 ## Progress
 
@@ -281,6 +282,10 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
   expectations as a multiset removed a real dogfood false blocker without allowing one added
   assertion to cancel multiple deletions; exact contract assertions remain preferable to
   suppressing a low-specificity warning.
+- A check attached to a pull-request head is not necessarily evidence executed from that
+  head. GitHub's default pull-request checkout resolves a synthetic merge ref; inspect the
+  uploaded run revision and bind checkout explicitly when exact-candidate provenance is part
+  of the quality contract.
 
 ## Evidence conventions
 
