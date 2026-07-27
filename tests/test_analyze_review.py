@@ -25,9 +25,7 @@ from aqg.review import (
 )
 from aqg.scaffold import initialize_project
 
-FINDING_FIELDS = frozenset(
-    {"code", "severity", "title", "detail", "paths", "action", "automated"}
-)
+FINDING_FIELDS = frozenset({"code", "severity", "title", "detail", "paths", "action", "automated"})
 PACKET_FIELDS = frozenset(
     {
         "schema_version",
@@ -245,9 +243,7 @@ def _assert_public_copy(finding: dict[str, Any], code: str) -> None:
 
 
 def _git(root: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", *args], cwd=root, text=True, capture_output=True, check=True
-    )
+    result = subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, check=True)
     return result.stdout.strip()
 
 
@@ -272,8 +268,7 @@ def _baseline_repo(tmp_path: Path) -> Path:
     initialize_project(root, install=False, ci=False)
     (root / "feature-spec").mkdir(exist_ok=True)
     (root / "feature-spec" / "Product.Calculation.md").write_text(
-        "# Product.Calculation\n\n## Requirements\n\n"
-        "- The product MUST calculate a result.\n",
+        "# Product.Calculation\n\n## Requirements\n\n- The product MUST calculate a result.\n",
         encoding="utf-8",
     )
     (root / "package.json").write_text(
@@ -286,9 +281,7 @@ def _baseline_repo(tmp_path: Path) -> Path:
 
 
 def _packet(root: Path, *, require_evidence: bool = False) -> dict[str, Any]:
-    return analyze_review(
-        root, load_policy(root), base="HEAD", require_evidence=require_evidence
-    )
+    return analyze_review(root, load_policy(root), base="HEAD", require_evidence=require_evidence)
 
 
 def _by_code(packet: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -296,7 +289,7 @@ def _by_code(packet: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _assert_finding_shape(finding: dict[str, Any]) -> None:
-    assert FINDING_FIELDS <= set(finding)
+    assert set(finding) >= FINDING_FIELDS
     assert finding["severity"] in SEVERITY_ORDER
     assert isinstance(finding["code"], str) and finding["code"]
     assert isinstance(finding["title"], str) and finding["title"]
@@ -308,7 +301,7 @@ def _assert_finding_shape(finding: dict[str, Any]) -> None:
 
 
 def _assert_packet_shape(packet: dict[str, Any]) -> None:
-    assert PACKET_FIELDS <= set(packet)
+    assert set(packet) >= PACKET_FIELDS
     assert packet["schema_version"] == 3
     assert packet["base"] == "HEAD"
     assert isinstance(packet["generated_at"], str) and packet["generated_at"]
@@ -320,15 +313,13 @@ def _assert_packet_shape(packet: dict[str, Any]) -> None:
     assert isinstance(packet["evidence"], list)
     assert isinstance(packet["latest_runs"], list)
     assert isinstance(packet["approvals"], dict)
-    assert SUMMARY_FIELDS <= set(packet["summary"])
+    assert set(packet["summary"]) >= SUMMARY_FIELDS
     for finding in packet["findings"]:
         _assert_finding_shape(finding)
 
 
 def _assert_sorted(packet: dict[str, Any]) -> None:
-    keys = [
-        (SEVERITY_ORDER.get(item["severity"], 9), item["code"]) for item in packet["findings"]
-    ]
+    keys = [(SEVERITY_ORDER.get(item["severity"], 9), item["code"]) for item in packet["findings"]]
     assert keys == sorted(keys)
 
 
@@ -509,9 +500,7 @@ def test_deleted_test_expectations_and_case_count_reduction(tmp_path: Path) -> N
     )
     # Net reduction: remove both original cases, keep one renamed remnant.
     (root / "tests" / "test_app.py").write_text(
-        "# Feature-Spec: Product.Calculation\n"
-        "def test_remaining() -> None:\n"
-        "    assert True\n",
+        "# Feature-Spec: Product.Calculation\ndef test_remaining() -> None:\n    assert True\n",
         encoding="utf-8",
     )
     packet = _packet(root)
@@ -543,8 +532,7 @@ def test_loopback_network_is_allowed_external_is_flagged(tmp_path: Path) -> None
     assert "test-nondeterminism-introduced" not in _by_code(loopback)
 
     test_path.write_text(
-        test_path.read_text(encoding="utf-8")
-        + '\ndef test_external() -> None:\n'
+        test_path.read_text(encoding="utf-8") + "\ndef test_external() -> None:\n"
         '    urllib.request.urlopen("https://example.com/status")\n',
         encoding="utf-8",
     )
@@ -808,9 +796,7 @@ def test_mixed_diff_ordering_summary_and_render_surfaces(tmp_path: Path) -> None
     codes = [finding["code"] for finding in packet["findings"]]
     # Full mixed-diff order is severity then code — pin the known blocker prefix.
     blocker_codes = [
-        finding["code"]
-        for finding in packet["findings"]
-        if finding["severity"] == "blocker"
+        finding["code"] for finding in packet["findings"] if finding["severity"] == "blocker"
     ]
     assert blocker_codes == sorted(blocker_codes)
     assert codes == sorted(
