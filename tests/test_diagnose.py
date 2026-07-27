@@ -552,7 +552,7 @@ def test_strict_tools_default_is_false_and_promotes_when_enabled(tmp_path: Path)
         for item in default_report["diagnostics"]
         if item["code"].endswith("tools-missing")
     }
-    assert default_tools
+    assert default_tools == {"python-tools-missing": "warning"}
     assert all(status == "warning" for status in default_tools.values())
     assert default_report["counts"]["error"] == warning_report["counts"]["error"]
     warning_tools = {
@@ -565,7 +565,7 @@ def test_strict_tools_default_is_false_and_promotes_when_enabled(tmp_path: Path)
         for item in error_report["diagnostics"]
         if item["code"].endswith("tools-missing")
     }
-    assert warning_tools
+    assert warning_tools == {"python-tools-missing": "warning"}
     assert set(warning_tools) == set(error_tools)
     assert all(status == "warning" for status in warning_tools.values())
     assert all(status == "error" for status in error_tools.values())

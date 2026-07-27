@@ -1279,7 +1279,7 @@ def test_current_passing_run_clears_missing_profile_evidence(tmp_path: Path) -> 
     # Probe required profiles with a dry review, then plant a matching pass run.
     probe = analyze_review(root, policy, base="HEAD", require_evidence=True)
     required = list((probe.get("risk") or {}).get("required_execution_profiles") or [])
-    assert required
+    assert required == ["pr"]
     profile = required[0]
     revision = git_revision(root)
     change_fp = change_fingerprint(root, "HEAD")
