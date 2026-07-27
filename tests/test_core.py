@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1682,6 +1683,33 @@ class SetupContractTests(RepoCase):
                     check=False,
                     capture_output=True,
                 )
+
+    def test_release_builds_from_an_isolated_copy_without_git_metadata(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        source_copy = self.root / "source-copy"
+        shutil.copytree(
+            source_root,
+            source_copy,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".aqg",
+                "__pycache__",
+                ".ruff_cache",
+                ".pytest_cache",
+                ".mypy_cache",
+                "node_modules",
+                "dist",
+                "build",
+            ),
+        )
+
+        output = self.root / "isolated-release"
+        built = build_release(source_copy, output)
+        self.assertEqual(built.returncode, 0, built.stderr)
+        with zipfile.ZipFile(output / "aqg.pyz") as archive:
+            members = archive.namelist()
+        self.assertIn("aqg/py.typed", members)
+        self.assertFalse(any(".ruff_cache" in member for member in members))
 
 
 if __name__ == "__main__":

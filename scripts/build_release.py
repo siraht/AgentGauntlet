@@ -109,10 +109,24 @@ def _tracked_files(*pathspecs: str) -> list[Path]:
 
 
 def _package_source_files() -> list[Path]:
-    """Git-tracked package files only — ignored and untracked caches never enter payloads."""
-    files = _tracked_files("src/aqg")
+    """Select authoritative tracked files, with a safe isolated-copy fallback."""
+    repository_root = _git("rev-parse", "--show-toplevel")
+    if repository_root and Path(repository_root).resolve() == ROOT.resolve():
+        files = _tracked_files("src/aqg")
+    else:
+        package = ROOT / "src" / "aqg"
+        files = sorted(
+            (
+                path
+                for path in package.rglob("*")
+                if path.is_file()
+                and not any(part.startswith(".") or part == "__pycache__" for part in path.parts)
+                and path.suffix != ".pyc"
+            ),
+            key=lambda item: item.relative_to(ROOT).as_posix(),
+        )
     if not files:
-        raise SystemExit("No tracked files under src/aqg; refusing to build release payload")
+        raise SystemExit("No releasable files under src/aqg; refusing to build release payload")
     return files
 
 
