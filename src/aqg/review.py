@@ -407,9 +407,7 @@ _SUPPRESSION_PATTERNS = {
 }
 
 
-def _weak_marker_locations(
-    root: Path, added: list[tuple[str, int, str]]
-) -> dict[str, list[str]]:
+def _weak_marker_locations(root: Path, added: list[tuple[str, int, str]]) -> dict[str, list[str]]:
     weak_markers: dict[str, list[str]] = {}
     for path, line_no, line in added:
         if Path(path).suffix.lower() in {".md", ".feature", ".txt"}:
@@ -440,9 +438,7 @@ def _findings_quality_suppressions(
 def _js_empty_catch_locations(added: list[tuple[str, int, str]]) -> list[str]:
     locations: list[str] = []
     for path, line_no, line in added:
-        if _is_production_path(path) and re.search(
-            r"(?i)\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}", line
-        ):
+        if _is_production_path(path) and re.search(r"(?i)\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}", line):
             locations.append(f"{path}:{line_no}")
     return locations
 
@@ -502,9 +498,7 @@ def _debt_marker_locations(root: Path, added: list[tuple[str, int, str]]) -> lis
     return sorted(set(debt_markers))
 
 
-def _findings_debt_markers(
-    root: Path, added: list[tuple[str, int, str]]
-) -> list[dict[str, Any]]:
+def _findings_debt_markers(root: Path, added: list[tuple[str, int, str]]) -> list[dict[str, Any]]:
     debt_markers = _debt_marker_locations(root, added)
     if not debt_markers:
         return []
@@ -651,9 +645,7 @@ def _findings_test_case_reduction(
     added: list[tuple[str, int, str]],
     deleted: list[tuple[str, int, str]],
 ) -> list[dict[str, Any]]:
-    deleted_case_markers = _line_locations(
-        deleted, _TEST_CASE_MARKER_PATTERN, predicate=_is_test
-    )
+    deleted_case_markers = _line_locations(deleted, _TEST_CASE_MARKER_PATTERN, predicate=_is_test)
     added_case_markers = _line_locations(added, _TEST_CASE_MARKER_PATTERN, predicate=_is_test)
     if not production or len(deleted_case_markers) <= len(added_case_markers):
         return []
@@ -695,8 +687,7 @@ def _dependency_paths(changed: list[str]) -> list[str]:
     return [
         path
         for path in changed
-        if Path(path).name in _DEPENDENCY_NAMES
-        or re.match(r"requirements.*\.txt", Path(path).name)
+        if Path(path).name in _DEPENDENCY_NAMES or re.match(r"requirements.*\.txt", Path(path).name)
     ]
 
 
@@ -902,9 +893,7 @@ def _findings_evidence_requirements(
     return findings
 
 
-def _load_approvals(
-    root: Path, risk_payload: dict[str, Any] | None
-) -> dict[str, Any]:
+def _load_approvals(root: Path, risk_payload: dict[str, Any] | None) -> dict[str, Any]:
     if not risk_payload:
         return {"required": [], "results": {}, "errors": [], "exit_code": 0}
     return validate_required_approvals(
@@ -912,9 +901,7 @@ def _load_approvals(
     )
 
 
-def _findings_approvals(
-    approvals: dict[str, Any], require_evidence: bool
-) -> list[dict[str, Any]]:
+def _findings_approvals(approvals: dict[str, Any], require_evidence: bool) -> list[dict[str, Any]]:
     if not require_evidence:
         return []
     findings: list[dict[str, Any]] = []
@@ -1004,9 +991,7 @@ def analyze_review(
     revision = git_revision(root)
     change_fp = change_fingerprint(root, base)
     control_fp = control_fingerprint(root)
-    evidence_matrix = _build_evidence_matrix(
-        runs, risk_payload, revision, change_fp, control_fp
-    )
+    evidence_matrix = _build_evidence_matrix(runs, risk_payload, revision, change_fp, control_fp)
     findings.extend(
         _findings_evidence_requirements(evidence_matrix, risk_payload, require_evidence, runs)
     )
