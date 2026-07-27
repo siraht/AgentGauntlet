@@ -2109,6 +2109,17 @@ class SetupContractTests(RepoCase):
         self.assertTrue(report["campaign_complete"])
         self.assertEqual(run.call_args_list[0].args[0], ["/tools/mutmut", "run"])
 
+    def test_nontrivial_changed_lines_reads_with_utf8_replace(self) -> None:
+        source = self.root / "module.py"
+        source.write_text("x = 1\n", encoding="utf-8")
+        with patch(
+            "pathlib.Path.read_text",
+            return_value="def value() -> int:\n    # c\n    return 1\n",
+        ) as read_text:
+            selected = _nontrivial_changed_lines(source, {1, 2, 3})
+        self.assertEqual(selected, {1, 3})
+        read_text.assert_called_once_with(encoding="utf-8", errors="replace")
+
     def test_mutmut_module_name_matches_mutmut_path_conventions(self) -> None:
         self.assertEqual(_mutmut_module_name("src/aqg/scaffold.py"), "aqg.scaffold")
         self.assertEqual(_mutmut_module_name("src/aqg/__init__.py"), "aqg")

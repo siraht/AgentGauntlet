@@ -117,5 +117,43 @@ class MutationReportTests(unittest.TestCase):
         self.assertEqual(scope["incomplete_reason"], "deleted_lines_outside_mutable_functions")
 
 
+    def test_apply_changed_selection_returns_selectors_when_complete(self) -> None:
+        selection = {
+            "nontrivial_changed_lines": 2,
+            "mutant_selectors": ["mod.x_fn__mutmut_*"],
+            "selection_errors": {},
+            "unmapped_changed_lines": {},
+            "unmapped_deleted_lines": {},
+            "selection_coverage": 100.0,
+        }
+        scope: dict[str, object] = {}
+        code, selectors = apply_changed_selection(
+            selection, scope, 80.0, pass_code=0, configuration_error=2
+        )
+        self.assertIsNone(code)
+        self.assertEqual(selectors, ["mod.x_fn__mutmut_*"])
+        self.assertEqual(scope["minimum_selection_coverage"], 80.0)
+        self.assertNotIn("scope_refused", scope)
+
+    def test_apply_changed_selection_refuses_low_coverage(self) -> None:
+        selection = {
+            "nontrivial_changed_lines": 4,
+            "mutant_selectors": ["mod.x_fn__mutmut_*"],
+            "selection_errors": {},
+            "unmapped_changed_lines": {"a.py": [9]},
+            "unmapped_deleted_lines": {},
+            "selection_coverage": 25.0,
+        }
+        scope: dict[str, object] = {}
+        code, selectors = apply_changed_selection(
+            selection, scope, 80.0, pass_code=0, configuration_error=2
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(selectors, [])
+        self.assertTrue(scope["scope_refused"])
+        self.assertEqual(scope["incomplete_reason"], "insufficient_function_selection_coverage")
+        self.assertIn("25.0%", scope["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()
