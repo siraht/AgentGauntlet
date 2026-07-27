@@ -84,7 +84,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-047 | Delegate only isolated implementation slices; retain policy and release authority centrally.     | Grok 4.5 efficiently diagnosed and implemented mutation bounding in an explicit Git worktree, but its first CLI-managed worktree attempt did not create an observable isolation boundary. Codex independently tested and cherry-picked the commits; GitHub mutations, attestations, and final certification remain authoritative-controller work.   | The delegated runtime can prove an equivalent durable sandbox and signed evidence boundary.                      |
 | D-048 | Ship a protected executable `./aqg` command while retaining the Python launcher fallback.        | Extracted-release dogfood showed that the advertised short command was absent even though `quality/qg.py` worked. Setup and upgrade now create the root command, doctor detects its removal, policy protects it, and the Python launcher remains available on platforms that do not execute shebang files directly.                                 | A native cross-platform package manager supplies an equally stable command shim.                                 |
 | D-049 | Ignore runtime-created caches in every installed repository.                                     | Exact extracted-release dogfood passed the functional gates but failed workspace integrity because Python created untracked `__pycache__` directories. Generated ignore rules now cover interpreter, test, type-checker, linter, environment, and JavaScript dependency caches, and setup tests prove repeated commands leave the repository clean. | A supported tool introduces another repository-local runtime cache.                                              |
-| D-050 | Build release payloads from tracked sources and canonical repository identity.                   | Comparing an attested clean GitHub build with a local build exposed an ignored `.ruff_cache` inside the local zipapp and `.git` suffix drift in provenance URIs. Release source selection now excludes ignored/untracked files, and equivalent GitHub remote spellings normalize before hashing.                                                    | The project adopts a signed source manifest that is stronger than the Git index.                                 |
+| D-050 | Build release payloads from canonical inputs without breaking isolated copies.                   | Comparing clean-hosted and local builds exposed ignored-cache and remote-URI drift. The authoritative checkout uses tracked files; no-Git source/mutation copies use deterministic hidden-cache exclusion; equivalent GitHub remotes normalize before hashing.                                                                                      | The project adopts a signed source manifest portable into isolated build roots.                                  |
 
 ## Progress
 
@@ -237,6 +237,9 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Same-runner double builds do not expose environment-dependent input discovery. Compare
   authenticated clean-checkout artifacts with local outputs and inspect uncompressed payloads
   when hashes diverge.
+- Reproducibility input hardening must be exercised inside mutation sandboxes. A Git-only
+  manifest can be correct in CI yet break isolated mutation baselines that intentionally omit
+  repository metadata.
 
 ## Evidence conventions
 

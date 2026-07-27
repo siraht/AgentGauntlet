@@ -19,6 +19,7 @@
 - Rebuilding an unchanged AQG portable release in the same environment MUST produce byte-identical zipapp and portable archives.
 - Ignored or untracked runtime caches MUST NOT enter release payloads or provenance materials.
 - Equivalent GitHub origin URL spellings MUST resolve to one canonical provenance repository identity.
+- Release building MUST remain functional in isolated source and mutation copies without repository metadata.
 
 ## Related specifications
 
