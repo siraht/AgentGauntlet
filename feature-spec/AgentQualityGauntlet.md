@@ -17,6 +17,8 @@
 - AQG MUST generate review and evidence artifacts from the same normalized state used by its CLI, TUI, dashboard, and CI.
 - AQG MUST fail the supply-chain gate when declared JavaScript or Python dependencies lack a supported reproducible lock input.
 - Rebuilding an unchanged AQG portable release in the same environment MUST produce byte-identical zipapp and portable archives.
+- Ignored or untracked runtime caches MUST NOT enter release payloads or provenance materials.
+- Equivalent GitHub origin URL spellings MUST resolve to one canonical provenance repository identity.
 
 ## Related specifications
 
