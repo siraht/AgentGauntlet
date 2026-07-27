@@ -39,8 +39,13 @@ The following items named in the referenced conversation were absent or incomple
 - Keyless GitHub OIDC/Sigstore build-provenance and CycloneDX attestations.
 - Manual release dispatches compare against the authoritative default branch, and
   attestation authority depends on successful policy evidence plus the source test matrix.
+- Changed-only Python mutation selects exact changed functions and methods, requires
+  protected 80%/90%/95% selection coverage by execution profile, and filters unrelated
+  repository mutants before completeness and score classification.
+- Nonzero mutation execution or result-export commands are infrastructure failures;
+  comment-only production diffs complete without creating a mutation sandbox.
 - PEP 561 typed-package metadata.
-- 108 Python test cases plus 78 recorded subtests, one JavaScript dashboard contract test,
+- 125 Python test cases plus 89 recorded subtests, one JavaScript dashboard contract test,
   and internal, installed-tool, disposable-project, browser, and control-surface
   conformance fixtures.
 
@@ -100,7 +105,11 @@ The most recent complete local changed-file campaign executed 10,377 generated m
 and none were incomplete. The 54.70% score is below the 70% Standard target and the
 zero-survivor policy, so AQG correctly reports a quality failure. A focused campaign over
 the release-isolation slice completed all 58 mutants with 38 killed, 19 survived, one
-uncovered, and zero incomplete for a 65.52% score. A changed-only campaign now refuses
+uncovered, and zero incomplete for a 65.52% score. The changed-function mutation
+hardening slice then completed 141 selected mutants with all 141 killed, zero survivors,
+zero incomplete work, 100% selection coverage, and a 100% mutation score. An earlier
+dogfood rerun intentionally returned infrastructure error when a clean-test isolation
+defect left 139 mutants unchecked; that evidence was not scored. A changed-only campaign now refuses
 scopes above the protected 250-line limit before invoking mutmut. The current 4,163-line
 productionization branch therefore returns structured exit-2 configuration evidence
 instead of consuming the outer two-hour gate and losing its adapter report. Accepted
