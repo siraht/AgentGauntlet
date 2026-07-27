@@ -10,7 +10,8 @@
     "Representative JavaScript, TypeScript, HTML, CSS, and Python fixture projects prove setup and gate behavior across supported runner variants.",
     "High-risk implementation hotspots gain characterization tests and smaller control-flow units without changing their public contracts.",
     "The beta release includes deterministic portable artifacts, checksums, CycloneDX inventories, provenance, and verifiable signatures or attestations.",
-    "Dogfood evidence covers setup, CLI, review, dashboard, TUI, acceptance mutation, release, rollback, and clean-clone operation."
+    "Dogfood evidence covers setup, CLI, review, dashboard, TUI, acceptance mutation, release, rollback, and clean-clone operation.",
+    "Oversized Python mutation scopes fail deterministically before execution, while bounded campaigns reserve separate execution, result-export, overhead, and safety budgets and preserve structured incomplete evidence."
   ],
   "behavior_preserved": [
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",
