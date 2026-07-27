@@ -14,6 +14,7 @@ from aqg.python_mutation_selection import (
     function_selection,
     path_selection,
     selection_refusal,
+    selection_summary,
 )
 
 
@@ -107,6 +108,58 @@ class SelectionHelperTests(unittest.TestCase):
         assert refusal is not None
         self.assertEqual(refusal[0], "insufficient_function_selection_coverage")
 
+    def test_selection_refusal_allows_coverage_equal_to_minimum(self) -> None:
+        """Coverage is insufficient only when strictly below the protected minimum."""
+        selection = {
+            "selection_errors": {},
+            "mutant_selectors": ["mod.x_fn__mutmut_*"],
+            "unmapped_deleted_lines": {},
+            "unmapped_changed_lines": {"src/a.py": [9]},
+            "selection_coverage": 80.0,
+        }
+        self.assertIsNone(selection_refusal(selection, 80.0))
+
+    def test_selection_summary_public_report_contract_keys_and_math(self) -> None:
+        """Selection report fields are a stable public contract for mutation evidence."""
+        results = [
+            {
+                "path": "src/module.py",
+                "selectors": {"module.x_value__mutmut_*"},
+                "names": {"value"},
+                "mapped_count": 1,
+                "relevant_count": 3,
+                "added_count": 2,
+                "deleted_count": 1,
+                "missing": {9, 10},
+                "missing_deleted": set(),
+                "errors": {},
+            }
+        ]
+        summary = selection_summary(results)
+        self.assertEqual(
+            summary,
+            {
+                "selection_mode": "changed_functions",
+                "mutant_selectors": ["module.x_value__mutmut_*"],
+                "selected_functions": {"src/module.py": ["value"]},
+                "mapped_changed_lines": 1,
+                "mapped_changed_lines_by_file": {"src/module.py": 1},
+                "nontrivial_changed_lines": 3,
+                "nontrivial_changed_lines_by_file": {"src/module.py": 3},
+                "nontrivial_added_lines_by_file": {"src/module.py": 2},
+                "nontrivial_deleted_lines_by_file": {"src/module.py": 1},
+                "unmapped_changed_lines": {"src/module.py": [9, 10]},
+                "unmapped_deleted_lines": {},
+                "unmapped_changed_lines_count": 2,
+                "selection_coverage": 33.33,
+                "selection_complete": False,
+                "selection_errors": {},
+            },
+        )
+        # 1/3 rounds to two decimals; three-decimal rounding would be 33.333.
+        self.assertEqual(summary["selection_coverage"], round(100 / 3, 2))
+        self.assertNotEqual(summary["selection_coverage"], round(100 / 3, 3))
+
     def test_function_selection_with_synthetic_changes_maps_additions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -119,7 +172,12 @@ class SelectionHelperTests(unittest.TestCase):
             selection = function_selection(root, None, [path], changes, _mutmut_function_candidates)
             self.assertEqual(selection["selected_functions"], {path: ["value"]})
             self.assertEqual(selection["mapped_changed_lines"], 1)
+            self.assertEqual(selection["mapped_changed_lines_by_file"], {path: 1})
+            self.assertEqual(selection["nontrivial_changed_lines"], 1)
+            self.assertEqual(selection["nontrivial_changed_lines_by_file"], {path: 1})
+            self.assertEqual(selection["unmapped_changed_lines_count"], 0)
             self.assertEqual(selection["unmapped_deleted_lines"], {})
+            self.assertEqual(selection["selection_coverage"], 100.0)
             self.assertTrue(selection["selection_complete"])
 
     def test_candidate_matches_empty_when_lines_outside_spans(self) -> None:

@@ -293,12 +293,19 @@ class ComparisonAndUntrackedTests(unittest.TestCase):
             root = Path(tmp)
             path = "module.py"
             (root / path).write_text("a\nb\n", encoding="utf-8")
+            seen: list[tuple[object, object]] = []
+
+            def capture(received_root: object, received_changed: object) -> set[str]:
+                seen.append((received_root, received_changed))
+                return {path}
+
             with patch(
                 "aqg.python_mutation_diff.untracked_targets",
-                return_value={path},
+                side_effect=capture,
             ):
                 changes: dict[str, dict[str, object]] = {}
                 add_untracked_lines(root, [path], changes)
+            self.assertEqual(seen, [(root, [path])])
             self.assertEqual(changes[path]["added"], {1, 2})
             self.assertEqual(changes[path]["deleted"], set())
             self.assertEqual(changes[path]["old_path"], path)
@@ -318,6 +325,27 @@ class ComparisonAndUntrackedTests(unittest.TestCase):
                 add_untracked_lines(root, [path], changes)
             self.assertEqual(changes[path]["added"], {9})
 
+    def test_add_untracked_lines_continues_past_existing_buckets(self) -> None:
+        """Already-known paths must be skipped without aborting later untracked files."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            known = "alpha.py"
+            fresh = "beta.py"
+            (root / known).write_text("keep\n", encoding="utf-8")
+            (root / fresh).write_text("one\ntwo\n", encoding="utf-8")
+            changes: dict[str, dict[str, object]] = {
+                known: {"added": {42}, "deleted": set(), "old_path": known},
+            }
+            with patch(
+                "aqg.python_mutation_diff.untracked_targets",
+                return_value={known, fresh},
+            ):
+                add_untracked_lines(root, [known, fresh], changes)
+            self.assertEqual(changes[known]["added"], {42})
+            self.assertEqual(changes[fresh]["added"], {1, 2})
+            self.assertEqual(changes[fresh]["deleted"], set())
+            self.assertEqual(changes[fresh]["old_path"], fresh)
+
     def test_comparison_ref_returns_none_when_git_unavailable(self) -> None:
         with patch("aqg.python_mutation_diff.git_output", return_value=(1, "", "err")):
             self.assertIsNone(comparison_ref(Path("."), "HEAD"))
@@ -335,6 +363,28 @@ class ComparisonAndUntrackedTests(unittest.TestCase):
     def test_deleted_names_empty_without_comparison(self) -> None:
         with patch("aqg.python_mutation_diff.comparison_ref", return_value=None):
             self.assertEqual(deleted_names(Path("."), "HEAD", suffixes={".py"}), [])
+
+    def test_deleted_names_requires_matching_suffix_and_missing_worktree_file(self) -> None:
+        """Only deleted production-suffix paths remain; still-present or wrong-suffix paths drop."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "still_present.py").write_text("x = 1\n", encoding="utf-8")
+            # gone.py is absent from the worktree; other.txt is also absent but wrong suffix.
+            listing = "\0".join(["still_present.py", "gone.py", "other.txt", ""])
+            with (
+                patch("aqg.python_mutation_diff.comparison_ref", return_value="abc123"),
+                patch(
+                    "aqg.python_mutation_diff.git_output",
+                    return_value=(0, listing, ""),
+                ) as git_output,
+            ):
+                names = deleted_names(root, "HEAD", suffixes={".py"})
+            self.assertEqual(names, ["gone.py"])
+            git_output.assert_called_once()
+            self.assertEqual(
+                git_output.call_args.args[1],
+                ["diff", "--diff-filter=D", "--name-only", "-z", "abc123", "--"],
+            )
 
     def test_line_changes_uses_parse_and_untracked(self) -> None:
         with (
