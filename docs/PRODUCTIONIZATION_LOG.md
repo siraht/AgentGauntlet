@@ -90,6 +90,8 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-053 | Select changed Python functions exactly and enforce a protected selection-coverage floor.        | File-level mutmut selection generated thousands of unrelated mutants and let unrelated `not checked` rows poison result completeness. AQG now mirrors mutmut 3.6 selector names, maps nontrivial changed lines to top-level functions and direct methods, filters results to those selectors, and requires 80%/90%/95% mapped coverage by profile.                                            | Mutmut publishes a trustworthy changed-line mutation API with equivalent completeness and provenance.            |
 | D-054 | Treat every nonzero mutation command as infrastructure failure before evaluating quality.        | Mutmut returns nonzero when clean-test setup fails; parseable partial output must never become a score. Dogfood proved the rule when a test-isolation defect returned code 1 and left 139 selected mutants unchecked. Comment-only production diffs are separately recognized as having no executable mutation scope.                                                                         | The mutation engine publishes a typed machine-readable execution/result protocol with equivalent semantics.      |
 | D-055 | Use Grok 4.5 for read-only research and adversarial analysis, not certification authority.       | Grok efficiently located mutmut selector behavior and identified the command-exit and comment-only gaps. One interactive audit stalled in an approval-hook loop and was stopped; only complete findings reproduced by source tests and deterministic AQG evidence influenced changes. GitHub, policy, release, and final-verification authority remain with the controlling agent and humans. | Delegated agents can emit independently signed, reproducible evidence under equivalent policy controls.          |
+| D-056 | Count executable deletions in changed-code mutation scope and fail closed when no current selector exists. | Addition-only diff accounting let deletion-only changes reach an empty mutation selection even when they removed a guard or entire production function. AQG now measures net executable additions and deletions, maps deleted lines to a surviving enclosing selector, and rejects removed modules or functions that cannot be represented in the current tree. | The mutation engine accepts comparison-side source and exposes first-class deletion mutants with equivalent evidence. |
+| D-057 | Put observable characterization before hotspot extraction and classify only demonstrably equivalent survivors. | Parser and doctor decomposition preserve public diagnostics while reducing their entry points from complexity 33 and 21 to 4 and 3. Tests precede production edits, public-contract mutation killed every behaviorally distinct mutant, and the few survivors have explicit identical-behavior explanations rather than a waiver or weakened threshold. | A versioned public diagnostic schema makes text-level compatibility unnecessary. |
 
 ## Progress
 
@@ -253,6 +255,12 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
   selected, while every mutant belonging to those functions determines assertion strength.
   Filtering the result stream to the exact selector set prevents unrelated historical mutants
   from becoming either false incompleteness or false confidence.
+- Addition-only diff accounting is a mutation bypass when behavior can be removed. Deletions
+  must contribute to the protected scope, and a comparison-side function with no current
+  selector is an unmeasurable change—not a zero-mutant pass.
+- Complexity extraction is safest when observable characterization lands first and passes
+  against both implementations. That ordering gives each small production commit an
+  independent oracle and lets mutation distinguish real gaps from source-level equivalents.
 - A minimum mapped-line percentage closes the easy bypass where a large module-level change
   could add one trivial function edit merely to obtain a selector. The unmapped lines remain
   explicit review evidence even when the protected percentage is met.
