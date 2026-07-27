@@ -456,6 +456,45 @@ def _append_step(
     )
 
 
+def _process_feature_line(
+    line: str,
+    line_no: int,
+    state: _FeatureParseState,
+    findings: list[Finding],
+    path: Path,
+) -> None:
+    if line.startswith("Feature:"):
+        _apply_feature_declaration(line, line_no, state, findings, path)
+        return
+    if line == "Background:":
+        state.section = "background"
+        state.scenario = None
+        return
+    if line.startswith("Scenario Outline:") or line.startswith("Scenario:"):
+        _apply_scenario_declaration(line, state)
+        return
+    if line == "Examples:":
+        _apply_examples_declaration(line_no, state, findings, path)
+        return
+    if line.startswith("|"):
+        _ingest_examples_row(line, line_no, state, findings, path)
+        return
+    step = STEP_RE.match(line)
+    if step:
+        _append_step(_step_payload(step, line_no), line_no, state, findings, path)
+        return
+    findings.append(
+        Finding(
+            "unsupported-gherkin",
+            "error",
+            f"Unsupported or misspelled Gherkin syntax: {line}",
+            str(path),
+            line_no,
+            _UNSUPPORTED_GHERKIN_REMEDIATION,
+        )
+    )
+
+
 def _scenario_placeholders(feature: dict[str, Any], scenario: dict[str, Any]) -> set[str]:
     return {
         parameter
@@ -533,36 +572,7 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        if line.startswith("Feature:"):
-            _apply_feature_declaration(line, line_no, state, findings, path)
-            continue
-        if line == "Background:":
-            state.section = "background"
-            state.scenario = None
-            continue
-        if line.startswith("Scenario Outline:") or line.startswith("Scenario:"):
-            _apply_scenario_declaration(line, state)
-            continue
-        if line == "Examples:":
-            _apply_examples_declaration(line_no, state, findings, path)
-            continue
-        if line.startswith("|"):
-            _ingest_examples_row(line, line_no, state, findings, path)
-            continue
-        step = STEP_RE.match(line)
-        if step:
-            _append_step(_step_payload(step, line_no), line_no, state, findings, path)
-            continue
-        findings.append(
-            Finding(
-                "unsupported-gherkin",
-                "error",
-                f"Unsupported or misspelled Gherkin syntax: {line}",
-                str(path),
-                line_no,
-                _UNSUPPORTED_GHERKIN_REMEDIATION,
-            )
-        )
+        _process_feature_line(line, line_no, state, findings, path)
     _validate_parsed_feature(state.feature, findings, path)
     return state.feature, findings
 
