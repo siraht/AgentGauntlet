@@ -22,6 +22,7 @@ from aqg.adapters import (
     PYTHON_MUTATION_OVERHEAD_SECONDS,
     PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
     PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
+    PYTHON_MUTATION_SAFETY_MARGIN_SECONDS,
     _append_mutmut_config,
     _changed_lines,
     _changed_production_files,
@@ -1166,19 +1167,26 @@ class SetupContractTests(RepoCase):
         self.assertEqual(PYTHON_MUTATION_GATE_TIMEOUT_SECONDS, 7200)
         self.assertEqual(PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS, 300)
         self.assertEqual(PYTHON_MUTATION_OVERHEAD_SECONDS, 300)
+        self.assertEqual(PYTHON_MUTATION_SAFETY_MARGIN_SECONDS, 300)
         self.assertEqual(
             PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
             PYTHON_MUTATION_GATE_TIMEOUT_SECONDS
             - PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS
-            - PYTHON_MUTATION_OVERHEAD_SECONDS,
+            - PYTHON_MUTATION_OVERHEAD_SECONDS
+            - PYTHON_MUTATION_SAFETY_MARGIN_SECONDS,
         )
-        self.assertLess(
-            PYTHON_MUTATION_RUN_TIMEOUT_SECONDS + PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
+        self.assertEqual(
+            PYTHON_MUTATION_RUN_TIMEOUT_SECONDS
+            + PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS
+            + PYTHON_MUTATION_OVERHEAD_SECONDS
+            + PYTHON_MUTATION_SAFETY_MARGIN_SECONDS,
             PYTHON_MUTATION_GATE_TIMEOUT_SECONDS,
         )
-        self.assertGreaterEqual(
+        self.assertEqual(
             PYTHON_MUTATION_GATE_TIMEOUT_SECONDS - PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
-            PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS + PYTHON_MUTATION_OVERHEAD_SECONDS,
+            PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS
+            + PYTHON_MUTATION_OVERHEAD_SECONDS
+            + PYTHON_MUTATION_SAFETY_MARGIN_SECONDS,
         )
 
     def _python_mutation_project(self, *, max_changed_lines: int = 250) -> dict[str, object]:

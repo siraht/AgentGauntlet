@@ -1347,11 +1347,14 @@ PYTHON_MUTATION_GATE_TIMEOUT_SECONDS = 7200
 PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS = 300
 # Reserved for sandbox copy/config plus report writing before the outer gate expires.
 PYTHON_MUTATION_OVERHEAD_SECONDS = 300
-# Inner mutmut run budget: must leave results + overhead headroom under the gate timeout.
+# Scheduling margin so the inner and outer timeout boundaries cannot race.
+PYTHON_MUTATION_SAFETY_MARGIN_SECONDS = 300
+# Inner mutmut run budget: leave results, overhead, and safety headroom.
 PYTHON_MUTATION_RUN_TIMEOUT_SECONDS = (
     PYTHON_MUTATION_GATE_TIMEOUT_SECONDS
     - PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS
     - PYTHON_MUTATION_OVERHEAD_SECONDS
+    - PYTHON_MUTATION_SAFETY_MARGIN_SECONDS
 )
 DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES = 250
 _INCOMPLETE_MUTANT_STATUSES = (
@@ -1493,8 +1496,9 @@ def _python_mutation_scope_report(
         "mutmut_run_timeout_seconds": PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
         "results_timeout_seconds": PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
         "timeout_headroom_seconds": (
-            PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS + PYTHON_MUTATION_OVERHEAD_SECONDS
+            PYTHON_MUTATION_GATE_TIMEOUT_SECONDS - PYTHON_MUTATION_RUN_TIMEOUT_SECONDS
         ),
+        "safety_margin_seconds": PYTHON_MUTATION_SAFETY_MARGIN_SECONDS,
         "reason": reason,
         "incomplete_reason": "scope_refused_before_mutmut" if refused else None,
     }
