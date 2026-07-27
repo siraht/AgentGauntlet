@@ -12,17 +12,25 @@ import unittest
 import zipfile
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 
 from aqg.adapters import (
+    DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES,
+    PYTHON_MUTATION_GATE_TIMEOUT_SECONDS,
+    PYTHON_MUTATION_OVERHEAD_SECONDS,
+    PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
+    PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
     _append_mutmut_config,
     _changed_lines,
     _changed_production_files,
     _classify_mutmut_results,
+    _count_changed_python_production_lines,
     _is_test_path,
     _javascript_unit_spec,
     _js_mutation_scope,
+    _mutation_python,
     _mutmut_results_command,
     _parse_mutmut_results,
     _python_crap,
@@ -55,6 +63,7 @@ from aqg.scaffold import (
     initialize_project,
 )
 from aqg.util import (
+    CommandResult,
     change_fingerprint,
     detect_base_ref,
     git_changed_files,
@@ -1119,6 +1128,248 @@ class SetupContractTests(RepoCase):
             "python.mutation_timeout_constant must be a number from 0.5 to 5",
             errors,
         )
+
+    def test_mutation_max_changed_lines_has_anti_gaming_bounds(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        project = json.loads((source_root / "quality" / "project.json").read_text())
+        self.assertEqual(
+            project["python"]["mutation_max_changed_lines"],
+            DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES,
+        )
+        self.assertEqual(validate_project(project), [])
+
+        for invalid in (0, 1001, 12.5, True, "250"):
+            with self.subTest(invalid=invalid):
+                broken = copy.deepcopy(project)
+                broken["python"]["mutation_max_changed_lines"] = invalid
+                errors = validate_project(broken)
+                self.assertIn(
+                    "python.mutation_max_changed_lines must be an integer from 1 to 1000",
+                    errors,
+                )
+
+    def test_scaffold_includes_protected_mutation_scope_default(self) -> None:
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        (self.root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (self.root / "tests" / "test_app.py").write_text(
+            "def test_app() -> None:\n    assert True\n", encoding="utf-8"
+        )
+        project = build_project_config(self.root, detect_project(self.root))
+        self.assertEqual(
+            project["python"]["mutation_max_changed_lines"],
+            DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES,
+        )
+        self.assertEqual(validate_project(project), [])
+
+    def test_mutation_run_timeout_preserves_results_headroom(self) -> None:
+        self.assertEqual(PYTHON_MUTATION_GATE_TIMEOUT_SECONDS, 7200)
+        self.assertEqual(PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS, 300)
+        self.assertEqual(PYTHON_MUTATION_OVERHEAD_SECONDS, 300)
+        self.assertEqual(
+            PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
+            PYTHON_MUTATION_GATE_TIMEOUT_SECONDS
+            - PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS
+            - PYTHON_MUTATION_OVERHEAD_SECONDS,
+        )
+        self.assertLess(
+            PYTHON_MUTATION_RUN_TIMEOUT_SECONDS + PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
+            PYTHON_MUTATION_GATE_TIMEOUT_SECONDS,
+        )
+        self.assertGreaterEqual(
+            PYTHON_MUTATION_GATE_TIMEOUT_SECONDS - PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
+            PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS + PYTHON_MUTATION_OVERHEAD_SECONDS,
+        )
+
+    def _python_mutation_project(self, *, max_changed_lines: int = 250) -> dict[str, object]:
+        return {
+            "enforcement": {"base_ref": "HEAD", "mode": "adopt", "scope": "changed"},
+            "paths": {"source": ["src"], "tests": ["tests"], "exclude": []},
+            "python": {
+                "source_paths": ["src"],
+                "test_paths": ["tests"],
+                "mutation_max_changed_lines": max_changed_lines,
+                "mutation_timeout_multiplier": 5.0,
+                "mutation_timeout_constant": 1.0,
+            },
+            "thresholds": {
+                "mutation": {
+                    "changed_only": True,
+                    "maximum_survivors": 0,
+                    "minimum_score": 70,
+                }
+            },
+            "profile_thresholds": {},
+            "stacks": {"python": True, "javascript": False},
+        }
+
+    def test_python_mutation_full_scope_counts_total_target_lines(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        (source / "module.py").write_text(
+            "\n".join(f"VALUE_{index} = {index}" for index in range(12)) + "\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        project = self._python_mutation_project(max_changed_lines=5)
+        project["thresholds"]["mutation"]["changed_only"] = False
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+            patch("aqg.adapters._tool") as tool,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertEqual(report["scope"], "full")
+        self.assertEqual(report["changed_production_lines"], 12)
+        self.assertEqual(report["changed_production_lines_by_file"]["src/module.py"], 12)
+        self.assertIn("Python production lines 12 exceed", report["reason"])
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+        tool.assert_not_called()
+
+    def test_python_mutation_refuses_oversized_scope_before_mutmut(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        body = "\n".join(f"VALUE_{index} = {index}" for index in range(40)) + "\n"
+        (source / "module.py").write_text(body, encoding="utf-8")
+        self.commit("baseline empty")
+        (source / "module.py").write_text(
+            body + "\n".join(f"EXTRA_{index} = {index}" for index in range(20)) + "\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project(max_changed_lines=10)
+        line_count, _ = _count_changed_python_production_lines(self.root, project)
+        self.assertGreater(line_count, 10)
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+            patch("aqg.adapters._tool") as tool,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertFalse(report["campaign_complete"])
+        self.assertEqual(report["incomplete_reason"], "scope_refused_before_mutmut")
+        self.assertGreater(report["changed_production_lines"], 10)
+        self.assertEqual(report["mutation_max_changed_lines"], 10)
+        self.assertIn("exceed", report["reason"])
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+        tool.assert_not_called()
+
+    def test_python_mutation_normal_scope_runs_mutmut_with_inner_budget(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        (source / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+        self.commit("baseline")
+        (source / "module.py").write_text("VALUE = 2\nOTHER = 3\n", encoding="utf-8")
+        project = self._python_mutation_project(max_changed_lines=50)
+        run_result = CommandResult(
+            command=["mutmut", "run"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="",
+            stderr="",
+            duration_ms=10,
+        )
+        results_result = CommandResult(
+            command=["mutmut", "results", "--all=true"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="module.x__mutmut_1: killed\n",
+            stderr="",
+            duration_ms=5,
+        )
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut"),
+            patch("aqg.adapters._append_mutmut_config"),
+            patch("aqg.adapters._tool", return_value="/tools/mutmut"),
+            patch(
+                "aqg.adapters.run_command",
+                side_effect=[run_result, results_result],
+            ) as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertFalse(report["scope_refused"])
+        self.assertTrue(report["campaign_complete"])
+        self.assertEqual(report["incomplete_reason"], None)
+        self.assertEqual(report["mutation_score"], 100.0)
+        self.assertEqual(report["mutmut_run_timeout_seconds"], PYTHON_MUTATION_RUN_TIMEOUT_SECONDS)
+        self.assertEqual(run_command.call_count, 2)
+        run_kwargs = run_command.call_args_list[0].kwargs
+        results_kwargs = run_command.call_args_list[1].kwargs
+        self.assertEqual(run_kwargs["timeout"], PYTHON_MUTATION_RUN_TIMEOUT_SECONDS)
+        self.assertEqual(results_kwargs["timeout"], PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS)
+        self.assertEqual(run_command.call_args_list[0].args[0], ["/tools/mutmut", "run"])
+        self.assertEqual(
+            run_command.call_args_list[1].args[0],
+            ["/tools/mutmut", "results", "--all=true"],
+        )
+
+    def test_python_mutation_incomplete_campaign_is_infrastructure_failure(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        (source / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+        self.commit("baseline")
+        (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+        project = self._python_mutation_project(max_changed_lines=50)
+        run_result = CommandResult(
+            command=["mutmut", "run"],
+            cwd=str(self.root),
+            code=INFRASTRUCTURE_ERROR,
+            status="infrastructure_error",
+            stdout="",
+            stderr="command timed out after 6600s",
+            duration_ms=6600000,
+            timed_out=True,
+        )
+        results_result = CommandResult(
+            command=["mutmut", "results", "--all=true"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout=(
+                "module.x__mutmut_1: killed\n"
+                "module.x__mutmut_2: not checked\n"
+                "module.x__mutmut_3: survived\n"
+            ),
+            stderr="",
+            duration_ms=20,
+        )
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut"),
+            patch("aqg.adapters._append_mutmut_config"),
+            patch("aqg.adapters._tool", return_value="/tools/mutmut"),
+            patch(
+                "aqg.adapters.run_command",
+                side_effect=[run_result, results_result],
+            ),
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, INFRASTRUCTURE_ERROR)
+        self.assertFalse(report["campaign_complete"])
+        self.assertTrue(report["run_timed_out"])
+        self.assertEqual(report["incomplete_reason"], "mutmut_budget_exhausted")
+        self.assertGreaterEqual(report["incomplete_mutants"], 1)
+        # Unchecked work must not become a passing score even if some mutants died.
+        self.assertNotEqual(code, PASS)
 
     def test_mutmut_result_parser_separates_outcomes(self) -> None:
         counts, lines = _parse_mutmut_results(
