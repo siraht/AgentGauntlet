@@ -299,11 +299,106 @@ def scan_secrets(
 
 STEP_RE = re.compile(r"^(Given|When|Then|And)\s+(.+)$")
 PLACEHOLDER_RE = re.compile(r"<([A-Za-z0-9_]+)>")
+_UNSUPPORTED_GHERKIN_REMEDIATION = (
+    "Use the deterministic subset Feature, Background, Scenario, Scenario Outline, "
+    "Examples, Given, When, Then, and And."
+)
+
+
+def _empty_feature() -> dict[str, Any]:
+    return {"name": "", "background": [], "scenarios": []}
+
+
+def _new_scenario(name: str) -> dict[str, Any]:
+    return {"name": name, "steps": [], "examples": []}
+
+
+def _table_cells(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip("|").split("|")]
+
+
+def _step_payload(match: re.Match[str], line_no: int) -> dict[str, Any]:
+    text = match.group(2)
+    return {
+        "keyword": match.group(1),
+        "text": text,
+        "line": line_no,
+        "parameters": PLACEHOLDER_RE.findall(text),
+    }
+
+
+def _scenario_placeholders(feature: dict[str, Any], scenario: dict[str, Any]) -> set[str]:
+    return {
+        parameter
+        for step in [*feature["background"], *scenario["steps"]]
+        for parameter in step["parameters"]
+    }
+
+
+def _example_keys(scenario: dict[str, Any]) -> set[str]:
+    if not scenario["examples"]:
+        return set()
+    return set().union(*(row.keys() for row in scenario["examples"]))
+
+
+def _validate_scenario(
+    feature: dict[str, Any],
+    scenario: dict[str, Any],
+    findings: list[Finding],
+    path: Path,
+) -> None:
+    keywords = [step["keyword"] for step in scenario["steps"]]
+    if "When" not in keywords or "Then" not in keywords:
+        findings.append(
+            Finding(
+                "incomplete-scenario",
+                "error",
+                f"Scenario {scenario['name']!r} needs at least one When and Then.",
+                str(path),
+            )
+        )
+    placeholders = _scenario_placeholders(feature, scenario)
+    example_keys = _example_keys(scenario)
+    for key in sorted(placeholders - example_keys):
+        findings.append(
+            Finding(
+                "missing-example-value",
+                "error",
+                f"Placeholder <{key}> has no Examples column in scenario {scenario['name']!r}.",
+                str(path),
+            )
+        )
+    for key in sorted(example_keys - placeholders):
+        findings.append(
+            Finding(
+                "unused-example-value",
+                "error",
+                f"Examples column {key!r} is not connected to a step in scenario {scenario['name']!r}.",
+                str(path),
+            )
+        )
+
+
+def _validate_parsed_feature(
+    feature: dict[str, Any],
+    findings: list[Finding],
+    path: Path,
+) -> None:
+    if not feature["name"]:
+        findings.append(
+            Finding("missing-feature", "error", "Feature declaration is required.", str(path), 1)
+        )
+    if not feature["scenarios"]:
+        findings.append(
+            Finding("missing-scenario", "error", "At least one scenario is required.", str(path), 1)
+        )
+    for scenario in feature["scenarios"]:
+        _validate_scenario(feature, scenario, findings, path)
 
 
 def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
     findings: list[Finding] = []
-    feature: dict[str, Any] = {"name": "", "background": [], "scenarios": []}
+    feature: dict[str, Any] = _empty_feature()
     scenario: dict[str, Any] | None = None
     section = "none"
     headers: list[str] | None = None
@@ -332,7 +427,7 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
             continue
         if line.startswith("Scenario Outline:") or line.startswith("Scenario:"):
             name = line.split(":", 1)[1].strip()
-            scenario = {"name": name, "steps": [], "examples": []}
+            scenario = _new_scenario(name)
             feature["scenarios"].append(scenario)
             section = "scenario"
             headers = None
@@ -363,7 +458,7 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
                     )
                 )
                 continue
-            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            cells = _table_cells(line)
             if headers is None:
                 headers = cells
                 if len(set(headers)) != len(headers):
@@ -391,12 +486,7 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
             continue
         step = STEP_RE.match(line)
         if step:
-            payload = {
-                "keyword": step.group(1),
-                "text": step.group(2),
-                "line": line_no,
-                "parameters": PLACEHOLDER_RE.findall(step.group(2)),
-            }
+            payload = _step_payload(step, line_no)
             if section == "background":
                 feature["background"].append(payload)
             elif scenario is not None:
@@ -419,58 +509,10 @@ def parse_feature(path: Path) -> tuple[dict[str, Any] | None, list[Finding]]:
                 f"Unsupported or misspelled Gherkin syntax: {line}",
                 str(path),
                 line_no,
-                "Use the deterministic subset Feature, Background, Scenario, Scenario Outline, Examples, Given, When, Then, and And.",
+                _UNSUPPORTED_GHERKIN_REMEDIATION,
             )
         )
-    if not feature["name"]:
-        findings.append(
-            Finding("missing-feature", "error", "Feature declaration is required.", str(path), 1)
-        )
-    if not feature["scenarios"]:
-        findings.append(
-            Finding("missing-scenario", "error", "At least one scenario is required.", str(path), 1)
-        )
-    for scenario in feature["scenarios"]:
-        keywords = [step["keyword"] for step in scenario["steps"]]
-        if "When" not in keywords or "Then" not in keywords:
-            findings.append(
-                Finding(
-                    "incomplete-scenario",
-                    "error",
-                    f"Scenario {scenario['name']!r} needs at least one When and Then.",
-                    str(path),
-                )
-            )
-        placeholders = {
-            parameter
-            for step in [*feature["background"], *scenario["steps"]]
-            for parameter in step["parameters"]
-        }
-        example_keys = (
-            set().union(*(row.keys() for row in scenario["examples"]))
-            if scenario["examples"]
-            else set()
-        )
-        missing = placeholders - example_keys
-        unused = example_keys - placeholders
-        for key in sorted(missing):
-            findings.append(
-                Finding(
-                    "missing-example-value",
-                    "error",
-                    f"Placeholder <{key}> has no Examples column in scenario {scenario['name']!r}.",
-                    str(path),
-                )
-            )
-        for key in sorted(unused):
-            findings.append(
-                Finding(
-                    "unused-example-value",
-                    "error",
-                    f"Examples column {key!r} is not connected to a step in scenario {scenario['name']!r}.",
-                    str(path),
-                )
-            )
+    _validate_parsed_feature(feature, findings, path)
     return feature, findings
 
 
