@@ -1,12 +1,12 @@
 # Strict-mode readiness
 
-Revision: `dd3afd9656ce2131a68d1b675560e7a85055bea5` · mode: **adopt** · strict ready: **no**
+Revision: `25136eb7c1e8f666ea805c3272a8aa9f33bc4a2a` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 104
-- Line coverage: 56.97% (gap 28.03 points)
-- Branch coverage: 44.15% (gap 30.85 points)
+- Tests: 105
+- Line coverage: 57.07% (gap 27.93 points)
+- Branch coverage: 44.29% (gap 30.71 points)
 - Functions above complexity cap: 51
 
 ## Lowest coverage modules
@@ -31,16 +31,17 @@ Revision: `dd3afd9656ce2131a68d1b675560e7a85055bea5` · mode: **adopt** · stric
 | Function                                           | Complexity | Rank |
 | -------------------------------------------------- | ---------: | :--: |
 | `src/aqg/review.py:305::analyze_review`            |        101 |  F   |
-| `src/aqg/scaffold.py:788::build_onboarding`        |         47 |  F   |
-| `src/aqg/scaffold.py:1310::install_toolchains`     |         35 |  E   |
+| `src/aqg/scaffold.py:800::build_onboarding`        |         47 |  F   |
+| `src/aqg/scaffold.py:1322::install_toolchains`     |         35 |  E   |
 | `src/aqg/checks.py:304::parse_feature`             |         33 |  E   |
 | `src/aqg/approvals.py:105::validate_approval`      |         30 |  D   |
-| `src/aqg/doctor.py:261::_check_toolchains`         |         30 |  D   |
+| `src/aqg/doctor.py:273::_check_toolchains`         |         30 |  D   |
 | `src/aqg/checks.py:213::scan_secrets`              |         25 |  D   |
 | `src/aqg/review.py:895::_html`                     |         25 |  D   |
 | `src/aqg/hooks.py:104::hook_pretool`               |         24 |  D   |
-| `src/aqg/scaffold.py:1061::initialize_project`     |         23 |  D   |
+| `src/aqg/scaffold.py:1073::initialize_project`     |         23 |  D   |
 | `src/aqg/tui.py:41::_draw`                         |         23 |  D   |
+| `src/aqg/doctor.py:84::diagnose`                   |         21 |  D   |
 | `src/aqg/conformance.py:384::run_tool_conformance` |         20 |  C   |
 | `src/aqg/review.py:792::_markdown`                 |         20 |  C   |
 | `src/aqg/sbom.py:252::_strip_jsonc`                |         20 |  C   |
@@ -48,7 +49,6 @@ Revision: `dd3afd9656ce2131a68d1b675560e7a85055bea5` · mode: **adopt** · stric
 | `src/aqg/adapters.py:847::_python_crap`            |         19 |  C   |
 | `src/aqg/adapters.py:2163::_reproducible_build`    |         19 |  C   |
 | `src/aqg/checks.py:74::scan_test_integrity`        |         19 |  C   |
-| `src/aqg/doctor.py:84::diagnose`                   |         19 |  C   |
 | `src/aqg/tui.py:140::_run`                         |         19 |  C   |
 
 ## Switch contract
