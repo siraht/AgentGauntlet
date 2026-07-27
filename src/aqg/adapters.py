@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import fnmatch
 import http.client
 import json
 import os
@@ -1322,7 +1323,9 @@ _MUTMUT_STATUSES = (
 )
 
 
-def _parse_mutmut_results(text: str) -> tuple[dict[str, int], dict[str, list[str]]]:
+def _parse_mutmut_results(
+    text: str, mutant_selectors: list[str] | None = None
+) -> tuple[dict[str, int], dict[str, list[str]]]:
     counts: dict[str, int] = {}
     lines: dict[str, list[str]] = {}
     statuses = "|".join(re.escape(status) for status in _MUTMUT_STATUSES)
@@ -1330,6 +1333,11 @@ def _parse_mutmut_results(text: str) -> tuple[dict[str, int], dict[str, list[str
     for line in text.splitlines():
         match = pattern.match(line)
         if match is None:
+            continue
+        mutant = match.group("mutant")
+        if mutant_selectors and not any(
+            fnmatch.fnmatchcase(mutant, selector) for selector in mutant_selectors
+        ):
             continue
         status = match.group("status")
         counts[status] = counts.get(status, 0) + 1
@@ -1511,8 +1519,141 @@ def _python_mutation_targets(root: Path, project: dict[str, Any]) -> tuple[list[
     return _relative_files(root, PY_SUFFIXES, project, tests=False), False
 
 
-def _run_mutmut_campaign(
+_MUTMUT_NEVER_MUTATES = {"__getattribute__", "__setattr__", "__new__"}
+
+
+def _mutmut_module_name(path: str) -> str:
+    """Mirror mutmut 3.6's path-derived module naming for CLI selectors."""
+    module = ".".join(Path(path).with_suffix("").parts)
+    if module.startswith("src."):
+        module = module[len("src.") :]
+    if module.endswith(".__init__"):
+        module = module[: -len(".__init__")]
+    return module
+
+
+def _mutmut_function_span(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[int, int]:
+    decorator_lines = [decorator.lineno for decorator in node.decorator_list]
+    start = min([node.lineno, *decorator_lines])
+    return start, int(node.end_lineno or node.lineno)
+
+
+def _mutmut_allows_decorators(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, *, method: bool
+) -> bool:
+    if not node.decorator_list:
+        return True
+    if not method or len(node.decorator_list) != 1:
+        return False
+    decorator = node.decorator_list[0]
+    return isinstance(decorator, ast.Name) and decorator.id in {"staticmethod", "classmethod"}
+
+
+def _mutmut_function_candidates(
+    path: str, tree: ast.Module
+) -> list[tuple[str, str, int, int]]:
+    module = _mutmut_module_name(path)
+    candidates: list[tuple[str, str, int, int]] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in _MUTMUT_NEVER_MUTATES or not _mutmut_allows_decorators(
+                node, method=False
+            ):
+                continue
+            start, end = _mutmut_function_span(node)
+            selector = f"{module}.x_{node.name}__mutmut_*"
+            candidates.append((selector, node.name, start, end))
+            continue
+        if not isinstance(node, ast.ClassDef) or node.decorator_list:
+            continue
+        for method_node in node.body:
+            if not isinstance(method_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if method_node.name in _MUTMUT_NEVER_MUTATES or not _mutmut_allows_decorators(
+                method_node, method=True
+            ):
+                continue
+            start, end = _mutmut_function_span(method_node)
+            mangled = f"xǁ{node.name}ǁ{method_node.name}"
+            selector = f"{module}.{mangled}__mutmut_*"
+            candidates.append((selector, f"{node.name}.{method_node.name}", start, end))
+    return candidates
+
+
+def _nontrivial_changed_lines(path: Path, changed_lines: set[int]) -> set[int]:
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return {
+        line_no
+        for line_no in changed_lines
+        if 0 < line_no <= len(lines)
+        and (content := lines[line_no - 1].strip())
+        and not content.startswith("#")
+    }
+
+
+def _python_mutation_function_selection(
     root: Path, project: dict[str, Any], changed: list[str]
+) -> dict[str, Any]:
+    """Map changed lines to the exact mutmut function selectors that contain them."""
+    changed_by_file = _changed_lines(root, project)
+    selectors: set[str] = set()
+    selected_functions: dict[str, list[str]] = {}
+    unmapped: dict[str, list[int]] = {}
+    mapped_counts: dict[str, int] = {}
+    relevant_counts: dict[str, int] = {}
+    parse_errors: dict[str, str] = {}
+    for path in sorted(changed):
+        source_path = root / path
+        relevant_lines = _nontrivial_changed_lines(source_path, changed_by_file.get(path, set()))
+        if not relevant_lines:
+            continue
+        relevant_counts[path] = len(relevant_lines)
+        try:
+            tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=path)
+        except (OSError, SyntaxError, UnicodeError) as exc:
+            parse_errors[path] = str(exc)
+            continue
+        mapped_lines: set[int] = set()
+        names: set[str] = set()
+        for selector, name, start, end in _mutmut_function_candidates(path, tree):
+            contained = {line_no for line_no in relevant_lines if start <= line_no <= end}
+            if not contained:
+                continue
+            selectors.add(selector)
+            names.add(name)
+            mapped_lines.update(contained)
+        missing = relevant_lines - mapped_lines
+        if names:
+            selected_functions[path] = sorted(names)
+        if mapped_lines:
+            mapped_counts[path] = len(mapped_lines)
+        if missing:
+            unmapped[path] = sorted(missing)
+    mapped_total = sum(mapped_counts.values())
+    relevant_total = sum(relevant_counts.values())
+    return {
+        "selection_mode": "changed_functions",
+        "mutant_selectors": sorted(selectors),
+        "selected_functions": selected_functions,
+        "mapped_changed_lines": mapped_total,
+        "mapped_changed_lines_by_file": mapped_counts,
+        "nontrivial_changed_lines": relevant_total,
+        "nontrivial_changed_lines_by_file": relevant_counts,
+        "unmapped_changed_lines": unmapped,
+        "unmapped_changed_lines_count": relevant_total - mapped_total,
+        "selection_coverage": (
+            round(mapped_total * 100 / relevant_total, 2) if relevant_total else 100.0
+        ),
+        "selection_complete": mapped_total == relevant_total,
+        "selection_errors": parse_errors,
+    }
+
+
+def _run_mutmut_campaign(
+    root: Path,
+    project: dict[str, Any],
+    changed: list[str],
+    mutant_selectors: list[str] | None = None,
 ) -> tuple[CommandResult, CommandResult]:
     work = root / ".aqg" / "work" / "mutation" / "python-project"
     _copy_for_mutmut(root, work)
@@ -1520,7 +1661,7 @@ def _run_mutmut_campaign(
     mutmut = _tool(root, "mutmut", "python")
     python_path = os.pathsep.join([str(work), str(work / "src"), os.environ.get("PYTHONPATH", "")])
     run = run_command(
-        [mutmut, "run"],
+        [mutmut, "run", *(mutant_selectors or [])],
         cwd=work,
         timeout=PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
         env=_project_test_env(
@@ -1567,9 +1708,12 @@ def _mutmut_incomplete_lines(status_lines: dict[str, list[str]]) -> list[str]:
 
 
 def _classify_python_mutation_run(
-    run: CommandResult, results: CommandResult, project: dict[str, Any]
+    run: CommandResult,
+    results: CommandResult,
+    project: dict[str, Any],
+    mutant_selectors: list[str] | None = None,
 ) -> tuple[int, dict[str, Any], dict[str, int], dict[str, list[str]], bool]:
-    status_counts, status_lines = _parse_mutmut_results(results.stdout)
+    status_counts, status_lines = _parse_mutmut_results(results.stdout, mutant_selectors)
     thresholds = _effective_thresholds(project)["mutation"]
     maximum = int(thresholds.get("maximum_survivors", 0))
     minimum = float(thresholds.get("minimum_score", 0))
@@ -1631,9 +1775,10 @@ def _python_mutation_campaign_report(
     run: CommandResult,
     results: CommandResult,
     project: dict[str, Any],
+    mutant_selectors: list[str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     code, metrics, status_counts, status_lines, timed_out = _classify_python_mutation_run(
-        run, results, project
+        run, results, project, mutant_selectors
     )
     incomplete_reason = _mutmut_incomplete_reason(
         code=code,
@@ -1681,12 +1826,42 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
     )
     if scope["scope_refused"]:
         return CONFIGURATION_ERROR, scope
-    run, results = _run_mutmut_campaign(root, project, changed)
+    mutant_selectors: list[str] | None = None
+    if changed_only:
+        selection = _python_mutation_function_selection(root, project, changed)
+        scope.update(selection)
+        mutant_selectors = selection["mutant_selectors"]
+        selection_errors = selection["selection_errors"]
+        if selection_errors or not mutant_selectors:
+            scope.update(
+                {
+                    "scope_refused": True,
+                    "campaign_complete": False,
+                    "incomplete_reason": "changed_lines_outside_mutable_functions",
+                    "reason": (
+                        "no complete mutmut-selectable function or method scope could be "
+                        "established for the changed Python production lines"
+                    ),
+                }
+            )
+            return CONFIGURATION_ERROR, scope
+    else:
+        scope.update(
+            {
+                "selection_mode": "full",
+                "mutant_selectors": [],
+                "selected_functions": {},
+                "unmapped_changed_lines": {},
+                "selection_errors": {},
+            }
+        )
+    run, results = _run_mutmut_campaign(root, project, changed, mutant_selectors)
     return _python_mutation_campaign_report(
         scope=scope,
         run=run,
         results=results,
         project=project,
+        mutant_selectors=mutant_selectors,
     )
 
 

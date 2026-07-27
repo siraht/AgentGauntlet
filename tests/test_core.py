@@ -34,9 +34,11 @@ from aqg.adapters import (
     _javascript_unit_spec,
     _js_mutation_scope,
     _mutation_python,
+    _mutmut_module_name,
     _mutmut_results_command,
     _parse_mutmut_results,
     _python_crap,
+    _python_mutation_function_selection,
     _python_structure_evidence,
     _python_test_env,
     run_adapter,
@@ -1336,12 +1338,19 @@ class SetupContractTests(RepoCase):
         source = self.root / "src"
         source.mkdir()
         (self.root / "tests").mkdir()
-        (source / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (source / "module.py").write_text(
+            "VALUE = 1\n\ndef value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
         self.commit("baseline")
-        (source / "module.py").write_text("VALUE = 2\nOTHER = 3\n", encoding="utf-8")
+        (source / "module.py").write_text(
+            "VALUE = 2\n\ndef value() -> int:\n    return 2\n",
+            encoding="utf-8",
+        )
         project = self._python_mutation_project(max_changed_lines=50)
+        selector = "module.x_value__mutmut_*"
         run_result = CommandResult(
-            command=["mutmut", "run"],
+            command=["mutmut", "run", selector],
             cwd=str(self.root),
             code=0,
             status="pass",
@@ -1354,7 +1363,10 @@ class SetupContractTests(RepoCase):
             cwd=str(self.root),
             code=0,
             status="pass",
-            stdout="module.x__mutmut_1: killed\n",
+            stdout=(
+                "module.x_other__mutmut_1: not checked\n"
+                "module.x_value__mutmut_1: killed\n"
+            ),
             stderr="",
             duration_ms=5,
         )
@@ -1375,13 +1387,24 @@ class SetupContractTests(RepoCase):
         self.assertTrue(report["campaign_complete"])
         self.assertEqual(report["incomplete_reason"], None)
         self.assertEqual(report["mutation_score"], 100.0)
+        self.assertEqual(report["selection_mode"], "changed_functions")
+        self.assertEqual(report["mutant_selectors"], [selector])
+        self.assertEqual(report["selected_functions"], {"src/module.py": ["value"]})
+        self.assertEqual(report["status_counts"], {"killed": 1})
+        self.assertFalse(report["selection_complete"])
+        self.assertEqual(report["mapped_changed_lines"], 1)
+        self.assertEqual(report["unmapped_changed_lines"], {"src/module.py": [1]})
+        self.assertEqual(report["selection_coverage"], 50.0)
         self.assertEqual(report["mutmut_run_timeout_seconds"], PYTHON_MUTATION_RUN_TIMEOUT_SECONDS)
         self.assertEqual(run_command.call_count, 2)
         run_kwargs = run_command.call_args_list[0].kwargs
         results_kwargs = run_command.call_args_list[1].kwargs
         self.assertEqual(run_kwargs["timeout"], PYTHON_MUTATION_RUN_TIMEOUT_SECONDS)
         self.assertEqual(results_kwargs["timeout"], PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS)
-        self.assertEqual(run_command.call_args_list[0].args[0], ["/tools/mutmut", "run"])
+        self.assertEqual(
+            run_command.call_args_list[0].args[0],
+            ["/tools/mutmut", "run", selector],
+        )
         self.assertEqual(
             run_command.call_args_list[1].args[0],
             ["/tools/mutmut", "results", "--all=true"],
@@ -1391,9 +1414,15 @@ class SetupContractTests(RepoCase):
         source = self.root / "src"
         source.mkdir()
         (self.root / "tests").mkdir()
-        (source / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (source / "module.py").write_text(
+            "def value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
         self.commit("baseline")
-        (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+        (source / "module.py").write_text(
+            "def value() -> int:\n    return 2\n",
+            encoding="utf-8",
+        )
         project = self._python_mutation_project(max_changed_lines=50)
         run_result = CommandResult(
             command=["mutmut", "run"],
@@ -1411,9 +1440,9 @@ class SetupContractTests(RepoCase):
             code=0,
             status="pass",
             stdout=(
-                "module.x__mutmut_1: killed\n"
-                "module.x__mutmut_2: not checked\n"
-                "module.x__mutmut_3: survived\n"
+                "module.x_value__mutmut_1: killed\n"
+                "module.x_value__mutmut_2: not checked\n"
+                "module.x_value__mutmut_3: survived\n"
             ),
             stderr="",
             duration_ms=20,
@@ -1437,6 +1466,93 @@ class SetupContractTests(RepoCase):
         self.assertGreaterEqual(report["incomplete_mutants"], 1)
         # Unchecked work must not become a passing score even if some mutants died.
         self.assertNotEqual(code, PASS)
+
+    def test_python_mutation_selects_changed_functions_and_methods_deterministically(
+        self,
+    ) -> None:
+        source = self.root / "src" / "package"
+        source.mkdir(parents=True)
+        (self.root / "tests").mkdir()
+        module = source / "example.py"
+        module.write_text(
+            "def alpha() -> int:\n"
+            "    return 1\n\n"
+            "class Worker:\n"
+            "    @classmethod\n"
+            "    def build(cls) -> int:\n"
+            "        return 2\n\n"
+            "def untouched() -> int:\n"
+            "    return 3\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "def alpha() -> int:\n"
+            "    return 4\n\n"
+            "class Worker:\n"
+            "    @classmethod\n"
+            "    def build(cls) -> int:\n"
+            "        return 5\n\n"
+            "def untouched() -> int:\n"
+            "    return 3\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project()
+
+        selection = _python_mutation_function_selection(
+            self.root, project, ["src/package/example.py"]
+        )
+
+        self.assertEqual(
+            selection["mutant_selectors"],
+            [
+                "package.example.x_alpha__mutmut_*",
+                "package.example.xǁWorkerǁbuild__mutmut_*",
+            ],
+        )
+        self.assertEqual(
+            selection["selected_functions"],
+            {"src/package/example.py": ["Worker.build", "alpha"]},
+        )
+        self.assertEqual(selection["unmapped_changed_lines"], {})
+        self.assertEqual(selection["selection_errors"], {})
+        self.assertTrue(selection["selection_complete"])
+        self.assertEqual(selection["mapped_changed_lines"], 2)
+        self.assertEqual(selection["selection_coverage"], 100.0)
+
+    def test_python_mutation_rejects_nontrivial_module_level_changes(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text("VALUE = 1\n", encoding="utf-8")
+        self.commit("baseline")
+        module.write_text("VALUE = 2\n", encoding="utf-8")
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertFalse(report["campaign_complete"])
+        self.assertEqual(
+            report["incomplete_reason"], "changed_lines_outside_mutable_functions"
+        )
+        self.assertEqual(report["mutant_selectors"], [])
+        self.assertEqual(report["unmapped_changed_lines"], {"src/module.py": [1]})
+        self.assertFalse(report["selection_complete"])
+        self.assertEqual(report["selection_coverage"], 0.0)
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_mutmut_module_name_matches_mutmut_path_conventions(self) -> None:
+        self.assertEqual(_mutmut_module_name("src/aqg/scaffold.py"), "aqg.scaffold")
+        self.assertEqual(_mutmut_module_name("src/aqg/__init__.py"), "aqg")
+        self.assertEqual(_mutmut_module_name("scripts/build_release.py"), "scripts.build_release")
 
     def test_mutmut_result_parser_separates_outcomes(self) -> None:
         counts, lines = _parse_mutmut_results(
@@ -1462,6 +1578,19 @@ class SetupContractTests(RepoCase):
         self.assertEqual(
             lines["survived"],
             ["aqg.example.x_value__mutmut_2: survived"],
+        )
+
+        filtered_counts, filtered_lines = _parse_mutmut_results(
+            """
+                aqg.example.x_value__mutmut_1: killed
+                aqg.example.x_other__mutmut_1: not checked
+            """,
+            ["aqg.example.x_value__mutmut_*"],
+        )
+        self.assertEqual(filtered_counts, {"killed": 1})
+        self.assertEqual(
+            filtered_lines,
+            {"killed": ["aqg.example.x_value__mutmut_1: killed"]},
         )
 
     def test_mutmut_result_command_supplies_click_boolean_value(self) -> None:
