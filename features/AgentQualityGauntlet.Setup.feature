@@ -4,7 +4,8 @@ Feature: Portable Agent Quality Gauntlet setup
     Given a target repository with history state "<history>"
     When AQG setup runs in automatic mode
     Then the enforcement scope is "<scope>"
-    And a project-local quality launcher is created
+    And an executable project-local aqg command is created
+    And the portable quality launcher fallback is created
 
     Examples:
       | history | scope   |

@@ -29,6 +29,7 @@ DEFAULT_EXCLUDES = [
     "node_modules/**",
     ".yarn/**",
     ".pnp.*",
+    "aqg",
     "quality/qg.py",
     "quality/tools/**",
     "quality/_aqg/**",

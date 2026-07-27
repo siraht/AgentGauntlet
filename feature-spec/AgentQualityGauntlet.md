@@ -9,7 +9,8 @@
 - AQG MUST NOT treat a missing, stale, malformed, timed-out, crashed, or unexpectedly empty measurement as passing evidence.
 - AQG MUST compute a deterministic minimum risk profile and MUST NOT accept a weaker selected profile.
 - AQG MUST keep policy-plane and human-review-plane changes visible and separately governed.
-- AQG MUST create a project-local runtime and stable command surface during setup.
+- AQG MUST create an executable project-local `./aqg` command and retain
+  `python3 quality/qg.py` as its portable fallback during setup and upgrade.
 - AQG MUST keep ordinary golden comparison separate from explicitly authorized expected-output updates.
 - AQG MUST generate review and evidence artifacts from the same normalized state used by its CLI, TUI, dashboard, and CI.
 - AQG MUST fail the supply-chain gate when declared JavaScript or Python dependencies lack a supported reproducible lock input.

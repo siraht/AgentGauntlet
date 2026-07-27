@@ -213,6 +213,18 @@ def diagnose(root: Path, *, strict_tools: bool = False) -> dict[str, Any]:
             "Run `qg upgrade`.",
         )
 
+    command = root / "aqg"
+    if command.is_file() and os.access(command, os.R_OK):
+        _diag(items, "project-command", "pass", "Project-local ./aqg command is present.")
+    else:
+        _diag(
+            items,
+            "project-command-missing",
+            "error",
+            "Project-local ./aqg command is missing or unreadable.",
+            "Run `qg upgrade`.",
+        )
+
     risk_errors, risk = risk_summary(root, policy, "quality/change-risk.json")
     if risk_errors:
         for message in risk_errors:

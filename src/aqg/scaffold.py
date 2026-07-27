@@ -36,6 +36,15 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 PACKAGE_RESOURCES = resources.files(__package__.split(".", 1)[0])
 _MAX_TOOLCHAIN_PYTHON = "3.13"
 _UV_BOOTSTRAP_VERSION = "0.11.32"
+_PROJECT_COMMAND = '''#!/usr/bin/env python3
+"""Project-local Agent Quality Gauntlet command. Managed by `aqg upgrade`."""
+from pathlib import Path
+import os
+import sys
+
+launcher = Path(__file__).resolve().parent / "quality" / "qg.py"
+os.execv(sys.executable, [sys.executable, str(launcher), *sys.argv[1:]])
+'''
 
 
 def _resource(relative: str) -> Traversable:
@@ -71,11 +80,12 @@ def _copy_runtime(root: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     source_checkout = root / "src" / "aqg"
-    if (
+    is_source_checkout = (
         PACKAGE_ROOT.is_dir()
         and source_checkout.exists()
         and source_checkout.resolve() == PACKAGE_ROOT.resolve()
-    ):
+    )
+    if is_source_checkout:
         wrapper = '''#!/usr/bin/env python3
 """Agent Quality Gauntlet source-checkout launcher."""
 from pathlib import Path
@@ -95,6 +105,8 @@ from _aqg.cli import main
 raise SystemExit(main())
 '''
     atomic_write(root / "quality" / "qg.py", wrapper, mode=0o755)
+    if not is_source_checkout:
+        atomic_write(root / "aqg", _PROJECT_COMMAND, mode=0o755)
 
 
 def _parse_command(value: str | None) -> list[str] | None:

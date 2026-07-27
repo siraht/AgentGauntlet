@@ -67,6 +67,9 @@ class HookTests(ControlGuardCase):
         blocked, blocked_error = self._pretool(
             {"tool_name": "apply_patch", "tool_input": {"file_path": "quality/policy.toml"}}
         )
+        command, command_error = self._pretool(
+            {"tool_name": "write", "tool_input": {"file_path": "aqg"}}
+        )
         shell, shell_error = self._pretool(
             {
                 "tool_name": "shell",
@@ -76,6 +79,8 @@ class HookTests(ControlGuardCase):
         self.assertEqual((safe, safe_error), (PASS, ""))
         self.assertEqual(blocked, CONFIGURATION_ERROR)
         self.assertIn("protected policy path", blocked_error)
+        self.assertEqual(command, CONFIGURATION_ERROR)
+        self.assertIn("protected policy path", command_error)
         self.assertEqual(shell, CONFIGURATION_ERROR)
         self.assertIn("may modify protected policy path", shell_error)
 

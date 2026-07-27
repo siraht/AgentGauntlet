@@ -62,6 +62,7 @@ from aqg.scaffold import (
     _restore_direct_requirement_markers,
     build_project_config,
     initialize_project,
+    upgrade_runtime,
 )
 from aqg.util import (
     CommandResult,
@@ -483,6 +484,7 @@ class SetupTests(RepoCase):
         project = load_project(self.root)
         self.assertEqual(validate_project(project), [])
         self.assertEqual(project["enforcement"]["base_ref"], "HEAD")
+        self.assertTrue((self.root / "aqg").is_file())
         self.assertTrue((self.root / "quality" / "qg.py").is_file())
         self.assertTrue((self.root / "quality" / "_aqg" / "cli.py").is_file())
         self.assertTrue((self.root / ".github" / "workflows" / "quality-gauntlet.yml").is_file())
@@ -495,6 +497,15 @@ class SetupTests(RepoCase):
         )
         self.assertEqual(command.returncode, 0, command.stderr)
         self.assertIn("2.0.0", command.stdout)
+        convenience = subprocess.run(
+            [str(self.root / "aqg"), "--version"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(convenience.returncode, 0, convenience.stderr)
+        self.assertIn("2.0.0", convenience.stdout)
 
     def test_static_web_setup_generates_isolated_web_pack(self) -> None:
         (self.root / "index.html").write_text(
@@ -529,6 +540,23 @@ class SetupTests(RepoCase):
         doctor = diagnose(self.root)
         self.assertFalse(doctor["detected"]["python"])
         self.assertNotIn("stack-drift", {item["code"] for item in doctor["diagnostics"]})
+
+    def test_doctor_fails_closed_and_upgrade_restores_missing_project_command(self) -> None:
+        initialize_project(self.root, install=False, ci=False)
+        (self.root / "aqg").unlink()
+        missing = diagnose(self.root)
+        self.assertIn(
+            "project-command-missing",
+            {item["code"] for item in missing["diagnostics"]},
+        )
+
+        upgrade_runtime(self.root)
+        restored = diagnose(self.root)
+        self.assertNotIn(
+            "project-command-missing",
+            {item["code"] for item in restored["diagnostics"]},
+        )
+        self.assertTrue((self.root / "aqg").is_file())
 
     def test_javascript_only_setup_does_not_invent_python_stack_drift(self) -> None:
         (self.root / "src").mkdir()
@@ -1502,6 +1530,7 @@ class SetupContractTests(RepoCase):
             check=False,
         )
         self.assertEqual(command.returncode, 0, command.stderr)
+        self.assertTrue((target / "aqg").exists())
         self.assertTrue((target / "quality" / "_aqg" / "cli.py").exists())
         self.assertTrue((target / "quality" / "qg.py").exists())
 

@@ -38,9 +38,14 @@ qg setup /path/to/project --owner @your-org/quality
 
 ## Daily control surface
 
-The project-local launcher is authoritative after setup:
+The protected project-local command is authoritative after setup. `./aqg` is the
+short form; `python3 quality/qg.py` is the portable fallback:
 
 ```sh
+./aqg status
+./aqg doctor
+./aqg check fast
+
 python3 quality/qg.py status
 python3 quality/qg.py doctor
 python3 quality/qg.py risk-card

@@ -32,6 +32,7 @@ protected_paths = [
   "CLAUDE.md",
   "QUALITY.md",
   "KEYSTONE.md",
+  "aqg",
   "quality/policy.toml",
   "quality/project.json",
   "quality/onboarding.json",

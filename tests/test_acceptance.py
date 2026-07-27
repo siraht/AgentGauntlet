@@ -45,6 +45,7 @@ def _setup_scope(history: str, expected_scope: str) -> None:
             _git(target, "commit", "-qm", "existing history")
         result = initialize_project(target, install=False, ci=False, mode="auto")
         assert result["project"]["enforcement"]["scope"] == expected_scope
+        assert (target / "aqg").is_file()
         assert (target / "quality" / "qg.py").is_file()
 
 
