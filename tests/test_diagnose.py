@@ -404,6 +404,12 @@ def test_runtime_version_drift_absent_when_generated_by_matches_or_empty(
     report = diagnose(root)
     assert "runtime-version-drift" not in _codes(report)
 
+    # Missing key must default to empty (not None/str(None)/placeholder).
+    del project["generated_by"]
+    project_path.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8")
+    report = diagnose(root)
+    assert "runtime-version-drift" not in _codes(report)
+
 
 def test_vendored_runtime_stale_and_missing_and_source_runtime(tmp_path: Path) -> None:
     root = _baseline_repo(tmp_path)
@@ -452,6 +458,23 @@ def test_vendored_runtime_stale_and_missing_and_source_runtime(tmp_path: Path) -
     assert missing["status"] == "error"
 
 
+def test_vendored_runtime_replaces_invalid_utf8_and_still_classifies(
+    tmp_path: Path,
+) -> None:
+    """Invalid bytes must not crash diagnose; replace errors keep classification."""
+    root = _baseline_repo(tmp_path)
+    constants = root / "quality" / "_aqg" / "constants.py"
+    # Invalid UTF-8 payload with the correct version marker as latin-1/bytes mix.
+    marker = f'__version__ = "{__version__}"'.encode()
+    constants.write_bytes(b"\xff\xfe" + marker + b"\n")
+    report = diagnose(root)
+    assert _first(report, "vendored-runtime")["status"] == "pass"
+
+    constants.write_bytes(b'\xff\xfe__version__ = "9.9.9"\n')
+    report = diagnose(root)
+    assert _first(report, "vendored-runtime-stale")["status"] == "warning"
+
+
 def test_project_launcher_and_command_missing_fail_closed(tmp_path: Path) -> None:
     root = _baseline_repo(tmp_path)
     (root / "quality" / "qg.py").unlink()
@@ -475,6 +498,30 @@ def test_project_launcher_and_command_missing_fail_closed(tmp_path: Path) -> Non
     assert report["counts"]["error"] >= 2
 
 
+def test_project_launcher_and_command_require_readable_files(tmp_path: Path) -> None:
+    """Presence alone is insufficient: the path must be a readable file."""
+    root = _baseline_repo(tmp_path)
+    launcher = root / "quality" / "qg.py"
+    command = root / "aqg"
+    os.chmod(launcher, 0o000)
+    os.chmod(command, 0o000)
+    try:
+        report = diagnose(root)
+    finally:
+        os.chmod(launcher, 0o644)
+        os.chmod(command, 0o755)
+    assert _first(report, "project-launcher-missing")["status"] == "error"
+    assert _first(report, "project-command-missing")["status"] == "error"
+    assert "project-launcher" not in _codes(report)
+    assert "project-command" not in _codes(report)
+
+    # Directory named ./aqg is not an executable command file.
+    command.unlink()
+    command.mkdir()
+    report = diagnose(root)
+    assert _first(report, "project-command-missing")["status"] == "error"
+
+
 def test_risk_card_invalid_emits_each_error_and_continues(tmp_path: Path) -> None:
     root = _baseline_repo(tmp_path)
     (root / "quality" / "change-risk.json").write_text("{}", encoding="utf-8")
@@ -494,10 +541,20 @@ def test_risk_card_invalid_emits_each_error_and_continues(tmp_path: Path) -> Non
     _assert_full_extras(report)
 
 
-def test_strict_tools_promotes_tool_missing_to_error(tmp_path: Path) -> None:
+def test_strict_tools_default_is_false_and_promotes_when_enabled(tmp_path: Path) -> None:
     root = _baseline_repo(tmp_path)
+    # Default argument must remain non-strict so ordinary doctor stays advisory.
+    default_report = diagnose(root)
     warning_report = diagnose(root, strict_tools=False)
     error_report = diagnose(root, strict_tools=True)
+    default_tools = {
+        item["code"]: item["status"]
+        for item in default_report["diagnostics"]
+        if item["code"].endswith("tools-missing")
+    }
+    assert default_tools
+    assert all(status == "warning" for status in default_tools.values())
+    assert default_report["counts"]["error"] == warning_report["counts"]["error"]
     warning_tools = {
         item["code"]: item["status"]
         for item in warning_report["diagnostics"]
@@ -576,68 +633,63 @@ def test_status_prefers_error_over_warning_over_pass(tmp_path: Path) -> None:
 def test_doctor_cli_json_and_human_exit_semantics(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Use --root so the process cwd stays on the AQG source tree. Mutmut's
+    # trampoline resolves source_paths against cwd; chdir into fixture repos
+    # breaks mutation campaigns without changing the public doctor contract.
     root = _baseline_repo(tmp_path)
-    previous = os.getcwd()
-    os.chdir(root)
-    try:
-        code = main(["doctor", "--json"])
-        captured = capsys.readouterr()
-        payload = json.loads(captured.out)
-        assert code == PASS
-        _assert_report_core(payload, root)
-        _assert_full_extras(payload)
-        assert payload["counts"]["error"] == 0
+    code = main(["--root", str(root), "doctor", "--json"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert code == PASS
+    _assert_report_core(payload, root)
+    _assert_full_extras(payload)
+    assert payload["counts"]["error"] == 0
 
-        code = main(["doctor"])
-        human = capsys.readouterr().out
-        assert code == PASS
-        assert human.splitlines()[0] == f"AQG doctor · {payload['status']} · {payload['root']}"
-        assert human.strip().endswith(
-            f"{payload['counts']['pass']} passed · "
-            f"{payload['counts']['warning']} warning(s) · "
-            f"{payload['counts']['error']} error(s)"
-        )
-        for item in payload["diagnostics"]:
-            symbol = {"pass": "✓", "warning": "!", "error": "✗"}[item["status"]]
-            assert f"  {symbol} {item['message']}" in human
-            if item["remediation"] and item["status"] != "pass":
-                assert f"      {item['remediation']}" in human
+    code = main(["--root", str(root), "doctor"])
+    human = capsys.readouterr().out
+    assert code == PASS
+    assert human.splitlines()[0] == f"AQG doctor · {payload['status']} · {payload['root']}"
+    assert human.strip().endswith(
+        f"{payload['counts']['pass']} passed · "
+        f"{payload['counts']['warning']} warning(s) · "
+        f"{payload['counts']['error']} error(s)"
+    )
+    for item in payload["diagnostics"]:
+        symbol = {"pass": "✓", "warning": "!", "error": "✗"}[item["status"]]
+        assert f"  {symbol} {item['message']}" in human
+        if item["remediation"] and item["status"] != "pass":
+            assert f"      {item['remediation']}" in human
 
-        (root / "aqg").unlink()
-        code = main(["doctor", "--json"])
-        failed = json.loads(capsys.readouterr().out)
-        assert code == CONFIGURATION_ERROR
-        assert failed["status"] == "error"
-        assert failed["counts"]["error"] >= 1
-        assert "project-command-missing" in {item["code"] for item in failed["diagnostics"]}
+    (root / "aqg").unlink()
+    code = main(["--root", str(root), "doctor", "--json"])
+    failed = json.loads(capsys.readouterr().out)
+    assert code == CONFIGURATION_ERROR
+    assert failed["status"] == "error"
+    assert failed["counts"]["error"] >= 1
+    assert "project-command-missing" in {item["code"] for item in failed["diagnostics"]}
 
-        code = main(["doctor", "--strict-tools", "--json"])
-        strict_payload = json.loads(capsys.readouterr().out)
-        assert code == CONFIGURATION_ERROR
-        assert strict_payload["status"] == "error"
-        assert any(
-            item["code"].endswith("tools-missing") and item["status"] == "error"
-            for item in strict_payload["diagnostics"]
-        )
-    finally:
-        os.chdir(previous)
+    code = main(["--root", str(root), "doctor", "--strict-tools", "--json"])
+    strict_payload = json.loads(capsys.readouterr().out)
+    assert code == CONFIGURATION_ERROR
+    assert strict_payload["status"] == "error"
+    assert any(
+        item["code"].endswith("tools-missing") and item["status"] == "error"
+        for item in strict_payload["diagnostics"]
+    )
 
 
 def test_doctor_cli_policy_missing_exits_configuration_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # CLI root discovery requires quality/project.json or quality/policy.toml.
-    # Keep project.json so the dispatcher reaches diagnose, which fail-closes.
+    # Keep project.json and patch discovery so the dispatcher reaches diagnose
+    # without chdir (mutmut source_path resolution depends on process cwd).
     root = tmp_path / "bare"
     (root / "quality").mkdir(parents=True)
     (root / "quality" / "project.json").write_text("{}", encoding="utf-8")
-    previous = os.getcwd()
-    os.chdir(root)
-    try:
+    with patch("aqg.cli.find_project_root", return_value=root.resolve()):
         code = main(["doctor", "--json"])
         payload = json.loads(capsys.readouterr().out)
-    finally:
-        os.chdir(previous)
     assert code == CONFIGURATION_ERROR
     assert payload["diagnostics"][0]["code"] == "policy-missing"
     assert payload["status"] == "error"
@@ -695,6 +747,45 @@ def test_risk_card_valid_message_includes_selected_profile_and_profiles(
     selected = risk["selected_risk_profile"]
     profiles = ", ".join(risk["required_execution_profiles"])
     assert item["message"] == (f"Risk card resolves to {selected} and requires {profiles}.")
+
+
+def test_risk_card_valid_message_joins_multiple_execution_profiles(
+    tmp_path: Path,
+) -> None:
+    """Join separator between required profiles is part of the public message."""
+    root = _baseline_repo(tmp_path)
+    risk_payload = {
+        "card": {},
+        "selected_risk_profile": "custom",
+        "minimum_risk_profile": "standard",
+        "required_execution_profiles": ["fast", "pr", "deep"],
+        "required_controls": {},
+        "errors": [],
+    }
+    with patch("aqg.doctor.risk_summary", return_value=([], risk_payload)):
+        report = diagnose(root)
+    item = _first(report, "risk-card-valid")
+    assert item["message"] == ("Risk card resolves to custom and requires fast, pr, deep.")
+
+
+def test_onboarding_approvals_use_selected_risk_profile(tmp_path: Path) -> None:
+    """Approval diagnostics must follow the risk card profile, not a hard-coded default."""
+    root = _baseline_repo(tmp_path)
+    card_path = root / "quality" / "change-risk.json"
+    card = json.loads(card_path.read_text(encoding="utf-8"))
+    card["risk_profile"] = "high_assurance"
+    card_path.write_text(json.dumps(card, indent=2) + "\n", encoding="utf-8")
+    report = diagnose(root)
+    assert report["risk"]["selected_risk_profile"] == "high_assurance"
+    risk_item = _first(report, "risk-card-valid")
+    assert "high_assurance" in risk_item["message"]
+    # high_assurance requires three approvals; standard requires one. Passing risk=None
+    # into onboarding would fall back to standard and under-count pending conditions.
+    pending = _first(report, "approvals-pending")
+    assert pending["status"] == "warning"
+    assert pending["message"] == ("3 required human approval condition(s) are not yet current.")
+    assert isinstance(pending["detail"], list)
+    assert len(pending["detail"]) == 3
 
 
 def test_module_entrypoint_path_resolution_uses_resolved_root(tmp_path: Path) -> None:
