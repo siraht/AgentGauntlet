@@ -437,6 +437,89 @@ def _findings_quality_suppressions(
     ]
 
 
+def _js_empty_catch_locations(added: list[tuple[str, int, str]]) -> list[str]:
+    locations: list[str] = []
+    for path, line_no, line in added:
+        if _is_production_path(path) and re.search(
+            r"(?i)\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}", line
+        ):
+            locations.append(f"{path}:{line_no}")
+    return locations
+
+
+def _python_swallowed_except_locations(added: list[tuple[str, int, str]]) -> list[str]:
+    by_path: dict[str, list[tuple[int, str]]] = {}
+    for path, line_no, line in added:
+        by_path.setdefault(path, []).append((line_no, line))
+    locations: list[str] = []
+    for path, lines in by_path.items():
+        if not path.endswith((".py", ".pyi")) or not _is_production_path(path):
+            continue
+        ordered = sorted(lines)
+        for index, (line_no, line) in enumerate(ordered):
+            if not re.search(
+                r"^\s*except\s+(?:BaseException|Exception)(?:\s+as\s+\w+)?\s*:\s*$", line
+            ):
+                continue
+            following = "\n".join(value for _, value in ordered[index + 1 : index + 4])
+            if re.search(r"(?m)^\s*(?:pass|return\s+None)\s*(?:#.*)?$", following):
+                locations.append(f"{path}:{line_no}")
+    return locations
+
+
+def _findings_swallowed_exceptions(added: list[tuple[str, int, str]]) -> list[dict[str, Any]]:
+    swallowed = _js_empty_catch_locations(added) + _python_swallowed_except_locations(added)
+    if not swallowed:
+        return []
+    return [
+        _finding(
+            "swallowed-broad-exception",
+            "blocker",
+            "A broad exception is swallowed",
+            "Catching a broad failure and continuing without a typed recovery, observable error, or preserved cause can convert corruption and infrastructure faults into apparent success.",
+            swallowed,
+            "Catch the narrow failure you can recover from, preserve or re-raise unexpected failures, and add a test that proves both the intended recovery and the non-recoverable path.",
+        )
+    ]
+
+
+_DEBT_PATTERN = re.compile(r"(?i)\b(?:TODO|FIXME|HACK|XXX)\b")
+
+
+def _debt_marker_locations(root: Path, added: list[tuple[str, int, str]]) -> list[str]:
+    debt_markers: list[str] = []
+    for path, line_no, line in added:
+        if not _is_production_path(path):
+            continue
+        match = _DEBT_PATTERN.search(line)
+        if match is None:
+            continue
+        if Path(path).suffix.lower() in {".py", ".pyi"} and not _match_is_inside_python_comment(
+            root, path, line_no, match.start()
+        ):
+            continue
+        debt_markers.append(f"{path}:{line_no}")
+    return sorted(set(debt_markers))
+
+
+def _findings_debt_markers(
+    root: Path, added: list[tuple[str, int, str]]
+) -> list[dict[str, Any]]:
+    debt_markers = _debt_marker_locations(root, added)
+    if not debt_markers:
+        return []
+    return [
+        _finding(
+            "new-production-debt-marker",
+            "warning",
+            "New unresolved implementation debt was added",
+            "A TODO, FIXME, HACK, or XXX marker in changed production code often represents an unstated requirement, deferred safety condition, or temporary branch that future agents will treat as normal behavior.",
+            debt_markers,
+            "Resolve it now or link a concrete tracked decision with an owner, bounded impact, and removal condition; do not use a comment as a substitute for a failing test or TODO feature specification.",
+        )
+    ]
+
+
 def analyze_review(
     root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
 ) -> dict[str, Any]:
@@ -456,61 +539,8 @@ def analyze_review(
 
     # Review heuristics are intentionally conservative: they surface likely weak points but
     # do not claim semantic proof where a parser, runtime, or domain oracle is required.
-    swallowed: list[str] = []
-    by_path: dict[str, list[tuple[int, str]]] = {}
-    for path, line_no, line in added:
-        by_path.setdefault(path, []).append((line_no, line))
-        if _is_production_path(path) and re.search(r"(?i)\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}", line):
-            swallowed.append(f"{path}:{line_no}")
-    for path, lines in by_path.items():
-        if not path.endswith((".py", ".pyi")) or not _is_production_path(path):
-            continue
-        ordered = sorted(lines)
-        for index, (line_no, line) in enumerate(ordered):
-            if not re.search(
-                r"^\s*except\s+(?:BaseException|Exception)(?:\s+as\s+\w+)?\s*:\s*$", line
-            ):
-                continue
-            following = "\n".join(value for _, value in ordered[index + 1 : index + 4])
-            if re.search(r"(?m)^\s*(?:pass|return\s+None)\s*(?:#.*)?$", following):
-                swallowed.append(f"{path}:{line_no}")
-    if swallowed:
-        findings.append(
-            _finding(
-                "swallowed-broad-exception",
-                "blocker",
-                "A broad exception is swallowed",
-                "Catching a broad failure and continuing without a typed recovery, observable error, or preserved cause can convert corruption and infrastructure faults into apparent success.",
-                swallowed,
-                "Catch the narrow failure you can recover from, preserve or re-raise unexpected failures, and add a test that proves both the intended recovery and the non-recoverable path.",
-            )
-        )
-
-    debt_pattern = re.compile(r"(?i)\b(?:TODO|FIXME|HACK|XXX)\b")
-    debt_markers: list[str] = []
-    for path, line_no, line in added:
-        if not _is_production_path(path):
-            continue
-        match = debt_pattern.search(line)
-        if match is None:
-            continue
-        if Path(path).suffix.lower() in {".py", ".pyi"} and not _match_is_inside_python_comment(
-            root, path, line_no, match.start()
-        ):
-            continue
-        debt_markers.append(f"{path}:{line_no}")
-    debt_markers = sorted(set(debt_markers))
-    if debt_markers:
-        findings.append(
-            _finding(
-                "new-production-debt-marker",
-                "warning",
-                "New unresolved implementation debt was added",
-                "A TODO, FIXME, HACK, or XXX marker in changed production code often represents an unstated requirement, deferred safety condition, or temporary branch that future agents will treat as normal behavior.",
-                debt_markers,
-                "Resolve it now or link a concrete tracked decision with an owner, bounded impact, and removal condition; do not use a comment as a substitute for a failing test or TODO feature specification.",
-            )
-        )
+    findings.extend(_findings_swallowed_exceptions(added))
+    findings.extend(_findings_debt_markers(root, added))
 
     network_test_patterns = re.compile(
         r"\b(?:fetch|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch)|urllib\.request\.urlopen)\s*\(",
