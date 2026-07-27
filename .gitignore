@@ -1,6 +1,7 @@
 # Recovered input and local agent/browser artifacts
 /AgentGauntlet-recovered-source.tar.gz
 /.playwright-mcp/
+/.run/
 
 # Python
 __pycache__/
