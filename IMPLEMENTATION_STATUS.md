@@ -45,7 +45,7 @@ The following items named in the referenced conversation were absent or incomple
 - Nonzero mutation execution or result-export commands are infrastructure failures;
   comment-only production diffs complete without creating a mutation sandbox.
 - PEP 561 typed-package metadata.
-- 125 Python test cases plus 89 recorded subtests, one JavaScript dashboard contract test,
+- 292 Python test cases plus 89 recorded subtests, one JavaScript dashboard contract test,
   and internal, installed-tool, disposable-project, browser, and control-surface
   conformance fixtures.
 
@@ -67,7 +67,7 @@ The following items named in the referenced conversation were absent or incomple
 - Real CLI setup, review artifacts, PTY TUI, and authenticated loopback-dashboard flows.
 - Playwright Chromium installation on the current Linux image.
 - Lighthouse execution against the bundled dashboard (performance `1.00`, accessibility `0.95`).
-- High-severity npm and Python dependency audits.
+- Complete npm and Python dependency audits with no known vulnerability at any severity.
 
 ## Still environment-dependent
 
@@ -94,11 +94,15 @@ AQG includes conformance commands for installed tools, but an organization shoul
 ## Recovered-code debt
 
 The implementation does not yet earn its own High-assurance “reduced code review” mode.
-Fresh whole-tree evidence reports 58.26% Python statement coverage, 45.44% branch
-coverage, and 42 functions over the Standard cyclomatic-complexity cap. This is a material
-improvement over the recovered baseline near 35%, but remains below the 85% line and
-75% branch targets. The largest remaining hotspots are automated diff review, onboarding
-generation, toolchain installation, Gherkin parsing, approvals, and doctor diagnostics.
+Fresh whole-tree evidence reports 62.66% Python statement coverage, 50.44% branch
+coverage, and 50 functions over the Standard cyclomatic-complexity cap. The higher blocker
+count reflects a broader honest measurement surface that now includes production scripts,
+while the coverage increase is a material improvement over the recovered baseline near
+35%, but remains below the 85% line and
+75% branch targets. The parser, doctor, and automated-review entry points have been
+decomposed behind characterization tests. The largest remaining hotspots are onboarding
+generation, toolchain installation, approvals, report rendering, hooks, and TUI control
+flow.
 
 The most recent complete local changed-file campaign executed 10,377 generated mutants:
 5,672 were killed, 4,594 survived, 107 had no tests, four controlled mutants timed out,
@@ -116,4 +120,14 @@ instead of consuming the outer two-hour gate and losing its adapter report. Acce
 campaigns reserve 6,300 seconds for mutation, 300 seconds for result export, 300 seconds
 for orchestration, and a further 300-second safety margin.
 
-AQG is therefore published in `adopt`/ratchet mode. New changes must not add debt, while the existing hotspots need focused characterization tests and incremental extraction before switching this repository to full strict enforcement. This limitation affects confidence in AQG’s implementation, not the availability of the CLI, installer, evidence model, dashboard, or supported adapters.
+Focused mutation campaigns completed 474 parser mutants with 467 killed and seven
+demonstrably equivalent, 535 doctor mutants with 530 killed and five demonstrably
+equivalent, and 1,175 review mutants with 1,091 killed and 84 retained as explicit
+survivor debt. All three campaigns completed without unchecked work. The review result is
+92.85%, but the 84 survivors are neither waived nor relabeled as equivalent.
+
+AQG is therefore published in `adopt`/ratchet mode. New changes must not add debt, while
+the existing hotspots need focused characterization tests and incremental extraction
+before switching this repository to full strict enforcement. This limitation affects
+confidence in AQG’s implementation, not the availability of the CLI, installer, evidence
+model, dashboard, or supported adapters.
