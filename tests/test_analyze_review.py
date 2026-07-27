@@ -1046,6 +1046,20 @@ def test_production_assert_deletion_is_not_test_expectation_deleted(tmp_path: Pa
     assert "test-expectation-deleted" not in _by_code(packet)
 
 
+def test_moved_test_expectation_is_not_reported_as_deleted(tmp_path: Path) -> None:
+    """An identical test moved between test modules preserves its oracle."""
+    root = _baseline_repo(tmp_path)
+    original = root / "tests" / "test_app.py"
+    moved = root / "tests" / "test_calculation.py"
+    content = original.read_text(encoding="utf-8")
+    original.unlink()
+    moved.write_text(content, encoding="utf-8")
+
+    packet = _packet(root)
+
+    assert "test-expectation-deleted" not in _by_code(packet)
+
+
 def test_module_level_test_def_deletion_is_expectation_deleted(tmp_path: Path) -> None:
     """Deleting a bare module-level test def (no assert body) is still a deleted expectation."""
     root = _baseline_repo(tmp_path)
