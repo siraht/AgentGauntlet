@@ -2,10 +2,16 @@
   "detected": {
     "build_command": null,
     "css": true,
-    "css_paths": ["src"],
-    "frameworks": ["pytest"],
+    "css_paths": [
+      "src"
+    ],
+    "frameworks": [
+      "pytest"
+    ],
     "html": true,
-    "html_paths": ["src"],
+    "html_paths": [
+      "src"
+    ],
     "javascript": true,
     "js_test_runner": null,
     "name": "AgentGauntlet",
@@ -17,17 +23,39 @@
     "python": true,
     "python_manager": "uv",
     "python_test_runner": "pytest",
-    "source_paths": ["scripts", "src"],
+    "source_paths": [
+      "agent_ergonomics_audit",
+      "scripts",
+      "src"
+    ],
     "start_command": null,
     "test_files": [
+      "agent_ergonomics_audit/audit/regression_tests/test_R_001_json_errors.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_002_capabilities.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_003_help_discovery.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_004_typo_suggestions.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_005_conventional_verbs.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_006_robot_docs.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_007_triage.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_008_help_order.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_009_cold_start.py",
+      "agent_ergonomics_audit/audit/regression_tests/test_R_010_rootless_guidance.py",
       "quality/tests/test_qg.py",
       "src/aqg/templates/js/aqg-smoke.spec.mjs",
       "tests/js/dashboard.test.js",
       "tests/test_acceptance.py",
+      "tests/test_cli.py",
+      "tests/test_control_guards.py",
       "tests/test_core.py",
+      "tests/test_governance.py",
       "tests/test_project_matrix.py"
     ],
-    "test_paths": ["quality", "src", "tests"],
+    "test_paths": [
+      "agent_ergonomics_audit",
+      "quality",
+      "src",
+      "tests"
+    ],
     "typescript": false
   },
   "gaps": [
@@ -44,7 +72,7 @@
       "severity": "info"
     }
   ],
-  "generated_at": "2026-07-25T01:11:18+00:00",
+  "generated_at": "2026-07-27T04:20:14+00:00",
   "generated_by": "agent-quality-gauntlet/2.0.0",
   "mode": "adopt",
   "next_action": {
@@ -122,7 +150,9 @@
   ],
   "state": {
     "acceptance_present": true,
-    "active_specs": ["feature-spec/AgentQualityGauntlet.md"],
+    "active_specs": [
+      "feature-spec/AgentQualityGauntlet.md"
+    ],
     "agent_integrations": true,
     "ci_present": true,
     "codeowners_placeholder": false,
@@ -134,8 +164,15 @@
       "python": true,
       "typescript": false
     },
-    "detected_test_paths": ["quality", "src", "tests"],
-    "gherkin_features": ["features/AgentQualityGauntlet.Setup.feature"],
+    "detected_test_paths": [
+      "agent_ergonomics_audit",
+      "quality",
+      "src",
+      "tests"
+    ],
+    "gherkin_features": [
+      "features/AgentQualityGauntlet.Setup.feature"
+    ],
     "golden_configured": false,
     "js_lock": true,
     "keystone_placeholder": false,
@@ -152,9 +189,11 @@
       "python": true,
       "typescript": false
     },
-    "todo_specs": ["feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"]
+    "todo_specs": [
+      "feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"
+    ]
   },
-  "state_fingerprint": "de0fd2fa6d4a21c42596e2f13f8f833e562acaea1160f6a0d96e592dd27a1982",
+  "state_fingerprint": "db48b8b1ea315db94907e4d2177b46864a03f83a44c2f88d76070f6c062ce3b4",
   "summary": {
     "blockers": 0,
     "info": 2,
