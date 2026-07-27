@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
 import re
 import shutil
@@ -74,6 +75,14 @@ from aqg.util import (
     read_json,
     write_json,
 )
+
+_RELEASE_SPEC = importlib.util.spec_from_file_location(
+    "aqg_build_release",
+    Path(__file__).resolve().parents[1] / "scripts" / "build_release.py",
+)
+assert _RELEASE_SPEC and _RELEASE_SPEC.loader
+_RELEASE_MODULE = importlib.util.module_from_spec(_RELEASE_SPEC)
+_RELEASE_SPEC.loader.exec_module(_RELEASE_MODULE)
 
 
 def git(root: Path, *args: str) -> str:
@@ -1711,6 +1720,14 @@ class SetupContractTests(RepoCase):
             members = archive.namelist()
         self.assertIn("aqg/py.typed", members)
         self.assertFalse(any(".ruff_cache" in member for member in members))
+
+    def test_release_source_discovery_works_beneath_a_hidden_parent(self) -> None:
+        package = _RELEASE_MODULE.ROOT / "src" / "aqg"
+        relative = {
+            path.relative_to(package).as_posix() for path in _RELEASE_MODULE._package_source_files()
+        }
+        self.assertIn("py.typed", relative)
+        self.assertFalse(any(part.startswith(".") for item in relative for part in item.split("/")))
 
 
 if __name__ == "__main__":
