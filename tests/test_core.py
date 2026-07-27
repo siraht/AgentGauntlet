@@ -1587,6 +1587,102 @@ class SetupContractTests(RepoCase):
         with zipfile.ZipFile(output / "aqg.pyz") as archive:
             self.assertIn("aqg/py.typed", archive.namelist())
 
+    @pytest.mark.mutation_incompatible
+    def test_release_excludes_ignored_caches_and_canonicalizes_remote_urls(self) -> None:
+        """Ignored caches and equivalent GitHub remote spellings must not change release bytes."""
+        source_root = Path(__file__).resolve().parents[1]
+        output_a = self.root / "release-a"
+        output_b = self.root / "release-b"
+        cache_dir = source_root / "src" / "aqg" / "templates" / "python" / ".ruff_cache"
+        cache_root_existed = cache_dir.exists()
+        cache_files = [cache_dir / "aqg-release-repro-test" / "content.db"]
+        original_remote = ""
+        remote_probe = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=source_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if remote_probe.returncode == 0:
+            original_remote = remote_probe.stdout.strip()
+
+        try:
+            for path in cache_files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"ignored-cache-bytes-must-not-enter-payload\n")
+
+            git(
+                source_root,
+                "config",
+                "remote.origin.url",
+                "https://github.com/siraht/AgentGauntlet.git",
+            )
+            build_a = build_release(source_root, output_a)
+            self.assertEqual(build_a.returncode, 0, build_a.stderr)
+
+            git(
+                source_root,
+                "config",
+                "remote.origin.url",
+                "https://github.com/siraht/AgentGauntlet",
+            )
+            build_b = build_release(source_root, output_b)
+            self.assertEqual(build_b.returncode, 0, build_b.stderr)
+
+            names_a = sorted(path.name for path in output_a.iterdir() if path.is_file())
+            names_b = sorted(path.name for path in output_b.iterdir() if path.is_file())
+            self.assertEqual(names_a, names_b)
+            for name in names_a:
+                self.assertEqual(
+                    (output_a / name).read_bytes(),
+                    (output_b / name).read_bytes(),
+                    msg=f"artifact bytes diverged for {name}",
+                )
+
+            with zipfile.ZipFile(output_a / "aqg.pyz") as archive:
+                members = archive.namelist()
+            self.assertIn("aqg/py.typed", members)
+            self.assertFalse(
+                any(".ruff_cache" in member or member.endswith(".pyc") for member in members)
+            )
+            self.assertEqual(len(members), len(set(members)))
+
+            provenance = read_json(output_a / "provenance.intoto.json")
+            dependencies = provenance["predicate"]["buildDefinition"]["resolvedDependencies"]
+            repository_uris = {
+                item["uri"]
+                for item in dependencies
+                if "digest" in item and "gitCommit" in item.get("digest", {})
+            }
+            self.assertEqual(repository_uris, {"https://github.com/siraht/AgentGauntlet"})
+            material_uris = [item.get("uri", "") for item in dependencies if item.get("name")]
+            self.assertTrue(material_uris)
+            self.assertTrue(
+                all(
+                    not uri.startswith("https://github.com/siraht/AgentGauntlet.git")
+                    for uri in material_uris
+                )
+            )
+            material_names = {item.get("name") for item in dependencies}
+            self.assertNotIn("src/aqg/templates/python/.ruff_cache/CACHEDIR.TAG", material_names)
+        finally:
+            for path in cache_files:
+                path.unlink(missing_ok=True)
+                if path.parent.exists():
+                    path.parent.rmdir()
+            if not cache_root_existed and cache_dir.exists():
+                cache_dir.rmdir()
+            if original_remote:
+                git(source_root, "config", "remote.origin.url", original_remote)
+            else:
+                subprocess.run(
+                    ["git", "config", "--unset", "remote.origin.url"],
+                    cwd=source_root,
+                    check=False,
+                    capture_output=True,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

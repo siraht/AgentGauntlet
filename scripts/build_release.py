@@ -62,6 +62,60 @@ def _git(*arguments: str) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def _canonical_source_uri(url: str) -> str:
+    """Normalize equivalent Git remote spellings used in provenance."""
+    uri = url.strip()
+    if not uri:
+        return uri
+
+    ssh_match = re.match(r"^git@([^:]+):(.+)$", uri)
+    if ssh_match:
+        host, path = ssh_match.group(1), ssh_match.group(2)
+        path = path.rstrip("/").removesuffix(".git")
+        if host.lower() == "github.com":
+            return f"https://github.com/{path}"
+        return f"git@{host}:{path}"
+
+    https_match = re.match(r"^(https?://)([^/]+)/(.+)$", uri)
+    if https_match:
+        scheme, host, path = https_match.group(1), https_match.group(2), https_match.group(3)
+        path = path.rstrip("/").removesuffix(".git")
+        if host.lower() == "github.com":
+            return f"https://github.com/{path}"
+        return f"{scheme}{host}/{path}"
+
+    return uri.rstrip("/").removesuffix(".git")
+
+
+def _tracked_files(*pathspecs: str) -> list[Path]:
+    """Return tracked files under pathspecs; fail closed if Git cannot list them."""
+    completed = subprocess.run(
+        ["git", "-c", "core.quotepath=false", "ls-files", "-z", "--", *pathspecs],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip() or "git ls-files failed"
+        raise SystemExit(f"Cannot list tracked release sources: {detail}")
+    paths: list[Path] = []
+    for raw in completed.stdout.split(b"\0"):
+        if not raw:
+            continue
+        path = ROOT / raw.decode("utf-8")
+        if path.is_file():
+            paths.append(path)
+    return sorted(paths, key=lambda item: item.relative_to(ROOT).as_posix())
+
+
+def _package_source_files() -> list[Path]:
+    """Git-tracked package files only — ignored and untracked caches never enter payloads."""
+    files = _tracked_files("src/aqg")
+    if not files:
+        raise SystemExit("No tracked files under src/aqg; refusing to build release payload")
+    return files
+
+
 def _source_timestamp() -> str:
     raw = os.environ.get("SOURCE_DATE_EPOCH") or _git("show", "-s", "--format=%ct", "HEAD") or "0"
     timestamp = dt.datetime.fromtimestamp(int(raw), tz=dt.UTC)
@@ -79,7 +133,7 @@ def _source_materials() -> list[dict[str, Any]]:
         ROOT / "quality" / "tools" / "js" / "package.json",
         ROOT / "quality" / "tools" / "js" / "package-lock.json",
         ROOT / "quality" / "tools" / "python" / "requirements.lock.txt",
-        *sorted((ROOT / "src" / "aqg").rglob("*")),
+        *_package_source_files(),
     ]
     return [
         {
@@ -87,7 +141,7 @@ def _source_materials() -> list[dict[str, Any]]:
             "sha256": _sha256(path),
         }
         for path in paths
-        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+        if path.is_file()
     ]
 
 
@@ -134,12 +188,10 @@ def _write_sboms(output: Path) -> list[Path]:
 def _write_zipapp(target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"#!/usr/bin/env python3\n")
+    package = ROOT / "src" / "aqg"
     with zipfile.ZipFile(target, "a", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         archive.writestr(_info("__main__.py"), MAIN)
-        package = ROOT / "src" / "aqg"
-        for path in sorted(package.rglob("*")):
-            if not path.is_file() or "__pycache__" in path.parts or path.suffix == ".pyc":
-                continue
+        for path in _package_source_files():
             name = (Path("aqg") / path.relative_to(package)).as_posix()
             archive.writestr(_info(name), path.read_bytes())
     target.chmod(0o755)
@@ -171,7 +223,7 @@ def _provenance_subject(path: Path) -> dict[str, Any]:
 
 def _write_provenance(output: Path, subjects: list[Path], version: str) -> Path:
     path = output / "provenance.intoto.json"
-    source_uri = _git("config", "--get", "remote.origin.url")
+    source_uri = _canonical_source_uri(_git("config", "--get", "remote.origin.url"))
     revision = os.environ.get("AQG_SOURCE_REVISION") or _git("rev-parse", "HEAD")
     repository = source_uri or "local:AgentGauntlet"
     materials = [
