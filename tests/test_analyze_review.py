@@ -1094,3 +1094,292 @@ def test_module_level_test_def_deletion_is_expectation_deleted(tmp_path: Path) -
     _assert_public_copy(deleted, "test-expectation-deleted")
     assert deleted["paths"] == ["tests/test_app.py"]
     assert deleted["severity"] == "blocker"
+
+
+def test_weak_oracle_ignores_production_asserts(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int:\n"
+        "    result = value + 1\n"
+        "    assert result\n"
+        "    return result\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    assert "weak-test-oracle" not in _by_code(packet)
+
+
+def test_proto_public_contract_without_contract_test(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "service.proto").write_text(
+        'syntax = "proto3";\nmessage Ping { string id = 1; }\n',
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    contract = _by_code(packet)["public-contract-without-contract-test"]
+    _assert_public_copy(contract, "public-contract-without-contract-test")
+    assert contract["paths"] == ["src/service.proto"]
+    assert contract["automated"] is False
+
+
+def test_requirements_txt_is_dependency_surface(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "requirements.txt").write_text("requests==2.32.0\n", encoding="utf-8")
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    dep = _by_code(packet)["dependency-change"]
+    _assert_public_copy(dep, "dependency-change")
+    assert dep["paths"] == ["requirements.txt"]
+    assert dep["severity"] == "review"
+
+
+def test_swallowed_exception_in_tests_is_not_production_finding(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    try:\n"
+        "        assert calculate(1) == 2\n"
+        "    except Exception:\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    assert "swallowed-broad-exception" not in _by_code(packet)
+
+
+def test_production_with_tests_skips_production_without_tests_finding(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int:\n    return value + 2\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 3\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    assert "production-without-tests" not in _by_code(packet)
+    assert packet["summary"]["production"] >= 1
+    assert packet["summary"]["tests"] >= 1
+
+
+def test_invalid_risk_card_detail_preserves_exception_text(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "quality" / "change-risk.json").write_text("{not-json", encoding="utf-8")
+    packet = _packet(root)
+    invalid = _by_code(packet)["invalid-risk-card"]
+    assert invalid["detail"] != "None"
+    assert invalid["detail"].strip() != "None"
+    # Something from the parse/validation path must remain observable.
+    assert len(invalid["detail"]) > 4
+
+
+def test_lifecycle_script_only_from_package_json(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "other.json").write_text(
+        json.dumps({"scripts": {"postinstall": "echo no"}}),
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    assert "dependency-lifecycle-script-change" not in _by_code(packet)
+
+
+def test_graphql_and_gql_suffixes_are_public_contracts(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    # Avoid api/route/schema path tokens so only the suffix branch classifies these.
+    (root / "src" / "types.graphql").write_text("type Query { ok: Boolean }\n", encoding="utf-8")
+    (root / "src" / "extra.gql").write_text("type Mutation { ok: Boolean }\n", encoding="utf-8")
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    contract = _by_code(packet)["public-contract-without-contract-test"]
+    _assert_public_copy(contract, "public-contract-without-contract-test")
+    assert contract["paths"] == ["src/extra.gql", "src/types.graphql"]
+
+
+def test_debt_marker_after_string_todo_still_reported(tmp_path: Path) -> None:
+    """A non-comment TODO must not abort scanning later genuine comment debt."""
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "app.py").write_text(
+        'NOTE = "TODO in a string must not count"\n'
+        "def calculate(value: int) -> int:\n"
+        "    return value + 1  # FIXME: real debt\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    debt = _by_code(packet)["new-production-debt-marker"]
+    _assert_public_copy(debt, "new-production-debt-marker")
+    assert debt["paths"] == ["src/app.py:3"]
+
+
+def test_return_none_swallow_is_flagged(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int | None:\n"
+        "    try:\n"
+        "        return value + 1\n"
+        "    except Exception:\n"
+        "        return None\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    swallowed = _by_code(packet)["swallowed-broad-exception"]
+    _assert_public_copy(swallowed, "swallowed-broad-exception")
+    assert swallowed["paths"] == ["src/app.py:4"]
+
+
+def test_current_passing_run_clears_missing_profile_evidence(tmp_path: Path) -> None:
+    """Fingerprint-matched current passes populate the evidence matrix and drop missing-current blockers."""
+    from aqg.util import change_fingerprint, control_fingerprint, git_revision
+
+    root = _baseline_repo(tmp_path)
+    policy = load_policy(root)
+    # Probe required profiles with a dry review, then plant a matching pass run.
+    probe = analyze_review(root, policy, base="HEAD", require_evidence=True)
+    required = list((probe.get("risk") or {}).get("required_execution_profiles") or [])
+    assert required
+    profile = required[0]
+    revision = git_revision(root)
+    change_fp = change_fingerprint(root, "HEAD")
+    control_fp = control_fingerprint(root)
+    run_id = "synthetic-current-pass"
+    run_dir = root / ".aqg" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "2",
+                "run_id": run_id,
+                "profile": profile,
+                "status": "pass",
+                "exit_code": 0,
+                "revision": revision,
+                "change_fingerprint": change_fp,
+                "control_fingerprint": control_fp,
+                "gates": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    packet = analyze_review(root, policy, base="HEAD", require_evidence=True)
+    assert packet["evidence"] == [{"profile": profile, "status": "current_pass", "run_id": run_id}]
+    assert f"missing-current-{profile}-evidence" not in _by_code(packet)
+    assert packet["summary"]["evidence_status"] == "current"
+    # Approval is still required and independent of synthetic gate evidence.
+    assert packet["summary"]["approval_status"] == "missing_or_stale"
+    assert "missing-or-stale-human-approval" in _by_code(packet)
+
+
+def test_mixed_diff_pins_public_copy_for_every_known_finding(tmp_path: Path) -> None:
+    """Render-facing detail/action text stays exact even when many findings co-occur."""
+    root = _baseline_repo(tmp_path)
+    (root / "QUALITY.md").write_text(
+        (root / "QUALITY.md").read_text(encoding="utf-8") + "\n# tweak\n",
+        encoding="utf-8",
+    )
+    (root / "feature-spec" / "Product.Calculation.md").write_text(
+        "# Product.Calculation\n\n## Requirements\n\n- The product MUST calculate carefully.\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int:\n"
+        "    try:\n"
+        "        return value + 1\n"
+        "    except Exception:\n"
+        "        pass  # TODO: temporary swallow\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "routes").mkdir(parents=True)
+    (root / "src" / "routes" / "api.py").write_text(
+        "def handler() -> dict[str, bool]:\n    return {'ok': True}\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "import pytest\n"
+        "@pytest.mark.skip\n"
+        "def test_calculate() -> None:\n"
+        "    value = object()\n"
+        "    assert value\n",
+        encoding="utf-8",
+    )
+    (root / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "sample",
+                "version": "1.0.1",
+                "scripts": {"postinstall": "echo hi"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    snap = root / "tests" / "__snapshots__"
+    snap.mkdir(parents=True)
+    (snap / "x.snap").write_text("old\n", encoding="utf-8")
+
+    packet = _packet(root)
+    by_code = _by_code(packet)
+    for code, finding in by_code.items():
+        if code in DETAILS or code in ACTIONS:
+            _assert_public_copy(finding, code)
+    # Markdown and HTML still carry the exact public copy.
+    markdown = _markdown(packet)
+    html = _html(packet)
+    for code in (
+        "policy-plane-change",
+        "human-review-plane-change",
+        "focused-or-skipped-test",
+        "swallowed-broad-exception",
+        "public-contract-without-contract-test",
+        "dependency-change",
+        "expected-output-change",
+        "weak-test-oracle",
+        "new-production-debt-marker",
+    ):
+        finding = by_code[code]
+        assert finding["detail"] in markdown
+        assert finding["action"] in markdown
+        assert finding["title"] in html
