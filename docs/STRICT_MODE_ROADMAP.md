@@ -1,19 +1,19 @@
 # Strict-mode readiness
 
-Revision: `8d20228c72e984fa0f5c3bee6f63f5fddf1e1500` · mode: **adopt** · strict ready: **no**
+Revision: `c2e9de0e8eb0949854e65e767862e80fd7a8392e` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 105
-- Line coverage: 57.07% (gap 27.93 points)
-- Branch coverage: 44.29% (gap 30.71 points)
+- Tests: 106
+- Line coverage: 56.76% (gap 28.24 points)
+- Branch coverage: 43.95% (gap 31.05 points)
 - Functions above complexity cap: 51
 
 ## Lowest coverage modules
 
 | Module                                |  Lines | Branches | Missing statements |
 | ------------------------------------- | -----: | -------: | -----------------: |
-| `scripts/build_release.py`            |  0.00% |    0.00% |                117 |
+| `scripts/build_release.py`            |  0.00% |    0.00% |                152 |
 | `scripts/dogfood_control_surfaces.py` |  0.00% |    0.00% |                171 |
 | `scripts/measure_strict_readiness.py` |  0.00% |    0.00% |                 59 |
 | `src/aqg/__main__.py`                 |  0.00% |  100.00% |                  2 |

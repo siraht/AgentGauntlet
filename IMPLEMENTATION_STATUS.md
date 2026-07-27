@@ -87,7 +87,7 @@ AQG includes conformance commands for installed tools, but an organization shoul
 ## Recovered-code debt
 
 The implementation does not yet earn its own High-assurance “reduced code review” mode.
-Fresh whole-tree evidence reports 57.07% Python statement coverage, 44.29% branch
+Fresh whole-tree evidence reports 56.76% Python statement coverage, 43.95% branch
 coverage, and 51 functions over the Standard cyclomatic-complexity cap. This is a material
 improvement over the recovered baseline near 35%, but remains below the 85% line and
 75% branch targets. The largest remaining hotspots are automated diff review, onboarding

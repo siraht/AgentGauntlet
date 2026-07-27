@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 30.71,
+    "branch_coverage_points": 31.05,
     "functions_over_complexity_cap": 51,
-    "line_coverage_points": 27.93
+    "line_coverage_points": 28.24
   },
   "coverage": {
-    "branch_percent": 44.29,
-    "branches": 2380,
+    "branch_percent": 43.95,
+    "branches": 2398,
     "covered_branches": 1054,
     "covered_statements": 3678,
-    "line_percent": 57.07,
-    "statements": 6445
+    "line_percent": 56.76,
+    "statements": 6480
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-27T04:45:24+00:00",
+  "generated_at": "2026-07-27T05:11:19+00:00",
   "highest_complexity_functions": [
     {
       "complexity": 101,
@@ -160,7 +160,7 @@
     {
       "branch_percent": 0.0,
       "line_percent": 0.0,
-      "missing_statements": 117,
+      "missing_statements": 152,
       "path": "scripts/build_release.py"
     },
     {
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "8d20228c72e984fa0f5c3bee6f63f5fddf1e1500",
+  "revision": "c2e9de0e8eb0949854e65e767862e80fd7a8392e",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 105
+  "test_count": 106
 }
