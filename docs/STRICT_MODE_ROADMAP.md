@@ -1,19 +1,18 @@
 # Strict-mode readiness
 
-Revision: `c2e9de0e8eb0949854e65e767862e80fd7a8392e` · mode: **adopt** · strict ready: **no**
+Revision: `5284ee18e09f2c16def9d0562aa63a3d96243634` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
-- Tests: 106
-- Line coverage: 56.76% (gap 28.24 points)
-- Branch coverage: 43.95% (gap 31.05 points)
+- Tests: 108
+- Line coverage: 57.51% (gap 27.49 points)
+- Branch coverage: 44.26% (gap 30.74 points)
 - Functions above complexity cap: 51
 
 ## Lowest coverage modules
 
 | Module                                |  Lines | Branches | Missing statements |
 | ------------------------------------- | -----: | -------: | -----------------: |
-| `scripts/build_release.py`            |  0.00% |    0.00% |                152 |
 | `scripts/dogfood_control_surfaces.py` |  0.00% |    0.00% |                171 |
 | `scripts/measure_strict_readiness.py` |  0.00% |    0.00% |                 59 |
 | `src/aqg/__main__.py`                 |  0.00% |  100.00% |                  2 |
@@ -23,6 +22,7 @@ Revision: `c2e9de0e8eb0949854e65e767862e80fd7a8392e` · mode: **adopt** · stric
 | `src/aqg/authoring.py`                | 25.64% |    0.00% |                 29 |
 | `src/aqg/reporting.py`                | 27.12% |    4.17% |                 43 |
 | `scripts/project_matrix.py`           | 27.91% |    8.33% |                124 |
+| `scripts/build_release.py`            | 33.94% |   23.81% |                109 |
 | `src/aqg/adapters.py`                 | 40.74% |   26.47% |                637 |
 | `src/aqg/runner.py`                   | 46.32% |   17.39% |                 73 |
 

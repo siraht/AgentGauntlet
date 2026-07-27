@@ -1,19 +1,19 @@
 {
   "blockers": {
-    "branch_coverage_points": 31.05,
+    "branch_coverage_points": 30.74,
     "functions_over_complexity_cap": 51,
-    "line_coverage_points": 28.24
+    "line_coverage_points": 27.49
   },
   "coverage": {
-    "branch_percent": 43.95,
-    "branches": 2398,
-    "covered_branches": 1054,
-    "covered_statements": 3678,
-    "line_percent": 56.76,
-    "statements": 6480
+    "branch_percent": 44.26,
+    "branches": 2404,
+    "covered_branches": 1064,
+    "covered_statements": 3734,
+    "line_percent": 57.51,
+    "statements": 6493
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-27T05:11:19+00:00",
+  "generated_at": "2026-07-27T05:43:26Z",
   "highest_complexity_functions": [
     {
       "complexity": 101,
@@ -160,12 +160,6 @@
     {
       "branch_percent": 0.0,
       "line_percent": 0.0,
-      "missing_statements": 152,
-      "path": "scripts/build_release.py"
-    },
-    {
-      "branch_percent": 0.0,
-      "line_percent": 0.0,
       "missing_statements": 171,
       "path": "scripts/dogfood_control_surfaces.py"
     },
@@ -218,6 +212,12 @@
       "path": "scripts/project_matrix.py"
     },
     {
+      "branch_percent": 23.81,
+      "line_percent": 33.94,
+      "missing_statements": 109,
+      "path": "scripts/build_release.py"
+    },
+    {
       "branch_percent": 26.47,
       "line_percent": 40.74,
       "missing_statements": 637,
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "c2e9de0e8eb0949854e65e767862e80fd7a8392e",
+  "revision": "5284ee18e09f2c16def9d0562aa63a3d96243634",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
@@ -261,5 +261,5 @@
       "max_nesting_depth": 4
     }
   },
-  "test_count": 106
+  "test_count": 108
 }

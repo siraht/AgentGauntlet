@@ -14,7 +14,8 @@
     "Oversized Python mutation scopes fail deterministically before execution, while bounded campaigns reserve separate execution, result-export, overhead, and safety budgets and preserve structured incomplete evidence.",
     "Portable setup and upgrade create a protected executable ./aqg command while retaining python3 quality/qg.py as the cross-platform fallback.",
     "Generated ignore rules cover Python interpreter, test, type-checker, linter, environment, and JavaScript dependency caches so invoking the installed gauntlet does not manufacture workspace-integrity failures.",
-    "Release payloads use Git-tracked runtime sources in the authoritative checkout, deterministic hidden-cache exclusion in isolated copies, and canonical GitHub origin spellings so transient state cannot change candidate bytes."
+    "Release payloads use Git-tracked runtime sources in the authoritative checkout, deterministic hidden-cache exclusion in isolated copies, and canonical GitHub origin spellings so transient state cannot change candidate bytes.",
+    "Release provenance accepts Git revision, remote, dirty-state, and commit-time metadata only when the release source root owns that repository; isolated copies fail closed to a local unversioned identity."
   ],
   "behavior_preserved": [
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",

@@ -38,7 +38,7 @@ The following items named in the referenced conversation were absent or incomple
 - Deterministic portable release builder with local in-toto/SLSA provenance.
 - Keyless GitHub OIDC/Sigstore build-provenance and CycloneDX attestations.
 - PEP 561 typed-package metadata.
-- 105 Python test cases plus 78 recorded subtests, one JavaScript dashboard contract test,
+- 108 Python test cases plus 78 recorded subtests, one JavaScript dashboard contract test,
   and internal, installed-tool, disposable-project, browser, and control-surface
   conformance fixtures.
 
@@ -87,7 +87,7 @@ AQG includes conformance commands for installed tools, but an organization shoul
 ## Recovered-code debt
 
 The implementation does not yet earn its own High-assurance “reduced code review” mode.
-Fresh whole-tree evidence reports 56.76% Python statement coverage, 43.95% branch
+Fresh whole-tree evidence reports 57.51% Python statement coverage, 44.26% branch
 coverage, and 51 functions over the Standard cyclomatic-complexity cap. This is a material
 improvement over the recovered baseline near 35%, but remains below the 85% line and
 75% branch targets. The largest remaining hotspots are automated diff review, onboarding
@@ -96,11 +96,13 @@ generation, toolchain installation, Gherkin parsing, approvals, and doctor diagn
 The most recent complete local changed-file campaign executed 10,377 generated mutants:
 5,672 were killed, 4,594 survived, 107 had no tests, four controlled mutants timed out,
 and none were incomplete. The 54.70% score is below the 70% Standard target and the
-zero-survivor policy, so AQG correctly reports a quality failure. A changed-only campaign
-now refuses scopes above the protected 250-line limit before invoking mutmut. The current
-4,049-line productionization branch therefore returns structured exit-2 configuration
-evidence in milliseconds instead of consuming the outer two-hour gate and losing its
-adapter report. Accepted campaigns reserve 6,300 seconds for mutation, 300 seconds for
-result export, 300 seconds for orchestration, and a further 300-second safety margin.
+zero-survivor policy, so AQG correctly reports a quality failure. A focused campaign over
+the release-isolation slice completed all 58 mutants with 38 killed, 19 survived, one
+uncovered, and zero incomplete for a 65.52% score. A changed-only campaign now refuses
+scopes above the protected 250-line limit before invoking mutmut. The current 4,134-line
+productionization branch therefore returns structured exit-2 configuration evidence
+instead of consuming the outer two-hour gate and losing its adapter report. Accepted
+campaigns reserve 6,300 seconds for mutation, 300 seconds for result export, 300 seconds
+for orchestration, and a further 300-second safety margin.
 
 AQG is therefore published in `adopt`/ratchet mode. New changes must not add debt, while the existing hotspots need focused characterization tests and incremental extraction before switching this repository to full strict enforcement. This limitation affects confidence in AQG’s implementation, not the availability of the CLI, installer, evidence model, dashboard, or supported adapters.

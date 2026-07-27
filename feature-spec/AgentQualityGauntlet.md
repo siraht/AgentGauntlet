@@ -20,6 +20,8 @@
 - Ignored or untracked runtime caches MUST NOT enter release payloads or provenance materials.
 - Equivalent GitHub origin URL spellings MUST resolve to one canonical provenance repository identity.
 - Release building MUST remain functional in isolated source and mutation copies without repository metadata.
+- A release built from an isolated source copy MUST NOT inherit revision, remote,
+  dirty-state, or commit-time provenance from an unrelated parent repository.
 
 ## Related specifications
 
