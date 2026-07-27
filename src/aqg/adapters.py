@@ -36,6 +36,7 @@ from .project import excludes, gate_applicable, load_project, source_paths
 from .review import analyze_review, review_exit_code, write_review_packet
 from .sbom import generate_sboms
 from .util import (
+    CommandResult,
     git_changed_files,
     git_diff,
     iter_files,
@@ -1340,6 +1341,59 @@ def _mutmut_results_command(mutmut: str) -> list[str]:
     return [mutmut, "results", "--all=true"]
 
 
+# Outer mutation_changed gate budget from protected policy (seconds).
+PYTHON_MUTATION_GATE_TIMEOUT_SECONDS = 7200
+# Reserved for `mutmut results --all=true` after the campaign stops.
+PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS = 300
+# Reserved for sandbox copy/config plus report writing before the outer gate expires.
+PYTHON_MUTATION_OVERHEAD_SECONDS = 300
+# Inner mutmut run budget: must leave results + overhead headroom under the gate timeout.
+PYTHON_MUTATION_RUN_TIMEOUT_SECONDS = (
+    PYTHON_MUTATION_GATE_TIMEOUT_SECONDS
+    - PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS
+    - PYTHON_MUTATION_OVERHEAD_SECONDS
+)
+DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES = 250
+_INCOMPLETE_MUTANT_STATUSES = (
+    "check was interrupted by user",
+    "not checked",
+    "skipped",
+    "suspicious",
+)
+
+
+def _mutmut_score_components(status_counts: dict[str, int]) -> tuple[int, int, float, int]:
+    killed = sum(
+        status_counts.get(status, 0)
+        for status in ("killed", "caught by type check", "segfault", "timeout")
+    )
+    survivors = status_counts.get("survived", 0) + status_counts.get("no tests", 0)
+    denominator = killed + survivors
+    score = round(killed * 100 / denominator, 2) if denominator else 0.0
+    incomplete = sum(status_counts.get(status, 0) for status in _INCOMPLETE_MUTANT_STATUSES)
+    return killed, survivors, score, incomplete
+
+
+def _mutmut_exit_code(
+    *,
+    run_code: int,
+    results_code: int,
+    status_counts: dict[str, int],
+    incomplete: int,
+    survivors: int,
+    score: float,
+    minimum_score: float,
+    maximum_survivors: int,
+) -> int:
+    if run_code not in {0, 1} or results_code not in {0, 1} or not status_counts or incomplete:
+        return INFRASTRUCTURE_ERROR
+    if survivors > maximum_survivors or score < minimum_score:
+        return QUALITY_FAILURE
+    if run_code == 1:
+        return INFRASTRUCTURE_ERROR
+    return PASS
+
+
 def _classify_mutmut_results(
     status_counts: dict[str, int],
     *,
@@ -1348,28 +1402,17 @@ def _classify_mutmut_results(
     minimum_score: float,
     maximum_survivors: int,
 ) -> tuple[int, dict[str, Any]]:
-    killed = sum(
-        status_counts.get(status, 0)
-        for status in ("killed", "caught by type check", "segfault", "timeout")
+    killed, survivors, score, incomplete = _mutmut_score_components(status_counts)
+    code = _mutmut_exit_code(
+        run_code=run_code,
+        results_code=results_code,
+        status_counts=status_counts,
+        incomplete=incomplete,
+        survivors=survivors,
+        score=score,
+        minimum_score=minimum_score,
+        maximum_survivors=maximum_survivors,
     )
-    survivors = status_counts.get("survived", 0) + status_counts.get("no tests", 0)
-    denominator = killed + survivors
-    score = round(killed * 100 / denominator, 2) if denominator else 0.0
-    incomplete_statuses = (
-        "check was interrupted by user",
-        "not checked",
-        "skipped",
-        "suspicious",
-    )
-    incomplete = sum(status_counts.get(status, 0) for status in incomplete_statuses)
-    if run_code not in {0, 1} or results_code not in {0, 1} or not status_counts or incomplete:
-        code = INFRASTRUCTURE_ERROR
-    elif survivors > maximum_survivors or score < minimum_score:
-        code = QUALITY_FAILURE
-    elif run_code == 1:
-        code = INFRASTRUCTURE_ERROR
-    else:
-        code = PASS
     return code, {
         "killed": killed,
         "survivors": survivors,
@@ -1378,22 +1421,95 @@ def _classify_mutmut_results(
     }
 
 
-def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    if os.name == "nt":
-        return CONFIGURATION_ERROR, {
-            "configuration_error": "mutmut requires fork support; run the mutation gate inside WSL on Windows"
-        }
-    changed = (
-        _changed_production_files(root, project, PY_SUFFIXES)
-        if _effective_thresholds(project)["mutation"].get("changed_only", True)
-        else _relative_files(root, PY_SUFFIXES, project, tests=False)
+def _python_mutation_max_changed_lines(project: dict[str, Any]) -> int:
+    python = project.get("python", {})
+    if not isinstance(python, dict):
+        return DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES
+    value = python.get("mutation_max_changed_lines", DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES)
+    return int(value)
+
+
+def _count_changed_python_production_lines(
+    root: Path, project: dict[str, Any]
+) -> tuple[int, dict[str, int]]:
+    """Count added/changed production Python lines in the governed diff."""
+    counts: dict[str, int] = {}
+    for path, lines in sorted(_changed_lines(root, project).items()):
+        if Path(path).suffix.lower() not in PY_SUFFIXES:
+            continue
+        if _is_test_path(path, project):
+            continue
+        if lines:
+            counts[path] = len(lines)
+    return sum(counts.values()), counts
+
+
+def _count_python_file_lines(root: Path, paths: list[str]) -> tuple[int, dict[str, int]]:
+    counts: dict[str, int] = {}
+    for path in paths:
+        file_path = root / path
+        if not file_path.is_file():
+            continue
+        counts[path] = len(file_path.read_text(encoding="utf-8", errors="replace").splitlines())
+    return sum(counts.values()), counts
+
+
+def _python_mutation_scope_lines(
+    root: Path, project: dict[str, Any], targets: list[str], *, changed_only: bool
+) -> tuple[int, dict[str, int]]:
+    if changed_only:
+        return _count_changed_python_production_lines(root, project)
+    return _count_python_file_lines(root, targets)
+
+
+def _python_mutation_scope_report(
+    *,
+    changed: list[str],
+    line_count: int,
+    line_counts: dict[str, int],
+    maximum: int,
+    changed_only: bool,
+) -> dict[str, Any]:
+    refused = line_count > maximum
+    label = "changed Python production lines" if changed_only else "Python production lines"
+    reason = (
+        (
+            f"{label} {line_count} exceed "
+            f"python.mutation_max_changed_lines={maximum}; "
+            "split the change before running mutation"
+        )
+        if refused
+        else f"{label} are within the protected line budget"
     )
-    if not changed:
-        return PASS, {
-            "scope": "changed",
-            "mutated_files": [],
-            "reason": "no changed Python production files",
-        }
+    return {
+        "scope": "changed" if changed_only else "full",
+        "scope_refused": refused,
+        "campaign_complete": False if refused else None,
+        "mutated_files": changed,
+        "changed_production_lines": line_count,
+        "changed_production_lines_by_file": line_counts,
+        "mutation_max_changed_lines": maximum,
+        "gate_timeout_seconds": PYTHON_MUTATION_GATE_TIMEOUT_SECONDS,
+        "mutmut_run_timeout_seconds": PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
+        "results_timeout_seconds": PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
+        "timeout_headroom_seconds": (
+            PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS + PYTHON_MUTATION_OVERHEAD_SECONDS
+        ),
+        "reason": reason,
+        "incomplete_reason": "scope_refused_before_mutmut" if refused else None,
+    }
+
+
+def _python_mutation_targets(root: Path, project: dict[str, Any]) -> tuple[list[str], bool]:
+    changed_only = bool(_effective_thresholds(project)["mutation"].get("changed_only", True))
+    if changed_only:
+        return _changed_production_files(root, project, PY_SUFFIXES), True
+    return _relative_files(root, PY_SUFFIXES, project, tests=False), False
+
+
+def _run_mutmut_campaign(
+    root: Path, project: dict[str, Any], changed: list[str]
+) -> tuple[CommandResult, CommandResult]:
     work = root / ".aqg" / "work" / "mutation" / "python-project"
     _copy_for_mutmut(root, work)
     _append_mutmut_config(work, project, changed)
@@ -1402,7 +1518,7 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
     run = run_command(
         [mutmut, "run"],
         cwd=work,
-        timeout=7200,
+        timeout=PYTHON_MUTATION_RUN_TIMEOUT_SECONDS,
         env=_project_test_env(
             PYTHONPATH=python_path,
             PYTHONHASHSEED="0",
@@ -1412,9 +1528,43 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
     results = run_command(
         _mutmut_results_command(mutmut),
         cwd=work,
-        timeout=300,
+        timeout=PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
         env=_project_test_env(PYTHONPATH=python_path),
     )
+    return run, results
+
+
+def _mutmut_incomplete_reason(
+    *,
+    code: int,
+    incomplete: int,
+    timed_out: bool,
+    status_counts: dict[str, int],
+) -> str | None:
+    if code != INFRASTRUCTURE_ERROR and incomplete == 0 and not timed_out:
+        return None
+    if timed_out:
+        return "mutmut_budget_exhausted"
+    if incomplete:
+        return "unchecked_or_interrupted_mutants"
+    if not status_counts:
+        return "missing_mutmut_results"
+    return "mutmut_infrastructure_failure"
+
+
+def _mutmut_survivor_lines(status_lines: dict[str, list[str]]) -> list[str]:
+    return [*status_lines.get("survived", []), *status_lines.get("no tests", [])][:200]
+
+
+def _mutmut_incomplete_lines(status_lines: dict[str, list[str]]) -> list[str]:
+    return [
+        line for status in _INCOMPLETE_MUTANT_STATUSES for line in status_lines.get(status, [])
+    ][:200]
+
+
+def _classify_python_mutation_run(
+    run: CommandResult, results: CommandResult, project: dict[str, Any]
+) -> tuple[int, dict[str, Any], dict[str, int], dict[str, list[str]], bool]:
     status_counts, status_lines = _parse_mutmut_results(results.stdout)
     thresholds = _effective_thresholds(project)["mutation"]
     maximum = int(thresholds.get("maximum_survivors", 0))
@@ -1426,32 +1576,114 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
         minimum_score=minimum,
         maximum_survivors=maximum,
     )
-    survivors = metrics["survivors"]
-    incomplete_statuses = (
-        "check was interrupted by user",
-        "not checked",
-        "skipped",
-        "suspicious",
+    metrics = {
+        **metrics,
+        "minimum_score": minimum,
+        "maximum_survivors": maximum,
+    }
+    return code, metrics, status_counts, status_lines, bool(run.timed_out or results.timed_out)
+
+
+def _python_mutation_result_payload(
+    *,
+    scope: dict[str, Any],
+    run: CommandResult,
+    results: CommandResult,
+    metrics: dict[str, Any],
+    status_counts: dict[str, int],
+    status_lines: dict[str, list[str]],
+    incomplete_reason: str | None,
+    timed_out: bool,
+) -> dict[str, Any]:
+    complete = incomplete_reason is None
+    reason = (
+        "Python changed-code mutation campaign completed"
+        if complete
+        else f"Python changed-code mutation campaign incomplete: {incomplete_reason}"
     )
-    return code, {
-        "scope": "changed",
-        "mutated_files": changed,
+    return {
+        **scope,
+        "scope_refused": False,
+        "campaign_complete": complete,
+        "incomplete_reason": incomplete_reason,
+        "reason": reason,
         "run": run.as_dict(),
         "results": results.as_dict(),
         "status_counts": status_counts,
         "mutation_score": metrics["mutation_score"],
-        "minimum_score": minimum,
-        "survivors": survivors,
-        "maximum_survivors": maximum,
-        "survivor_lines": [
-            *status_lines.get("survived", []),
-            *status_lines.get("no tests", []),
-        ][:200],
+        "minimum_score": metrics["minimum_score"],
+        "survivors": metrics["survivors"],
+        "maximum_survivors": metrics["maximum_survivors"],
+        "survivor_lines": _mutmut_survivor_lines(status_lines),
         "incomplete_mutants": metrics["incomplete_mutants"],
-        "incomplete_lines": [
-            line for status in incomplete_statuses for line in status_lines.get(status, [])
-        ][:200],
+        "incomplete_lines": _mutmut_incomplete_lines(status_lines),
+        "run_timed_out": timed_out,
     }
+
+
+def _python_mutation_campaign_report(
+    *,
+    scope: dict[str, Any],
+    run: CommandResult,
+    results: CommandResult,
+    project: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    code, metrics, status_counts, status_lines, timed_out = _classify_python_mutation_run(
+        run, results, project
+    )
+    incomplete_reason = _mutmut_incomplete_reason(
+        code=code,
+        incomplete=int(metrics["incomplete_mutants"]),
+        timed_out=timed_out,
+        status_counts=status_counts,
+    )
+    return code, _python_mutation_result_payload(
+        scope=scope,
+        run=run,
+        results=results,
+        metrics=metrics,
+        status_counts=status_counts,
+        status_lines=status_lines,
+        incomplete_reason=incomplete_reason,
+        timed_out=timed_out,
+    )
+
+
+def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    if os.name == "nt":
+        return CONFIGURATION_ERROR, {
+            "configuration_error": "mutmut requires fork support; run the mutation gate inside WSL on Windows"
+        }
+    changed, changed_only = _python_mutation_targets(root, project)
+    if not changed:
+        return PASS, {
+            "scope": "changed" if changed_only else "full",
+            "scope_refused": False,
+            "campaign_complete": True,
+            "mutated_files": [],
+            "changed_production_lines": 0,
+            "reason": "no changed Python production files",
+        }
+    line_count, line_counts = _python_mutation_scope_lines(
+        root, project, changed, changed_only=changed_only
+    )
+    maximum = _python_mutation_max_changed_lines(project)
+    scope = _python_mutation_scope_report(
+        changed=changed,
+        line_count=line_count,
+        line_counts=line_counts,
+        maximum=maximum,
+        changed_only=changed_only,
+    )
+    if scope["scope_refused"]:
+        return CONFIGURATION_ERROR, scope
+    run, results = _run_mutmut_campaign(root, project, changed)
+    return _python_mutation_campaign_report(
+        scope=scope,
+        run=run,
+        results=results,
+        project=project,
+    )
 
 
 def _collect_mutant_statuses(value: Any, output: list[str]) -> None:

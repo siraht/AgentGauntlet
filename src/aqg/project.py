@@ -183,6 +183,14 @@ def _validate_web(project: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _is_number_in_range(value: object, low: float, high: float) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and low <= value <= high
+
+
+def _is_int_in_range(value: object, low: int, high: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+
+
 def _validate_python(project: dict[str, Any]) -> list[str]:
     python = project.get("python")
     if python is None:
@@ -190,20 +198,12 @@ def _validate_python(project: dict[str, Any]) -> list[str]:
     if not isinstance(python, dict):
         return ["python must be an object"]
     errors: list[str] = []
-    multiplier = python.get("mutation_timeout_multiplier", 5.0)
-    if (
-        not isinstance(multiplier, (int, float))
-        or isinstance(multiplier, bool)
-        or not 3 <= multiplier <= 10
-    ):
+    if not _is_number_in_range(python.get("mutation_timeout_multiplier", 5.0), 3, 10):
         errors.append("python.mutation_timeout_multiplier must be a number from 3 to 10")
-    constant = python.get("mutation_timeout_constant", 1.0)
-    if (
-        not isinstance(constant, (int, float))
-        or isinstance(constant, bool)
-        or not 0.5 <= constant <= 5
-    ):
+    if not _is_number_in_range(python.get("mutation_timeout_constant", 1.0), 0.5, 5):
         errors.append("python.mutation_timeout_constant must be a number from 0.5 to 5")
+    if not _is_int_in_range(python.get("mutation_max_changed_lines", 250), 1, 1000):
+        errors.append("python.mutation_max_changed_lines must be an integer from 1 to 1000")
     return errors
 
 
