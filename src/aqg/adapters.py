@@ -1818,8 +1818,12 @@ def _python_mutation_campaign_report(
     )
 
 
+def _python_mutation_platform_supported(platform_name: str) -> bool:
+    return platform_name != "nt"
+
+
 def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    if os.name == "nt":
+    if not _python_mutation_platform_supported(os.name):
         return CONFIGURATION_ERROR, {
             "configuration_error": "mutmut requires fork support; run the mutation gate inside WSL on Windows"
         }

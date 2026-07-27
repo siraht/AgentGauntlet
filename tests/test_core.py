@@ -43,6 +43,7 @@ from aqg.adapters import (
     _parse_mutmut_results,
     _python_crap,
     _python_mutation_function_selection,
+    _python_mutation_platform_supported,
     _python_structure_evidence,
     _python_test_env,
     run_adapter,
@@ -1742,7 +1743,7 @@ class SetupContractTests(RepoCase):
         project = self._python_mutation_project()
 
         with (
-            patch("aqg.adapters.os.name", "nt"),
+            patch("aqg.adapters._python_mutation_platform_supported", return_value=False),
             patch("aqg.adapters._python_mutation_targets") as targets,
         ):
             code, report = _mutation_python(self.root, project)
@@ -1750,6 +1751,10 @@ class SetupContractTests(RepoCase):
         self.assertEqual(code, CONFIGURATION_ERROR)
         self.assertIn("mutmut requires fork support", report["configuration_error"])
         targets.assert_not_called()
+
+    def test_python_mutation_platform_support_is_a_pure_name_check(self) -> None:
+        self.assertFalse(_python_mutation_platform_supported("nt"))
+        self.assertTrue(_python_mutation_platform_supported("posix"))
 
     def test_python_mutation_full_scope_runs_without_selector_arguments(self) -> None:
         source = self.root / "src"
