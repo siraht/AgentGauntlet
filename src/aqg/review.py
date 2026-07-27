@@ -302,6 +302,141 @@ def _risk_factor_path_hints(changed: list[str]) -> dict[str, list[str]]:
     return output
 
 
+def _partition_changed_paths(changed: list[str]) -> tuple[list[str], list[str]]:
+    production = [path for path in changed if _is_production_path(path)]
+    tests = [path for path in changed if _is_test(path)]
+    return production, tests
+
+
+def _findings_policy_plane(changed: list[str], policy: dict[str, Any]) -> list[dict[str, Any]]:
+    protected = [path for path in changed if matches_any(path, protected_patterns(policy))]
+    if not protected:
+        return []
+    return [
+        _finding(
+            "policy-plane-change",
+            "blocker",
+            "Policy-plane files changed",
+            "These files can change what counts as a pass or what agents are allowed to modify, so they require an explicit policy-maintenance review.",
+            protected,
+            "Review the raw diff with the policy owner and confirm the change does not weaken any gate, path protection, threshold, or command indirection.",
+        )
+    ]
+
+
+def _findings_human_review_plane(
+    changed: list[str], policy: dict[str, Any]
+) -> list[dict[str, Any]]:
+    review_paths = [path for path in changed if matches_any(path, human_review_patterns(policy))]
+    if not review_paths:
+        return []
+    return [
+        _finding(
+            "human-review-plane-change",
+            "review",
+            "Behavioral or approval artifacts changed",
+            "These files describe behavior, expected output, migrations, schemas, dependencies, or QA and must be reviewed as product evidence rather than accepted as incidental code churn.",
+            review_paths,
+            "Review each diff for intentional behavior, stable normalization, rollback impact, and consistency with the risk card.",
+            automated=False,
+        )
+    ]
+
+
+def _findings_production_without_tests(
+    production: list[str], tests: list[str]
+) -> list[dict[str, Any]]:
+    if not production or tests:
+        return []
+    return [
+        _finding(
+            "production-without-tests",
+            "blocker",
+            "Production behavior changed without a changed executable test",
+            "Existing tests may cover the change, but no test diff demonstrates the new or preserved behavior and mutation evidence may be too broad to reveal the gap.",
+            production,
+            "Add focused unit/property/contract/acceptance evidence, or document why existing immutable tests already prove the change and verify that claim with mutation testing.",
+        )
+    ]
+
+
+def _deleted_test_assertion_paths(diff: str) -> list[str]:
+    deleted_tests: list[str] = []
+    current_path = ""
+    for line in diff.splitlines():
+        if line.startswith("--- a/"):
+            current_path = line[6:]
+            continue
+        if (
+            line.startswith("-")
+            and not line.startswith("---")
+            and _is_test(current_path)
+            and re.search(r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)", line[1:])
+        ):
+            deleted_tests.append(current_path)
+    return deleted_tests
+
+
+def _findings_test_expectation_deleted(diff: str) -> list[dict[str, Any]]:
+    deleted_tests = _deleted_test_assertion_paths(diff)
+    if not deleted_tests:
+        return []
+    return [
+        _finding(
+            "test-expectation-deleted",
+            "blocker",
+            "Test assertions or cases were deleted",
+            "Deleting an assertion can make an implementation appear correct by reducing the oracle rather than fixing behavior.",
+            deleted_tests,
+            "Explain every deleted expectation, identify replacement evidence, and inspect mutation survivors around the affected behavior.",
+        )
+    ]
+
+
+_SUPPRESSION_PATTERNS = {
+    "focused-or-skipped-test": re.compile(
+        r"\b(?:describe|it|test)\.(?:only|skip|todo)\b|@pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail)\s*\("
+    ),
+    "coverage-suppression": re.compile(
+        r"(?i)(pragma:\s*no\s*cover|istanbul\s+ignore|c8\s+ignore|coverage:\s*ignore)"
+    ),
+    "mutation-suppression": re.compile(r"(?i)(pragma:\s*no\s+mutate|stryker\s+disable)"),
+    "lint-or-type-suppression": re.compile(
+        r"(?i)(eslint-disable|stylelint-disable|type:\s*ignore|noqa|mypy:\s*ignore-errors|ts-ignore|ts-nocheck)"
+    ),
+}
+
+
+def _weak_marker_locations(
+    root: Path, added: list[tuple[str, int, str]]
+) -> dict[str, list[str]]:
+    weak_markers: dict[str, list[str]] = {}
+    for path, line_no, line in added:
+        if Path(path).suffix.lower() in {".md", ".feature", ".txt"}:
+            continue
+        for code, pattern in _SUPPRESSION_PATTERNS.items():
+            match = pattern.search(line)
+            if match and not _match_is_inside_python_string(root, path, line_no, match.start()):
+                weak_markers.setdefault(code, []).append(f"{path}:{line_no}")
+    return weak_markers
+
+
+def _findings_quality_suppressions(
+    root: Path, added: list[tuple[str, int, str]]
+) -> list[dict[str, Any]]:
+    return [
+        _finding(
+            code,
+            "blocker",
+            "A new quality suppression was added",
+            "Suppressions directly reduce what deterministic tools can prove and are equivalent to changing a test or threshold when used without narrow justification.",
+            paths,
+            "Remove the suppression or create a narrow, expiring, owner-approved waiver with a reproduced false positive and compensating evidence.",
+        )
+        for code, paths in _weak_marker_locations(root, added).items()
+    ]
+
+
 def analyze_review(
     root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
 ) -> dict[str, Any]:
@@ -310,104 +445,14 @@ def analyze_review(
     diff = git_diff(root, base, unified=1)
     added = _added_lines(diff)
     deleted = _deleted_lines(diff)
-    findings: list[dict[str, Any]] = []
-
-    protected = [path for path in changed if matches_any(path, protected_patterns(policy))]
-    if protected:
-        findings.append(
-            _finding(
-                "policy-plane-change",
-                "blocker",
-                "Policy-plane files changed",
-                "These files can change what counts as a pass or what agents are allowed to modify, so they require an explicit policy-maintenance review.",
-                protected,
-                "Review the raw diff with the policy owner and confirm the change does not weaken any gate, path protection, threshold, or command indirection.",
-            )
-        )
-
-    review_paths = [path for path in changed if matches_any(path, human_review_patterns(policy))]
-    if review_paths:
-        findings.append(
-            _finding(
-                "human-review-plane-change",
-                "review",
-                "Behavioral or approval artifacts changed",
-                "These files describe behavior, expected output, migrations, schemas, dependencies, or QA and must be reviewed as product evidence rather than accepted as incidental code churn.",
-                review_paths,
-                "Review each diff for intentional behavior, stable normalization, rollback impact, and consistency with the risk card.",
-                automated=False,
-            )
-        )
-
-    production = [path for path in changed if _is_production_path(path)]
-    tests = [path for path in changed if _is_test(path)]
-    if production and not tests:
-        findings.append(
-            _finding(
-                "production-without-tests",
-                "blocker",
-                "Production behavior changed without a changed executable test",
-                "Existing tests may cover the change, but no test diff demonstrates the new or preserved behavior and mutation evidence may be too broad to reveal the gap.",
-                production,
-                "Add focused unit/property/contract/acceptance evidence, or document why existing immutable tests already prove the change and verify that claim with mutation testing.",
-            )
-        )
-
-    deleted_tests: list[str] = []
-    current_path = ""
-    for line in diff.splitlines():
-        if line.startswith("--- a/"):
-            current_path = line[6:]
-        elif (
-            line.startswith("-")
-            and not line.startswith("---")
-            and _is_test(current_path)
-            and re.search(r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)", line[1:])
-        ):
-            deleted_tests.append(current_path)
-    if deleted_tests:
-        findings.append(
-            _finding(
-                "test-expectation-deleted",
-                "blocker",
-                "Test assertions or cases were deleted",
-                "Deleting an assertion can make an implementation appear correct by reducing the oracle rather than fixing behavior.",
-                deleted_tests,
-                "Explain every deleted expectation, identify replacement evidence, and inspect mutation survivors around the affected behavior.",
-            )
-        )
-
-    weak_markers: dict[str, list[str]] = {}
-    patterns = {
-        "focused-or-skipped-test": re.compile(
-            r"\b(?:describe|it|test)\.(?:only|skip|todo)\b|@pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail)\s*\("
-        ),
-        "coverage-suppression": re.compile(
-            r"(?i)(pragma:\s*no\s*cover|istanbul\s+ignore|c8\s+ignore|coverage:\s*ignore)"
-        ),
-        "mutation-suppression": re.compile(r"(?i)(pragma:\s*no\s+mutate|stryker\s+disable)"),
-        "lint-or-type-suppression": re.compile(
-            r"(?i)(eslint-disable|stylelint-disable|type:\s*ignore|noqa|mypy:\s*ignore-errors|ts-ignore|ts-nocheck)"
-        ),
-    }
-    for path, line_no, line in added:
-        if Path(path).suffix.lower() in {".md", ".feature", ".txt"}:
-            continue
-        for code, pattern in patterns.items():
-            match = pattern.search(line)
-            if match and not _match_is_inside_python_string(root, path, line_no, match.start()):
-                weak_markers.setdefault(code, []).append(f"{path}:{line_no}")
-    for code, paths in weak_markers.items():
-        findings.append(
-            _finding(
-                code,
-                "blocker",
-                "A new quality suppression was added",
-                "Suppressions directly reduce what deterministic tools can prove and are equivalent to changing a test or threshold when used without narrow justification.",
-                paths,
-                "Remove the suppression or create a narrow, expiring, owner-approved waiver with a reproduced false positive and compensating evidence.",
-            )
-        )
+    production, tests = _partition_changed_paths(changed)
+    findings: list[dict[str, Any]] = [
+        *_findings_policy_plane(changed, policy),
+        *_findings_human_review_plane(changed, policy),
+        *_findings_production_without_tests(production, tests),
+        *_findings_test_expectation_deleted(diff),
+        *_findings_quality_suppressions(root, added),
+    ]
 
     # Review heuristics are intentionally conservative: they surface likely weak points but
     # do not claim semantic proof where a parser, runtime, or domain oracle is required.
