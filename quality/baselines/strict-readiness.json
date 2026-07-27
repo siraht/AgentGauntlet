@@ -252,6 +252,7 @@
     "mutation": {
       "changed_only": true,
       "maximum_survivors": 0,
+      "minimum_selection_coverage": 80,
       "minimum_score": 70
     },
     "structure": {

@@ -1335,7 +1335,7 @@ def _parse_mutmut_results(
         if match is None:
             continue
         mutant = match.group("mutant")
-        if mutant_selectors and not any(
+        if mutant_selectors is not None and not any(
             fnmatch.fnmatchcase(mutant, selector) for selector in mutant_selectors
         ):
             continue
@@ -1549,9 +1549,7 @@ def _mutmut_allows_decorators(
     return isinstance(decorator, ast.Name) and decorator.id in {"staticmethod", "classmethod"}
 
 
-def _mutmut_function_candidates(
-    path: str, tree: ast.Module
-) -> list[tuple[str, str, int, int]]:
+def _mutmut_function_candidates(path: str, tree: ast.Module) -> list[tuple[str, str, int, int]]:
     module = _mutmut_module_name(path)
     candidates: list[tuple[str, str, int, int]] = []
     for node in tree.body:
@@ -1647,6 +1645,30 @@ def _python_mutation_function_selection(
         "selection_complete": mapped_total == relevant_total,
         "selection_errors": parse_errors,
     }
+
+
+def _python_mutation_selection_refusal(
+    selection: dict[str, Any], minimum_coverage: float
+) -> tuple[str, str] | None:
+    if selection["selection_errors"]:
+        return (
+            "mutation_selection_error",
+            "changed Python production files could not be parsed into a mutmut selection",
+        )
+    if not selection["mutant_selectors"]:
+        return (
+            "changed_lines_outside_mutable_functions",
+            "no mutmut-selectable changed function or method could be established",
+        )
+    if float(selection["selection_coverage"]) < minimum_coverage:
+        return (
+            "insufficient_function_selection_coverage",
+            (
+                f"changed-function selection coverage {selection['selection_coverage']}% is below "
+                f"the protected minimum {minimum_coverage}%"
+            ),
+        )
+    return None
 
 
 def _run_mutmut_campaign(
@@ -1829,19 +1851,21 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
     mutant_selectors: list[str] | None = None
     if changed_only:
         selection = _python_mutation_function_selection(root, project, changed)
+        minimum_selection = float(
+            _effective_thresholds(project)["mutation"].get("minimum_selection_coverage", 80)
+        )
+        selection["minimum_selection_coverage"] = minimum_selection
         scope.update(selection)
         mutant_selectors = selection["mutant_selectors"]
-        selection_errors = selection["selection_errors"]
-        if selection_errors or not mutant_selectors:
+        refusal = _python_mutation_selection_refusal(selection, minimum_selection)
+        if refusal is not None:
+            incomplete_reason, reason = refusal
             scope.update(
                 {
                     "scope_refused": True,
                     "campaign_complete": False,
-                    "incomplete_reason": "changed_lines_outside_mutable_functions",
-                    "reason": (
-                        "no complete mutmut-selectable function or method scope could be "
-                        "established for the changed Python production lines"
-                    ),
+                    "incomplete_reason": incomplete_reason,
+                    "reason": reason,
                 }
             )
             return CONFIGURATION_ERROR, scope

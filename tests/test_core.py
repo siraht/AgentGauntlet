@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import copy
 import hashlib
 import importlib.util
@@ -34,8 +35,11 @@ from aqg.adapters import (
     _javascript_unit_spec,
     _js_mutation_scope,
     _mutation_python,
+    _mutmut_allows_decorators,
+    _mutmut_function_candidates,
     _mutmut_module_name,
     _mutmut_results_command,
+    _nontrivial_changed_lines,
     _parse_mutmut_results,
     _python_crap,
     _python_mutation_function_selection,
@@ -286,6 +290,11 @@ class ConfigurationValidationTests(RepoCase):
                 "thresholds.mutation.maximum_survivors",
                 -1,
                 "thresholds.mutation.maximum_survivors must be a non-negative integer",
+            ),
+            (
+                "thresholds.mutation.minimum_selection_coverage",
+                101,
+                ("thresholds.mutation.minimum_selection_coverage must be a number from 0 to 100"),
             ),
             (
                 "profile_thresholds",
@@ -1265,6 +1274,7 @@ class SetupContractTests(RepoCase):
                 "mutation": {
                     "changed_only": True,
                     "maximum_survivors": 0,
+                    "minimum_selection_coverage": 80,
                     "minimum_score": 70,
                 }
             },
@@ -1344,7 +1354,7 @@ class SetupContractTests(RepoCase):
         )
         self.commit("baseline")
         (source / "module.py").write_text(
-            "VALUE = 2\n\ndef value() -> int:\n    return 2\n",
+            "VALUE = 1\n\ndef value() -> int:\n    return 2\n",
             encoding="utf-8",
         )
         project = self._python_mutation_project(max_changed_lines=50)
@@ -1363,17 +1373,14 @@ class SetupContractTests(RepoCase):
             cwd=str(self.root),
             code=0,
             status="pass",
-            stdout=(
-                "module.x_other__mutmut_1: not checked\n"
-                "module.x_value__mutmut_1: killed\n"
-            ),
+            stdout=("module.x_other__mutmut_1: not checked\nmodule.x_value__mutmut_1: killed\n"),
             stderr="",
             duration_ms=5,
         )
 
         with (
-            patch("aqg.adapters._copy_for_mutmut"),
-            patch("aqg.adapters._append_mutmut_config"),
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters._append_mutmut_config") as configure_sandbox,
             patch("aqg.adapters._tool", return_value="/tools/mutmut"),
             patch(
                 "aqg.adapters.run_command",
@@ -1391,14 +1398,24 @@ class SetupContractTests(RepoCase):
         self.assertEqual(report["mutant_selectors"], [selector])
         self.assertEqual(report["selected_functions"], {"src/module.py": ["value"]})
         self.assertEqual(report["status_counts"], {"killed": 1})
-        self.assertFalse(report["selection_complete"])
+        self.assertTrue(report["selection_complete"])
         self.assertEqual(report["mapped_changed_lines"], 1)
-        self.assertEqual(report["unmapped_changed_lines"], {"src/module.py": [1]})
-        self.assertEqual(report["selection_coverage"], 50.0)
+        self.assertEqual(report["unmapped_changed_lines"], {})
+        self.assertEqual(report["selection_coverage"], 100.0)
+        self.assertEqual(report["minimum_selection_coverage"], 80.0)
         self.assertEqual(report["mutmut_run_timeout_seconds"], PYTHON_MUTATION_RUN_TIMEOUT_SECONDS)
         self.assertEqual(run_command.call_count, 2)
+        work = self.root / ".aqg" / "work" / "mutation" / "python-project"
+        copy_sandbox.assert_called_once_with(self.root, work)
+        configure_sandbox.assert_called_once_with(work, project, ["src/module.py"])
         run_kwargs = run_command.call_args_list[0].kwargs
         results_kwargs = run_command.call_args_list[1].kwargs
+        self.assertEqual(run_kwargs["cwd"], work)
+        self.assertEqual(results_kwargs["cwd"], work)
+        self.assertEqual(run_kwargs["env"]["PYTHONHASHSEED"], "0")
+        self.assertEqual(run_kwargs["env"]["TZ"], "UTC")
+        self.assertIn(str(work), run_kwargs["env"]["PYTHONPATH"])
+        self.assertIn(str(work / "src"), run_kwargs["env"]["PYTHONPATH"])
         self.assertEqual(run_kwargs["timeout"], PYTHON_MUTATION_RUN_TIMEOUT_SECONDS)
         self.assertEqual(results_kwargs["timeout"], PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS)
         self.assertEqual(
@@ -1409,6 +1426,40 @@ class SetupContractTests(RepoCase):
             run_command.call_args_list[1].args[0],
             ["/tools/mutmut", "results", "--all=true"],
         )
+
+    def test_python_mutation_refuses_low_changed_function_selection_coverage(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text(
+            "FIRST = 1\nSECOND = 2\nTHIRD = 3\n\ndef value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "FIRST = 2\nSECOND = 3\nTHIRD = 4\n\ndef value() -> int:\n    return 2\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertFalse(report["campaign_complete"])
+        self.assertEqual(report["incomplete_reason"], "insufficient_function_selection_coverage")
+        self.assertEqual(report["mapped_changed_lines"], 1)
+        self.assertEqual(report["nontrivial_changed_lines"], 4)
+        self.assertEqual(report["selection_coverage"], 25.0)
+        self.assertEqual(report["minimum_selection_coverage"], 80.0)
+        self.assertIn("25.0% is below the protected minimum 80.0%", report["reason"])
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
 
     def test_python_mutation_incomplete_campaign_is_infrastructure_failure(self) -> None:
         source = self.root / "src"
@@ -1539,9 +1590,7 @@ class SetupContractTests(RepoCase):
         self.assertEqual(code, CONFIGURATION_ERROR)
         self.assertTrue(report["scope_refused"])
         self.assertFalse(report["campaign_complete"])
-        self.assertEqual(
-            report["incomplete_reason"], "changed_lines_outside_mutable_functions"
-        )
+        self.assertEqual(report["incomplete_reason"], "changed_lines_outside_mutable_functions")
         self.assertEqual(report["mutant_selectors"], [])
         self.assertEqual(report["unmapped_changed_lines"], {"src/module.py": [1]})
         self.assertFalse(report["selection_complete"])
@@ -1549,10 +1598,132 @@ class SetupContractTests(RepoCase):
         copy_sandbox.assert_not_called()
         run_command.assert_not_called()
 
+    def test_python_mutation_rejects_selection_parse_errors_before_sandboxing(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text("def value() -> int:\n    return 1\n", encoding="utf-8")
+        self.commit("baseline")
+        module.write_text("def value( -> int:\n    return 2\n", encoding="utf-8")
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertTrue(report["scope_refused"])
+        self.assertEqual(report["incomplete_reason"], "mutation_selection_error")
+        self.assertIn("src/module.py", report["selection_errors"])
+        self.assertIn("could not be parsed", report["reason"])
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
     def test_mutmut_module_name_matches_mutmut_path_conventions(self) -> None:
         self.assertEqual(_mutmut_module_name("src/aqg/scaffold.py"), "aqg.scaffold")
         self.assertEqual(_mutmut_module_name("src/aqg/__init__.py"), "aqg")
         self.assertEqual(_mutmut_module_name("scripts/build_release.py"), "scripts.build_release")
+
+    def test_mutmut_function_candidates_follow_mutmut_decorator_and_method_rules(self) -> None:
+        tree = ast.parse(
+            "@decorator\n"
+            "def decorated_function() -> int:\n"
+            "    return 1\n\n"
+            "async def async_function() -> int:\n"
+            "    return 2\n\n"
+            "@decorator\n"
+            "class DecoratedClass:\n"
+            "    def skipped(self) -> int:\n"
+            "        return 3\n\n"
+            "class Worker:\n"
+            "    @staticmethod\n"
+            "    async def static_async() -> int:\n"
+            "        return 4\n\n"
+            "    @classmethod\n"
+            "    def build(cls) -> int:\n"
+            "        return 5\n\n"
+            "    @property\n"
+            "    def label(self) -> str:\n"
+            "        return 'worker'\n\n"
+            "    def ordinary(self) -> int:\n"
+            "        return 6\n\n"
+            "    def __new__(cls):\n"
+            "        return super().__new__(cls)\n"
+        )
+
+        candidates = _mutmut_function_candidates("src/package/example.py", tree)
+
+        self.assertEqual(
+            candidates,
+            [
+                (
+                    "package.example.x_async_function__mutmut_*",
+                    "async_function",
+                    5,
+                    6,
+                ),
+                (
+                    "package.example.xǁWorkerǁstatic_async__mutmut_*",
+                    "Worker.static_async",
+                    14,
+                    16,
+                ),
+                (
+                    "package.example.xǁWorkerǁbuild__mutmut_*",
+                    "Worker.build",
+                    18,
+                    20,
+                ),
+                (
+                    "package.example.xǁWorkerǁordinary__mutmut_*",
+                    "Worker.ordinary",
+                    26,
+                    27,
+                ),
+            ],
+        )
+
+    def test_mutmut_decorator_rules_require_exact_supported_method_decorators(self) -> None:
+        module = ast.parse(
+            "def plain():\n"
+            "    pass\n\n"
+            "@decorator\n"
+            "def decorated():\n"
+            "    pass\n\n"
+            "class Worker:\n"
+            "    @classmethod\n"
+            "    def class_method(cls):\n"
+            "        pass\n\n"
+            "    @helpers.classmethod\n"
+            "    def qualified(cls):\n"
+            "        pass\n"
+        )
+        plain = module.body[0]
+        decorated = module.body[1]
+        worker = module.body[2]
+        assert isinstance(plain, ast.FunctionDef)
+        assert isinstance(decorated, ast.FunctionDef)
+        assert isinstance(worker, ast.ClassDef)
+        class_method = worker.body[0]
+        qualified = worker.body[1]
+        assert isinstance(class_method, ast.FunctionDef)
+        assert isinstance(qualified, ast.FunctionDef)
+
+        self.assertTrue(_mutmut_allows_decorators(plain, method=False))
+        self.assertFalse(_mutmut_allows_decorators(decorated, method=False))
+        self.assertTrue(_mutmut_allows_decorators(class_method, method=True))
+        self.assertFalse(_mutmut_allows_decorators(qualified, method=True))
+
+    def test_nontrivial_changed_lines_filters_bounds_blanks_and_comments(self) -> None:
+        source = self.root / "module.py"
+        source.write_bytes(b"# comment\n\nvalue = '\\xff'\n    # indented comment\n")
+
+        selected = _nontrivial_changed_lines(source, {-1, 0, 1, 2, 3, 4, 5})
+
+        self.assertEqual(selected, {3})
 
     def test_mutmut_result_parser_separates_outcomes(self) -> None:
         counts, lines = _parse_mutmut_results(
@@ -1592,6 +1763,12 @@ class SetupContractTests(RepoCase):
             filtered_lines,
             {"killed": ["aqg.example.x_value__mutmut_1: killed"]},
         )
+        empty_counts, empty_lines = _parse_mutmut_results(
+            "aqg.example.x_value__mutmut_1: killed",
+            [],
+        )
+        self.assertEqual(empty_counts, {})
+        self.assertEqual(empty_lines, {})
 
     def test_mutmut_result_command_supplies_click_boolean_value(self) -> None:
         self.assertEqual(

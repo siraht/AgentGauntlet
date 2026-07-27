@@ -301,7 +301,12 @@ def _default_thresholds() -> dict[str, Any]:
             "max_crap": 15,
             "max_nesting_depth": 4,
         },
-        "mutation": {"minimum_score": 70, "maximum_survivors": 0, "changed_only": True},
+        "mutation": {
+            "minimum_score": 70,
+            "maximum_survivors": 0,
+            "minimum_selection_coverage": 80,
+            "changed_only": True,
+        },
         "security": {"audit_level": "high", "allow_unreviewed_ignores": False},
         "performance": {"lighthouse_performance": 0.8, "lighthouse_accessibility": 0.95},
     }
@@ -325,7 +330,11 @@ def _assurance_thresholds() -> dict[str, Any]:
                 "max_crap": 8,
                 "max_nesting_depth": 4,
             },
-            "mutation": {"minimum_score": 85, "maximum_survivors": 0},
+            "mutation": {
+                "minimum_score": 85,
+                "maximum_survivors": 0,
+                "minimum_selection_coverage": 90,
+            },
             "performance": {"lighthouse_performance": 0.9, "lighthouse_accessibility": 0.98},
         },
         "release": {
@@ -342,7 +351,11 @@ def _assurance_thresholds() -> dict[str, Any]:
                 "max_crap": 5,
                 "max_nesting_depth": 3,
             },
-            "mutation": {"minimum_score": 90, "maximum_survivors": 0},
+            "mutation": {
+                "minimum_score": 90,
+                "maximum_survivors": 0,
+                "minimum_selection_coverage": 95,
+            },
             "performance": {"lighthouse_performance": 0.95, "lighthouse_accessibility": 0.99},
         },
     }

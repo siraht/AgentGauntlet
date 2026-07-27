@@ -139,6 +139,15 @@ def _validate_mutation_thresholds(thresholds: Any) -> list[str]:
     survivors = mutation.get("maximum_survivors")
     if not isinstance(survivors, int) or isinstance(survivors, bool) or survivors < 0:
         errors.append("thresholds.mutation.maximum_survivors must be a non-negative integer")
+    selection = mutation.get("minimum_selection_coverage", 80)
+    if (
+        not isinstance(selection, (int, float))
+        or isinstance(selection, bool)
+        or not 0 <= selection <= 100
+    ):
+        errors.append(
+            "thresholds.mutation.minimum_selection_coverage must be a number from 0 to 100"
+        )
     return errors
 
 
