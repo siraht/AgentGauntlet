@@ -386,19 +386,70 @@ def test_missing_scenario_error(tmp_path: Path) -> None:
     ]
 
 
-def test_incomplete_scenario_requires_when_and_then(tmp_path: Path) -> None:
-    path = _write_feature(
-        tmp_path,
-        "Feature: X\n  Scenario: only given\n    Given a\n",
-    )
+@pytest.mark.parametrize(
+    ("body", "scenario_name"),
+    [
+        ("Feature: X\n  Scenario: only given\n    Given a\n", "only given"),
+        ("Feature: X\n  Scenario: only when\n    When a\n", "only when"),
+        ("Feature: X\n  Scenario: only then\n    Then b\n", "only then"),
+    ],
+)
+def test_incomplete_scenario_requires_when_and_then(
+    tmp_path: Path, body: str, scenario_name: str
+) -> None:
+    path = _write_feature(tmp_path, body)
     assert _findings(path) == [
         _finding(
             "incomplete-scenario",
-            "Scenario 'only given' needs at least one When and Then.",
+            f"Scenario {scenario_name!r} needs at least one When and Then.",
             path,
             line=None,
         )
     ]
+
+
+def test_examples_after_background_without_scenario_are_rejected(tmp_path: Path) -> None:
+    path = _write_feature(
+        tmp_path,
+        "Feature: X\n  Background:\n    Given prep\n  Examples:\n    | a |\n    | 1 |\n",
+    )
+    assert _findings(path) == [
+        _finding(
+            "examples-outside-scenario",
+            "Examples must be inside a scenario.",
+            path,
+            line=4,
+        ),
+        _finding(
+            "table-outside-examples",
+            "Table rows are allowed only inside Examples.",
+            path,
+            line=5,
+        ),
+        _finding(
+            "table-outside-examples",
+            "Table rows are allowed only inside Examples.",
+            path,
+            line=6,
+        ),
+        _finding(
+            "missing-scenario",
+            "At least one scenario is required.",
+            path,
+            line=1,
+        ),
+    ]
+
+
+def test_scenario_name_keeps_text_after_first_colon(tmp_path: Path) -> None:
+    path = _write_feature(
+        tmp_path,
+        "Feature: X\n  Scenario: name: with colon\n    When a\n    Then b\n",
+    )
+    feature, findings = parse_feature(path)
+    assert findings == []
+    assert feature is not None
+    assert feature["scenarios"][0]["name"] == "name: with colon"
 
 
 def test_missing_and_unused_example_values_are_sorted_and_ordered(tmp_path: Path) -> None:
