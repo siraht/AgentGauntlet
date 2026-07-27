@@ -5,6 +5,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1743,13 +1744,19 @@ class SetupContractTests(RepoCase):
         project = self._python_mutation_project()
 
         with (
-            patch("aqg.adapters._python_mutation_platform_supported", return_value=False),
+            patch(
+                "aqg.adapters._python_mutation_platform_supported", return_value=False
+            ) as supported,
             patch("aqg.adapters._python_mutation_targets") as targets,
         ):
             code, report = _mutation_python(self.root, project)
 
         self.assertEqual(code, CONFIGURATION_ERROR)
-        self.assertIn("mutmut requires fork support", report["configuration_error"])
+        self.assertEqual(
+            report["configuration_error"],
+            "mutmut requires fork support; run the mutation gate inside WSL on Windows",
+        )
+        supported.assert_called_once_with(os.name)
         targets.assert_not_called()
 
     def test_python_mutation_platform_support_is_a_pure_name_check(self) -> None:
@@ -1798,6 +1805,9 @@ class SetupContractTests(RepoCase):
         self.assertEqual(report["changed_production_lines"], 2)
         self.assertEqual(report["selection_mode"], "full")
         self.assertEqual(report["mutant_selectors"], [])
+        self.assertEqual(report["selected_functions"], {})
+        self.assertEqual(report["unmapped_changed_lines"], {})
+        self.assertEqual(report["selection_errors"], {})
         self.assertTrue(report["campaign_complete"])
         self.assertEqual(run.call_args_list[0].args[0], ["/tools/mutmut", "run"])
 
