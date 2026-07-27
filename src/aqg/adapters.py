@@ -1396,12 +1396,10 @@ def _mutmut_exit_code(
     minimum_score: float,
     maximum_survivors: int,
 ) -> int:
-    if run_code not in {0, 1} or results_code not in {0, 1} or not status_counts or incomplete:
+    if run_code != 0 or results_code != 0 or not status_counts or incomplete:
         return INFRASTRUCTURE_ERROR
     if survivors > maximum_survivors or score < minimum_score:
         return QUALITY_FAILURE
-    if run_code == 1:
-        return INFRASTRUCTURE_ERROR
     return PASS
 
 
@@ -1856,6 +1854,16 @@ def _mutation_python(root: Path, project: dict[str, Any]) -> tuple[int, dict[str
         )
         selection["minimum_selection_coverage"] = minimum_selection
         scope.update(selection)
+        if selection["nontrivial_changed_lines"] == 0:
+            scope.update(
+                {
+                    "scope_refused": False,
+                    "campaign_complete": True,
+                    "incomplete_reason": None,
+                    "reason": "no changed executable Python production lines",
+                }
+            )
+            return PASS, scope
         mutant_selectors = selection["mutant_selectors"]
         refusal = _python_mutation_selection_refusal(selection, minimum_selection)
         if refusal is not None:

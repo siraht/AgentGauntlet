@@ -1461,6 +1461,96 @@ class SetupContractTests(RepoCase):
         copy_sandbox.assert_not_called()
         run_command.assert_not_called()
 
+    def test_python_mutation_passes_comment_only_production_changes_without_sandboxing(
+        self,
+    ) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text(
+            "def value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text(
+            "# Explain the stable behavior.\ndef value() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        project = self._python_mutation_project()
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut") as copy_sandbox,
+            patch("aqg.adapters.run_command") as run_command,
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, PASS)
+        self.assertFalse(report["scope_refused"])
+        self.assertTrue(report["campaign_complete"])
+        self.assertEqual(report["incomplete_reason"], None)
+        self.assertEqual(report["nontrivial_changed_lines"], 0)
+        self.assertEqual(report["mutant_selectors"], [])
+        self.assertEqual(report["selection_coverage"], 100.0)
+        self.assertEqual(report["reason"], "no changed executable Python production lines")
+        copy_sandbox.assert_not_called()
+        run_command.assert_not_called()
+
+    def test_python_mutation_complete_survivors_are_a_quality_failure(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        (self.root / "tests").mkdir()
+        module = source / "module.py"
+        module.write_text("def value() -> int:\n    return 1\n", encoding="utf-8")
+        self.commit("baseline")
+        module.write_text("def value() -> int:\n    return 2\n", encoding="utf-8")
+        project = self._python_mutation_project()
+        selector = "module.x_value__mutmut_*"
+        run_result = CommandResult(
+            command=["mutmut", "run", selector],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="",
+            stderr="",
+            duration_ms=10,
+        )
+        results_result = CommandResult(
+            command=["mutmut", "results", "--all=true"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout=(
+                "module.x_value__mutmut_1: killed\n"
+                "module.x_value__mutmut_2: survived\n"
+                "module.x_value__mutmut_3: no tests\n"
+            ),
+            stderr="",
+            duration_ms=5,
+        )
+
+        with (
+            patch("aqg.adapters._copy_for_mutmut"),
+            patch("aqg.adapters._append_mutmut_config"),
+            patch("aqg.adapters._tool", return_value="/tools/mutmut"),
+            patch("aqg.adapters.run_command", side_effect=[run_result, results_result]),
+        ):
+            code, report = _mutation_python(self.root, project)
+
+        self.assertEqual(code, QUALITY_FAILURE)
+        self.assertTrue(report["campaign_complete"])
+        self.assertEqual(report["incomplete_reason"], None)
+        self.assertEqual(report["status_counts"], {"killed": 1, "survived": 1, "no tests": 1})
+        self.assertEqual(report["survivors"], 2)
+        self.assertEqual(report["mutation_score"], 33.33)
+        self.assertEqual(
+            report["survivor_lines"],
+            [
+                "module.x_value__mutmut_2: survived",
+                "module.x_value__mutmut_3: no tests",
+            ],
+        )
+
     def test_python_mutation_incomplete_campaign_is_infrastructure_failure(self) -> None:
         source = self.root / "src"
         source.mkdir()
@@ -1813,6 +1903,48 @@ class SetupContractTests(RepoCase):
         self.assertEqual(incomplete, INFRASTRUCTURE_ERROR)
         self.assertEqual(controlled_timeout, PASS)
         self.assertEqual(timeout_metrics["killed"], 8)
+
+    def test_mutmut_result_classifier_treats_command_errors_as_infrastructure(self) -> None:
+        cases = (
+            (1, 0, {"killed": 8}),
+            (0, 1, {"killed": 8}),
+            (3, 0, {"killed": 8}),
+            (0, 3, {"killed": 8}),
+            (0, 0, {}),
+            (1, 0, {"survived": 8}),
+        )
+        for run_code, results_code, statuses in cases:
+            with self.subTest(
+                run_code=run_code,
+                results_code=results_code,
+                statuses=statuses,
+            ):
+                code, _ = _classify_mutmut_results(
+                    statuses,
+                    run_code=run_code,
+                    results_code=results_code,
+                    minimum_score=0,
+                    maximum_survivors=10,
+                )
+                self.assertEqual(code, INFRASTRUCTURE_ERROR)
+
+    def test_mutmut_result_classifier_rejects_every_incomplete_status(self) -> None:
+        for status in (
+            "check was interrupted by user",
+            "not checked",
+            "skipped",
+            "suspicious",
+        ):
+            with self.subTest(status=status):
+                code, metrics = _classify_mutmut_results(
+                    {"killed": 8, status: 1},
+                    run_code=0,
+                    results_code=0,
+                    minimum_score=0,
+                    maximum_survivors=0,
+                )
+                self.assertEqual(code, INFRASTRUCTURE_ERROR)
+                self.assertEqual(metrics["incomplete_mutants"], 1)
 
     def test_universal_lock_restores_direct_environment_markers(self) -> None:
         requirements = self.root / "requirements.in"
