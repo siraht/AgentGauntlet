@@ -1695,6 +1695,12 @@ class SetupContractTests(RepoCase):
 
     def test_release_builds_from_an_isolated_copy_without_git_metadata(self) -> None:
         source_root = Path(__file__).resolve().parents[1]
+        outer_revision_marker = self.root / "outer-repository.txt"
+        outer_revision_marker.write_text("must not enter isolated provenance\n", encoding="utf-8")
+        self.commit("outer repository revision")
+        outer_revision = git(self.root, "rev-parse", "HEAD")
+        outer_remote = "https://example.invalid/outer/repository.git"
+        git(self.root, "remote", "add", "origin", outer_remote)
         source_copy = self.root / ".isolated" / "source-copy"
         source_copy.parent.mkdir()
         shutil.copytree(
@@ -1720,6 +1726,20 @@ class SetupContractTests(RepoCase):
             members = archive.namelist()
         self.assertIn("aqg/py.typed", members)
         self.assertFalse(any(".ruff_cache" in member for member in members))
+
+        provenance = read_json(output / "provenance.intoto.json")
+        definition = provenance["predicate"]["buildDefinition"]
+        dependencies = definition["resolvedDependencies"]
+        repository = dependencies[0]
+        self.assertEqual(repository, {"uri": "local:AgentGauntlet", "digest": {}})
+        self.assertFalse(any(item.get("digest", {}).get("gitCommit") for item in dependencies))
+        serialized = json.dumps(provenance, sort_keys=True)
+        self.assertNotIn(outer_revision, serialized)
+        self.assertNotIn(outer_remote, serialized)
+        self.assertEqual(
+            provenance["predicate"]["runDetails"]["metadata"]["invocationId"],
+            "unversioned-source",
+        )
 
     def test_release_source_discovery_works_beneath_a_hidden_parent(self) -> None:
         package = _RELEASE_MODULE.ROOT / "src" / "aqg"

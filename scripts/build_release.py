@@ -51,7 +51,28 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _git_repository_root() -> Path | None:
+    completed = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return None
+    return Path(completed.stdout.strip()).resolve()
+
+
+def _owns_git_metadata() -> bool:
+    """Return whether ROOT is the repository that owns any discovered Git metadata."""
+    return _git_repository_root() == ROOT.resolve()
+
+
 def _git(*arguments: str) -> str:
+    """Read Git metadata only when it belongs to the release source root."""
+    if not _owns_git_metadata():
+        return ""
     completed = subprocess.run(
         ["git", *arguments],
         cwd=ROOT,
@@ -110,8 +131,7 @@ def _tracked_files(*pathspecs: str) -> list[Path]:
 
 def _package_source_files() -> list[Path]:
     """Select authoritative tracked files, with a safe isolated-copy fallback."""
-    repository_root = _git("rev-parse", "--show-toplevel")
-    if repository_root and Path(repository_root).resolve() == ROOT.resolve():
+    if _owns_git_metadata():
         files = _tracked_files("src/aqg")
     else:
         package = ROOT / "src" / "aqg"
@@ -240,8 +260,17 @@ def _provenance_subject(path: Path) -> dict[str, Any]:
 
 def _write_provenance(output: Path, subjects: list[Path], version: str) -> Path:
     path = output / "provenance.intoto.json"
-    source_uri = _canonical_source_uri(_git("config", "--get", "remote.origin.url"))
-    revision = os.environ.get("AQG_SOURCE_REVISION") or _git("rev-parse", "HEAD")
+    owns_git_metadata = _owns_git_metadata()
+    source_uri = (
+        _canonical_source_uri(_git("config", "--get", "remote.origin.url"))
+        if owns_git_metadata
+        else ""
+    )
+    revision = (
+        os.environ.get("AQG_SOURCE_REVISION") or _git("rev-parse", "HEAD")
+        if owns_git_metadata
+        else ""
+    )
     repository = source_uri or "local:AgentGauntlet"
     materials = [
         {
