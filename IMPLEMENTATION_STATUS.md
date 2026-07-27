@@ -45,7 +45,7 @@ The following items named in the referenced conversation were absent or incomple
 - Nonzero mutation execution or result-export commands are infrastructure failures;
   comment-only production diffs complete without creating a mutation sandbox.
 - PEP 561 typed-package metadata.
-- 292 Python test cases plus 89 recorded subtests, one JavaScript dashboard contract test,
+- 293 Python test cases plus 89 recorded subtests, one JavaScript dashboard contract test,
   and internal, installed-tool, disposable-project, browser, and control-surface
   conformance fixtures.
 
@@ -94,7 +94,7 @@ AQG includes conformance commands for installed tools, but an organization shoul
 ## Recovered-code debt
 
 The implementation does not yet earn its own High-assurance “reduced code review” mode.
-Fresh whole-tree evidence reports 62.66% Python statement coverage, 50.44% branch
+Fresh whole-tree evidence reports 62.73% Python statement coverage, 50.55% branch
 coverage, and 50 functions over the Standard cyclomatic-complexity cap. The higher blocker
 count reflects a broader honest measurement surface that now includes production scripts,
 while the coverage increase is a material improvement over the recovered baseline near
