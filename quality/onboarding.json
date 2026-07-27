@@ -2,16 +2,10 @@
   "detected": {
     "build_command": null,
     "css": true,
-    "css_paths": [
-      "src"
-    ],
-    "frameworks": [
-      "pytest"
-    ],
+    "css_paths": ["src"],
+    "frameworks": ["pytest"],
     "html": true,
-    "html_paths": [
-      "src"
-    ],
+    "html_paths": ["src"],
     "javascript": true,
     "js_test_runner": null,
     "name": "AgentGauntlet",
@@ -23,11 +17,7 @@
     "python": true,
     "python_manager": "uv",
     "python_test_runner": "pytest",
-    "source_paths": [
-      "agent_ergonomics_audit",
-      "scripts",
-      "src"
-    ],
+    "source_paths": ["agent_ergonomics_audit", "scripts", "src"],
     "start_command": null,
     "test_files": [
       "agent_ergonomics_audit/audit/regression_tests/test_R_001_json_errors.py",
@@ -50,12 +40,7 @@
       "tests/test_governance.py",
       "tests/test_project_matrix.py"
     ],
-    "test_paths": [
-      "agent_ergonomics_audit",
-      "quality",
-      "src",
-      "tests"
-    ],
+    "test_paths": ["agent_ergonomics_audit", "quality", "src", "tests"],
     "typescript": false
   },
   "gaps": [
@@ -150,9 +135,7 @@
   ],
   "state": {
     "acceptance_present": true,
-    "active_specs": [
-      "feature-spec/AgentQualityGauntlet.md"
-    ],
+    "active_specs": ["feature-spec/AgentQualityGauntlet.md"],
     "agent_integrations": true,
     "ci_present": true,
     "codeowners_placeholder": false,
@@ -170,9 +153,7 @@
       "src",
       "tests"
     ],
-    "gherkin_features": [
-      "features/AgentQualityGauntlet.Setup.feature"
-    ],
+    "gherkin_features": ["features/AgentQualityGauntlet.Setup.feature"],
     "golden_configured": false,
     "js_lock": true,
     "keystone_placeholder": false,
@@ -189,9 +170,7 @@
       "python": true,
       "typescript": false
     },
-    "todo_specs": [
-      "feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"
-    ]
+    "todo_specs": ["feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"]
   },
   "state_fingerprint": "db48b8b1ea315db94907e4d2177b46864a03f83a44c2f88d76070f6c062ce3b4",
   "summary": {
