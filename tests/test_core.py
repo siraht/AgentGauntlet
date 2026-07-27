@@ -77,7 +77,7 @@ from aqg.util import (
 )
 
 _RELEASE_SPEC = importlib.util.spec_from_file_location(
-    "aqg_build_release",
+    "scripts.build_release",
     Path(__file__).resolve().parents[1] / "scripts" / "build_release.py",
 )
 assert _RELEASE_SPEC and _RELEASE_SPEC.loader
