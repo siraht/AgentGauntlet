@@ -89,9 +89,7 @@ class GitHubGovernanceContractTests(unittest.TestCase):
             *sorted((root / ".github" / "workflows").glob("*.yml")),
             root / "ci" / "github-actions-quality.yml.example",
         ]
-        exact_candidate_ref = (
-            "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
-        )
+        exact_candidate_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
 
         for path in paths:
             workflow = path.read_text(encoding="utf-8")
