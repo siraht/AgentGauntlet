@@ -747,6 +747,69 @@ def _diff_heuristic_findings(
     ]
 
 
+def _load_risk_payload(
+    root: Path, policy: dict[str, Any]
+) -> tuple[list[str], dict[str, Any] | None]:
+    try:
+        return risk_summary(root, policy, "quality/change-risk.json")
+    except Exception as exc:  # rendered as a blocker, not hidden
+        return [str(exc)], None
+
+
+def _findings_invalid_risk_card(risk_errors: list[str]) -> list[dict[str, Any]]:
+    if not risk_errors:
+        return []
+    return [
+        _finding(
+            "invalid-risk-card",
+            "blocker",
+            "Change-risk card is missing, invalid, or under-classified",
+            "; ".join(risk_errors),
+            ["quality/change-risk.json"],
+            "Resolve the schema and deterministic minimum before relying on the selected execution profile.",
+        )
+    ]
+
+
+def _findings_risk_factor_mismatches(
+    changed: list[str], risk_payload: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    if not risk_payload:
+        return []
+    factors = risk_payload["card"].get("risk_factors", {})
+    findings: list[dict[str, Any]] = []
+    for factor, paths in _risk_factor_path_hints(changed).items():
+        if paths and not factors.get(factor, False):
+            findings.append(
+                _finding(
+                    f"risk-factor-{factor}",
+                    "blocker",
+                    f"Changed paths imply the {factor.replace('_', ' ')} risk factor",
+                    f"The risk card marks {factor!r} false, but path heuristics found likely affected files. This is a review prompt rather than proof, but the mismatch must be resolved explicitly.",
+                    paths,
+                    f"Set risk_factors.{factor}=true or document why these files do not affect that risk and have a human approve the classification.",
+                )
+            )
+    return findings
+
+
+def _findings_traceability(root: Path, project: dict[str, Any]) -> list[dict[str, Any]]:
+    traceability = test_feature_traceability(root, project)
+    findings: list[dict[str, Any]] = []
+    for finding in traceability.get("findings", []):
+        findings.append(
+            _finding(
+                finding["code"],
+                "review",
+                "Active product behavior lacks explicit test traceability",
+                finding["message"],
+                [finding.get("path", "feature-spec/")],
+                finding.get("remediation") or "Add the feature identifier to an executable test.",
+            )
+        )
+    return findings
+
+
 def analyze_review(
     root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
 ) -> dict[str, Any]:
@@ -760,50 +823,10 @@ def analyze_review(
         root, policy, changed, diff, added, deleted, production, tests
     )
 
-    risk_errors: list[str] = []
-    risk_payload: dict[str, Any] | None = None
-    try:
-        risk_errors, risk_payload = risk_summary(root, policy, "quality/change-risk.json")
-    except Exception as exc:  # rendered as a blocker, not hidden
-        risk_errors = [str(exc)]
-    if risk_errors:
-        findings.append(
-            _finding(
-                "invalid-risk-card",
-                "blocker",
-                "Change-risk card is missing, invalid, or under-classified",
-                "; ".join(risk_errors),
-                ["quality/change-risk.json"],
-                "Resolve the schema and deterministic minimum before relying on the selected execution profile.",
-            )
-        )
-    if risk_payload:
-        factors = risk_payload["card"].get("risk_factors", {})
-        for factor, paths in _risk_factor_path_hints(changed).items():
-            if paths and not factors.get(factor, False):
-                findings.append(
-                    _finding(
-                        f"risk-factor-{factor}",
-                        "blocker",
-                        f"Changed paths imply the {factor.replace('_', ' ')} risk factor",
-                        f"The risk card marks {factor!r} false, but path heuristics found likely affected files. This is a review prompt rather than proof, but the mismatch must be resolved explicitly.",
-                        paths,
-                        f"Set risk_factors.{factor}=true or document why these files do not affect that risk and have a human approve the classification.",
-                    )
-                )
-
-    traceability = test_feature_traceability(root, project)
-    for finding in traceability.get("findings", []):
-        findings.append(
-            _finding(
-                finding["code"],
-                "review",
-                "Active product behavior lacks explicit test traceability",
-                finding["message"],
-                [finding.get("path", "feature-spec/")],
-                finding.get("remediation") or "Add the feature identifier to an executable test.",
-            )
-        )
+    risk_errors, risk_payload = _load_risk_payload(root, policy)
+    findings.extend(_findings_invalid_risk_card(risk_errors))
+    findings.extend(_findings_risk_factor_mismatches(changed, risk_payload))
+    findings.extend(_findings_traceability(root, project))
 
     runs = list_runs(root, limit=100)
     current_revision = git_revision(root)
