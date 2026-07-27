@@ -8,6 +8,7 @@ import io
 import re
 import token
 import tokenize
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -360,20 +361,32 @@ def _findings_production_without_tests(
     ]
 
 
+_TEST_EXPECTATION_PATTERN = re.compile(
+    r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)"
+)
+
+
+def _test_expectation_key(path: str, line: str) -> str | None:
+    if not _is_test(path) or not _TEST_EXPECTATION_PATTERN.search(line):
+        return None
+    return " ".join(line.split())
+
+
 def _deleted_test_assertion_paths(diff: str) -> list[str]:
+    added = Counter(
+        key
+        for path, _, line in _added_lines(diff)
+        if (key := _test_expectation_key(path, line)) is not None
+    )
     deleted_tests: list[str] = []
-    current_path = ""
-    for line in diff.splitlines():
-        if line.startswith("--- a/"):
-            current_path = line[6:]
+    for path, _, line in _deleted_lines(diff):
+        key = _test_expectation_key(path, line)
+        if key is None:
             continue
-        if (
-            line.startswith("-")
-            and not line.startswith("---")
-            and _is_test(current_path)
-            and re.search(r"\b(?:def\s+test_|it\s*\(|test\s*\(|expect\s*\(|assert\b)", line[1:])
-        ):
-            deleted_tests.append(current_path)
+        if added[key]:
+            added[key] -= 1
+            continue
+        deleted_tests.append(path)
     return deleted_tests
 
 
