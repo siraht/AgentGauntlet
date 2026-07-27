@@ -13,7 +13,7 @@
     "statements": 6973
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-27T23:15:09Z",
+  "generated_at": "2026-07-27T23:21:13Z",
   "highest_complexity_functions": [
     {
       "complexity": 47,
@@ -52,7 +52,7 @@
     },
     {
       "complexity": 25,
-      "line": 1133,
+      "line": 1131,
       "name": "_html",
       "path": "src/aqg/review.py",
       "rank": "D"
@@ -87,7 +87,7 @@
     },
     {
       "complexity": 20,
-      "line": 1030,
+      "line": 1028,
       "name": "_markdown",
       "path": "src/aqg/review.py",
       "rank": "C"
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "0f4f40a400523291e9ea1a4dec478a38e6d4ef76",
+  "revision": "07571d936617500906a9f2404094940db7e8f09c",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",
