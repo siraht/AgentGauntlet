@@ -255,10 +255,10 @@ def test_examples_outside_scenario_then_tables_and_missing_scenario(tmp_path: Pa
 
 
 def test_table_outside_examples_error(tmp_path: Path) -> None:
-    path = _write_feature(
-        tmp_path,
-        "Feature: X\n  Scenario: s\n    When a\n    Then b\n    | a |\n",
-    )
+    body = "Feature: X\n  Scenario: s\n    When a\n    Then b\n    | a |\n"
+    path = _write_feature(tmp_path, text=body, name="table_outside.feature")
+    assert path.name == "table_outside.feature"
+    assert path.read_text(encoding="utf-8") == body
     assert _findings(path) == [
         _finding(
             "table-outside-examples",
@@ -267,6 +267,48 @@ def test_table_outside_examples_error(tmp_path: Path) -> None:
             line=5,
         )
     ]
+
+
+def test_table_after_new_scenario_following_examples_is_outside(tmp_path: Path) -> None:
+    path = _write_feature(
+        tmp_path,
+        text=(
+            "Feature: X\n"
+            "  Scenario Outline: a\n"
+            "    When use <v>\n"
+            "    Then ok\n"
+            "  Examples:\n"
+            "    | v |\n"
+            "    | 1 |\n"
+            "  Scenario: b\n"
+            "    When a\n"
+            "    Then b\n"
+            "    | bad |\n"
+        ),
+        name="table_after_second_scenario.feature",
+    )
+    feature, findings = parse_feature(path)
+    assert feature is not None
+    assert feature["scenarios"][1]["examples"] == []
+    assert [item.as_dict() for item in findings] == [
+        _finding(
+            "table-outside-examples",
+            "Table rows are allowed only inside Examples.",
+            path,
+            line=11,
+        )
+    ]
+
+
+def test_invalid_utf8_bytes_are_replaced_in_feature_name(tmp_path: Path) -> None:
+    path = tmp_path / "invalid_utf8.feature"
+    # 0xFF is not valid UTF-8; errors="replace" must surface U+FFFD in the public IR.
+    path.write_bytes(b"Feature: X\xffY\n  Scenario: s\n    When a\n    Then b\n")
+    feature, findings = parse_feature(path)
+    assert findings == []
+    assert feature is not None
+    assert feature["name"] == "X\ufffdY"
+    assert [step["keyword"] for step in feature["scenarios"][0]["steps"]] == ["When", "Then"]
 
 
 def test_duplicate_example_header_still_accepts_later_row_via_dict_collapse(
