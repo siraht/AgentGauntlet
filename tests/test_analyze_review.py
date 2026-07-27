@@ -60,7 +60,7 @@ SUMMARY_FIELDS = frozenset(
 )
 SEVERITY_ORDER = {"blocker": 0, "review": 1, "warning": 2, "info": 3}
 
-# Stable public titles/actions used as regression oracles (detail may be long).
+# Stable public titles/details/actions used as regression oracles.
 TITLES = {
     "policy-plane-change": "Policy-plane files changed",
     "human-review-plane-change": "Behavioral or approval artifacts changed",
@@ -86,6 +86,162 @@ TITLES = {
     "invalid-risk-card": "Change-risk card is missing, invalid, or under-classified",
     "no-quality-evidence": "No AQG profile evidence exists",
 }
+DETAILS = {
+    "policy-plane-change": (
+        "These files can change what counts as a pass or what agents are allowed to modify, "
+        "so they require an explicit policy-maintenance review."
+    ),
+    "human-review-plane-change": (
+        "These files describe behavior, expected output, migrations, schemas, dependencies, or QA "
+        "and must be reviewed as product evidence rather than accepted as incidental code churn."
+    ),
+    "production-without-tests": (
+        "Existing tests may cover the change, but no test diff demonstrates the new or preserved "
+        "behavior and mutation evidence may be too broad to reveal the gap."
+    ),
+    "test-expectation-deleted": (
+        "Deleting an assertion can make an implementation appear correct by reducing the oracle "
+        "rather than fixing behavior."
+    ),
+    "focused-or-skipped-test": (
+        "Suppressions directly reduce what deterministic tools can prove and are equivalent to "
+        "changing a test or threshold when used without narrow justification."
+    ),
+    "coverage-suppression": (
+        "Suppressions directly reduce what deterministic tools can prove and are equivalent to "
+        "changing a test or threshold when used without narrow justification."
+    ),
+    "mutation-suppression": (
+        "Suppressions directly reduce what deterministic tools can prove and are equivalent to "
+        "changing a test or threshold when used without narrow justification."
+    ),
+    "lint-or-type-suppression": (
+        "Suppressions directly reduce what deterministic tools can prove and are equivalent to "
+        "changing a test or threshold when used without narrow justification."
+    ),
+    "swallowed-broad-exception": (
+        "Catching a broad failure and continuing without a typed recovery, observable error, or "
+        "preserved cause can convert corruption and infrastructure faults into apparent success."
+    ),
+    "new-production-debt-marker": (
+        "A TODO, FIXME, HACK, or XXX marker in changed production code often represents an unstated "
+        "requirement, deferred safety condition, or temporary branch that future agents will treat "
+        "as normal behavior."
+    ),
+    "test-nondeterminism-introduced": (
+        "Real clocks, random generators, sleeps, and live network calls make tests timing-sensitive "
+        "and can let a retry mask the behavior the test was meant to prove."
+    ),
+    "weak-test-oracle": (
+        "Truthiness, existence, nonzero-count, and bare-object assertions can pass while the "
+        "returned value, state transition, side effects, ordering, or authorization behavior is wrong."
+    ),
+    "public-contract-without-contract-test": (
+        "API routes, schemas, protocol definitions, and public data shapes can remain unit-test green "
+        "while breaking consumers, compatibility, error semantics, or authorization boundaries."
+    ),
+    "dependency-lifecycle-script-change": (
+        "Install and prepare hooks execute during dependency setup and can alter the build "
+        "environment, fetch code, expose credentials, or bypass the ordinary quality command surface."
+    ),
+    "test-case-count-reduced": (
+        "Test count alone is not quality, but a net reduction alongside production changes can shrink "
+        "the behavioral oracle or remove a distinct equivalence class."
+    ),
+    "expected-output-change": (
+        "Regenerated snapshots and goldens can approve a regression as easily as they can record an "
+        "intended change."
+    ),
+    "dependency-change": (
+        "Dependency changes alter executable supply-chain input and can invalidate cached test and "
+        "mutation evidence even when application source is unchanged."
+    ),
+}
+ACTIONS = {
+    "policy-plane-change": (
+        "Review the raw diff with the policy owner and confirm the change does not weaken any gate, "
+        "path protection, threshold, or command indirection."
+    ),
+    "human-review-plane-change": (
+        "Review each diff for intentional behavior, stable normalization, rollback impact, and "
+        "consistency with the risk card."
+    ),
+    "production-without-tests": (
+        "Add focused unit/property/contract/acceptance evidence, or document why existing immutable "
+        "tests already prove the change and verify that claim with mutation testing."
+    ),
+    "test-expectation-deleted": (
+        "Explain every deleted expectation, identify replacement evidence, and inspect mutation "
+        "survivors around the affected behavior."
+    ),
+    "focused-or-skipped-test": (
+        "Remove the suppression or create a narrow, expiring, owner-approved waiver with a "
+        "reproduced false positive and compensating evidence."
+    ),
+    "coverage-suppression": (
+        "Remove the suppression or create a narrow, expiring, owner-approved waiver with a "
+        "reproduced false positive and compensating evidence."
+    ),
+    "mutation-suppression": (
+        "Remove the suppression or create a narrow, expiring, owner-approved waiver with a "
+        "reproduced false positive and compensating evidence."
+    ),
+    "lint-or-type-suppression": (
+        "Remove the suppression or create a narrow, expiring, owner-approved waiver with a "
+        "reproduced false positive and compensating evidence."
+    ),
+    "swallowed-broad-exception": (
+        "Catch the narrow failure you can recover from, preserve or re-raise unexpected failures, "
+        "and add a test that proves both the intended recovery and the non-recoverable path."
+    ),
+    "new-production-debt-marker": (
+        "Resolve it now or link a concrete tracked decision with an owner, bounded impact, and "
+        "removal condition; do not use a comment as a substitute for a failing test or TODO feature "
+        "specification."
+    ),
+    "test-nondeterminism-introduced": (
+        "Inject or freeze the varying dependency, wait on an observable condition instead of sleeping, "
+        "and keep a separately labeled live probe only when the real dependency is the subject of the test."
+    ),
+    "weak-test-oracle": (
+        "Assert the exact domain result and critical side effects, then confirm the assertion kills a "
+        "plausible mutation rather than merely observing that some value exists."
+    ),
+    "public-contract-without-contract-test": (
+        "Review the interface diff and add or update consumer-visible contract tests, compatibility "
+        "fixtures, versioning/migration evidence, and negative authorization cases as applicable."
+    ),
+    "dependency-lifecycle-script-change": (
+        "Inspect the exact command and transitive tools, require a deterministic offline-safe path "
+        "where practical, and ensure CI and developer setup execute the same reviewed behavior."
+    ),
+    "test-case-count-reduced": (
+        "Map every removed case to preserved or stronger evidence and inspect mutation, boundary, "
+        "and failure-path coverage before accepting the reduction."
+    ),
+    "expected-output-change": (
+        "Review the full semantic diff and its source behavior; do not approve a bulk update solely "
+        "because the test command requested it."
+    ),
+    "dependency-change": (
+        "Inspect direct and transitive changes, provenance, license/security findings, lockfile "
+        "integrity, and whether mutation or golden caches were invalidated."
+    ),
+    "invalid-risk-card": (
+        "Resolve the schema and deterministic minimum before relying on the selected execution profile."
+    ),
+}
+
+
+def _assert_public_copy(finding: dict[str, Any], code: str) -> None:
+    """Pin exact public title/detail/action text for a known finding code."""
+    assert finding["code"] == code
+    if code in TITLES:
+        assert finding["title"] == TITLES[code]
+    if code in DETAILS:
+        assert finding["detail"] == DETAILS[code]
+    if code in ACTIONS:
+        assert finding["action"] == ACTIONS[code]
 
 
 def _git(root: Path, *args: str) -> str:
@@ -213,12 +369,12 @@ def test_production_change_without_tests_and_type_suppression(tmp_path: Path) ->
     assert "lint-or-type-suppression" in by_code
     production = by_code["production-without-tests"]
     assert production["severity"] == "blocker"
-    assert production["title"] == TITLES["production-without-tests"]
+    _assert_public_copy(production, "production-without-tests")
     assert production["paths"] == ["src/app.py"]
     assert production["automated"] is True
     suppress = by_code["lint-or-type-suppression"]
     assert suppress["severity"] == "blocker"
-    assert suppress["title"] == TITLES["lint-or-type-suppression"]
+    _assert_public_copy(suppress, "lint-or-type-suppression")
     assert suppress["paths"] == ["src/app.py:2"]
     assert review_exit_code(packet) == 1
 
@@ -236,12 +392,12 @@ def test_policy_and_human_review_plane_detection(tmp_path: Path) -> None:
     by_code = _by_code(packet)
     policy = by_code["policy-plane-change"]
     assert policy["severity"] == "blocker"
-    assert policy["title"] == TITLES["policy-plane-change"]
+    _assert_public_copy(policy, "policy-plane-change")
     assert policy["paths"] == ["QUALITY.md"]
     assert policy["automated"] is True
     human = by_code["human-review-plane-change"]
     assert human["severity"] == "review"
-    assert human["title"] == TITLES["human-review-plane-change"]
+    _assert_public_copy(human, "human-review-plane-change")
     assert human["automated"] is False
     assert "feature-spec/Product.Calculation.md" in human["paths"]
 
@@ -271,7 +427,7 @@ def test_debt_marker_only_in_python_comments(tmp_path: Path) -> None:
     comment_packet = _packet(root)
     debt = _by_code(comment_packet)["new-production-debt-marker"]
     assert debt["severity"] == "warning"
-    assert debt["title"] == TITLES["new-production-debt-marker"]
+    _assert_public_copy(debt, "new-production-debt-marker")
     assert debt["paths"] == ["src/app.py:2"]
     assert debt["automated"] is True
 
@@ -299,7 +455,7 @@ def test_swallowed_exceptions_python_and_javascript(tmp_path: Path) -> None:
     packet = _packet(root)
     swallowed = _by_code(packet)["swallowed-broad-exception"]
     assert swallowed["severity"] == "blocker"
-    assert swallowed["title"] == TITLES["swallowed-broad-exception"]
+    _assert_public_copy(swallowed, "swallowed-broad-exception")
     assert swallowed["paths"] == ["src/app.py:4", "src/client.js:1"]
     assert swallowed["automated"] is True
 
@@ -330,7 +486,7 @@ def test_quality_suppressions_are_blockers_with_locations(tmp_path: Path) -> Non
         "focused-or-skipped-test",
     ):
         assert by_code[code]["severity"] == "blocker"
-        assert by_code[code]["title"] == TITLES[code]
+        _assert_public_copy(by_code[code], code)
         assert by_code[code]["automated"] is True
 
 
@@ -362,11 +518,11 @@ def test_deleted_test_expectations_and_case_count_reduction(tmp_path: Path) -> N
     by_code = _by_code(packet)
     deleted = by_code["test-expectation-deleted"]
     assert deleted["severity"] == "blocker"
-    assert deleted["title"] == TITLES["test-expectation-deleted"]
+    _assert_public_copy(deleted, "test-expectation-deleted")
     assert deleted["paths"] == ["tests/test_app.py"]
     reduced = by_code["test-case-count-reduced"]
     assert reduced["severity"] == "review"
-    assert reduced["title"] == TITLES["test-case-count-reduced"]
+    _assert_public_copy(reduced, "test-case-count-reduced")
     assert reduced["automated"] is False
     assert any(path.startswith("tests/test_app.py:") for path in reduced["paths"])
 
@@ -395,7 +551,7 @@ def test_loopback_network_is_allowed_external_is_flagged(tmp_path: Path) -> None
     external = _packet(root)
     finding = _by_code(external)["test-nondeterminism-introduced"]
     assert finding["severity"] == "warning"
-    assert finding["title"] == TITLES["test-nondeterminism-introduced"]
+    _assert_public_copy(finding, "test-nondeterminism-introduced")
     assert any("test_network.py" in path for path in finding["paths"])
     assert finding["automated"] is True
 
@@ -412,7 +568,7 @@ def test_weak_oracle_detection(tmp_path: Path) -> None:
     packet = _packet(root)
     weak = _by_code(packet)["weak-test-oracle"]
     assert weak["severity"] == "warning"
-    assert weak["title"] == TITLES["weak-test-oracle"]
+    _assert_public_copy(weak, "weak-test-oracle")
     assert weak["paths"] == ["tests/test_app.py:4"]
 
 
@@ -451,17 +607,22 @@ def test_public_contract_snapshot_dependency_and_lifecycle_surface(tmp_path: Pat
     by_code = _by_code(packet)
     contract = by_code["public-contract-without-contract-test"]
     assert contract["severity"] == "review"
-    assert contract["title"] == TITLES["public-contract-without-contract-test"]
+    _assert_public_copy(contract, "public-contract-without-contract-test")
     assert contract["paths"] == ["src/routes/api.py"]
     assert contract["automated"] is False
-    assert by_code["expected-output-change"]["paths"] == ["tests/__snapshots__/handler.snap"]
-    assert by_code["expected-output-change"]["severity"] == "review"
-    assert by_code["expected-output-change"]["automated"] is False
-    assert "package.json" in by_code["dependency-change"]["paths"]
-    assert by_code["dependency-change"]["automated"] is False
+    expected = by_code["expected-output-change"]
+    assert expected["paths"] == ["tests/__snapshots__/handler.snap"]
+    assert expected["severity"] == "review"
+    assert expected["automated"] is False
+    _assert_public_copy(expected, "expected-output-change")
+    dep = by_code["dependency-change"]
+    assert "package.json" in dep["paths"]
+    assert dep["automated"] is False
+    _assert_public_copy(dep, "dependency-change")
     lifecycle = by_code["dependency-lifecycle-script-change"]
     assert lifecycle["severity"] == "review"
     assert lifecycle["automated"] is False
+    _assert_public_copy(lifecycle, "dependency-lifecycle-script-change")
     assert any(path.startswith("package.json:") for path in lifecycle["paths"])
 
 
@@ -483,11 +644,22 @@ def test_risk_factor_mismatch_for_public_api_paths(tmp_path: Path) -> None:
     risk["risk_factors"]["external_contract"] = False
     risk_path.write_text(json.dumps(risk, indent=2) + "\n", encoding="utf-8")
     packet = _packet(root)
-    factor = _by_code(packet)["risk-factor-external_contract"]
+    by_code = _by_code(packet)
+    factor = by_code["risk-factor-external_contract"]
     assert factor["severity"] == "blocker"
     assert "src/routes/api.py" in factor["paths"]
-    assert "external contract" in factor["title"]
+    assert factor["title"] == "Changed paths imply the external contract risk factor"
+    assert factor["detail"] == (
+        "The risk card marks 'external_contract' false, but path heuristics found likely affected "
+        "files. This is a review prompt rather than proof, but the mismatch must be resolved explicitly."
+    )
+    assert factor["action"] == (
+        "Set risk_factors.external_contract=true or document why these files do not affect that risk "
+        "and have a human approve the classification."
+    )
     assert factor["automated"] is True
+    # Contract-named tests count as contract evidence for the public-interface heuristic.
+    assert "public-contract-without-contract-test" not in by_code
     assert packet["risk"] is not None
     assert "selected_risk_profile" in packet["risk"]
     assert "required_execution_profiles" in packet["risk"]
@@ -510,6 +682,8 @@ def test_invalid_risk_card_is_blocker(tmp_path: Path) -> None:
     invalid = _by_code(packet)["invalid-risk-card"]
     assert invalid["severity"] == "blocker"
     assert invalid["title"] == TITLES["invalid-risk-card"]
+    assert invalid["action"] == ACTIONS["invalid-risk-card"]
+    assert isinstance(invalid["detail"], str) and invalid["detail"]
     assert invalid["paths"] == ["quality/change-risk.json"]
     assert packet["risk"] is None
 
@@ -518,14 +692,58 @@ def test_require_evidence_without_runs_emits_blockers(tmp_path: Path) -> None:
     root = _baseline_repo(tmp_path)
     packet = _packet(root, require_evidence=True)
     _assert_packet_shape(packet)
-    codes = {finding["code"] for finding in packet["findings"]}
-    # Either profile-specific missing evidence or the empty-run fallback.
-    assert codes & {
-        "no-quality-evidence",
-        "no-required-profile",
-    } or any(code.startswith("missing-current-") for code in codes)
+    by_code = _by_code(packet)
+    codes = set(by_code)
+    # Valid risk card still resolves required profiles; missing runs are profile-scoped.
+    assert packet["risk"] is not None
+    required = list(packet["risk"].get("required_execution_profiles") or [])
+    assert required, "scaffold risk card must require at least one execution profile"
+    assert "no-required-profile" not in codes
+    for profile in required:
+        code = f"missing-current-{profile}-evidence"
+        assert code in by_code
+        finding = by_code[code]
+        assert finding["severity"] == "blocker"
+        assert finding["title"] == f"No current passing {profile} evidence"
+        assert finding["detail"] == (
+            "A prior run is not reusable when the revision, review-surface fingerprint, or "
+            "control-plane fingerprint differs from the current repository state."
+        )
+        assert finding["action"] == (
+            f"Run `python3 quality/qg.py check {profile} --keep-going` after the final change, "
+            "then regenerate the review packet."
+        )
+        assert finding["paths"] == [".aqg/runs"]
+        assert finding["automated"] is True
+    assert packet["evidence"] == [
+        {"profile": profile, "status": "missing_or_stale", "run_id": None} for profile in required
+    ]
     assert packet["summary"]["evidence_status"] == "missing_or_stale"
+    assert packet["summary"]["approval_status"] == "missing_or_stale"
+    assert "missing-or-stale-human-approval" in by_code
+    approval = by_code["missing-or-stale-human-approval"]
+    assert approval["severity"] == "blocker"
+    assert approval["title"] == "Required human approval is missing, incomplete, or stale"
+    assert approval["paths"] == ["quality/approvals"]
+    assert approval["automated"] is False
+    assert approval["action"] == (
+        "Use `python3 quality/qg.py approval template <kind>`, complete the concrete "
+        "scope/procedure/evidence as the named human reviewer, then validate it against the "
+        "unchanged revision."
+    )
+    assert isinstance(approval["detail"], str) and approval["detail"]
+    assert packet["approvals"]["errors"]
     assert review_exit_code(packet) == 1
+
+
+def test_require_evidence_false_skips_evidence_and_approval_blockers(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    packet = _packet(root, require_evidence=False)
+    codes = set(_by_code(packet))
+    assert not any(code.startswith("missing-current-") for code in codes)
+    assert "missing-or-stale-human-approval" not in codes
+    assert "no-quality-evidence" not in codes
+    assert "no-required-profile" not in codes
 
 
 def test_mixed_diff_ordering_summary_and_render_surfaces(tmp_path: Path) -> None:
@@ -749,6 +967,130 @@ def test_suppression_families_parametrized(
     packet = _packet(root)
     finding = _by_code(packet)[code]
     assert finding["severity"] == "blocker"
-    assert finding["title"] == TITLES[code]
+    _assert_public_copy(finding, code)
     assert finding["paths"]
     assert all(":" in path for path in finding["paths"])
+
+
+def test_suppression_markers_in_docs_do_not_emit_quality_findings(tmp_path: Path) -> None:
+    """Doc/feature/text paths are documentation, not suppressible production/test surface."""
+    root = _baseline_repo(tmp_path)
+    (root / "NOTES.md").write_text(
+        "Document how teams use pragma: no cover and # type: ignore carefully.\n"
+        "Also mention @pytest.mark.skip for local debugging only.\n",
+        encoding="utf-8",
+    )
+    (root / "guide.feature").write_text(
+        "Feature: Docs\n  Scenario: mentions pragma: no mutate for humans\n",
+        encoding="utf-8",
+    )
+    (root / "notes.txt").write_text(
+        "Operators may see eslint-disable in examples; do not treat this file as code.\n",
+        encoding="utf-8",
+    )
+    # Touch production with a real behavior change plus a matching test so the only
+    # interesting question is whether documentation markers become suppressions.
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int:\n    return value + 2\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 3\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    codes = set(_by_code(packet))
+    for code in (
+        "coverage-suppression",
+        "mutation-suppression",
+        "lint-or-type-suppression",
+        "focused-or-skipped-test",
+    ):
+        assert code not in codes
+
+
+def test_suppression_inside_python_string_is_not_a_finding(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "app.py").write_text(
+        'MESSAGE = "Teams sometimes write pragma: no cover inside docs."\n'
+        "def calculate(value: int) -> int:\n"
+        "    return value + 2\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 3\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    assert "coverage-suppression" not in _by_code(packet)
+
+
+def test_production_assert_deletion_is_not_test_expectation_deleted(tmp_path: Path) -> None:
+    """Only test-path assertion/case deletions feed test-expectation-deleted."""
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int:\n    assert value >= 0\n    return value + 1\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "with-production-assert")
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int:\n    return value + 1\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n"
+        "def test_non_negative_docs() -> None:\n"
+        "    assert calculate(0) == 1\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    assert "test-expectation-deleted" not in _by_code(packet)
+
+
+def test_module_level_test_def_deletion_is_expectation_deleted(tmp_path: Path) -> None:
+    """Deleting a bare module-level test def (no assert body) is still a deleted expectation."""
+    root = _baseline_repo(tmp_path)
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    value = calculate(1)\n"
+        "    if value != 2:\n"
+        "        raise AssertionError('bad')\n"
+        "def test_secondary() -> None:\n"
+        "    value = calculate(2)\n"
+        "    if value != 3:\n"
+        "        raise AssertionError('bad')\n",
+        encoding="utf-8",
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "raise-style-tests")
+    (root / "src" / "app.py").write_text(
+        "def calculate(value: int) -> int:\n    return value + 2\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_app.py").write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_remaining() -> None:\n"
+        "    value = calculate(1)\n"
+        "    if value != 3:\n"
+        "        raise AssertionError('bad')\n",
+        encoding="utf-8",
+    )
+    packet = _packet(root)
+    deleted = _by_code(packet)["test-expectation-deleted"]
+    _assert_public_copy(deleted, "test-expectation-deleted")
+    assert deleted["paths"] == ["tests/test_app.py"]
+    assert deleted["severity"] == "blocker"
