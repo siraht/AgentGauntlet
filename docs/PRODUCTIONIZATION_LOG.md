@@ -86,6 +86,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-049 | Ignore runtime-created caches in every installed repository.                                     | Exact extracted-release dogfood passed the functional gates but failed workspace integrity because Python created untracked `__pycache__` directories. Generated ignore rules now cover interpreter, test, type-checker, linter, environment, and JavaScript dependency caches, and setup tests prove repeated commands leave the repository clean. | A supported tool introduces another repository-local runtime cache.                                              |
 | D-050 | Build release payloads from canonical inputs without breaking isolated copies.                   | Comparing clean-hosted and local builds exposed ignored-cache and remote-URI drift. The authoritative checkout uses tracked files; no-Git source/mutation copies use deterministic hidden-cache exclusion; equivalent GitHub remotes normalize before hashing.                                                                                      | The project adopts a signed source manifest portable into isolated build roots.                                  |
 | D-051 | Trust Git provenance only when the release root owns the repository metadata.                    | An isolated mutation/source copy nested beneath an unrelated repository could discover the parent's revision, remote, dirty state, and commit time. Release building now fails closed to `local:AgentGauntlet` with no Git commit digest, and a regression proves the outer identity cannot leak into the statement.                                | Isolated builds receive a signed, content-bound source manifest with an independently verified revision.         |
+| D-052 | Make release authority depend on authoritative branch-wide policy evidence.                      | Manual dispatch resolved `HEAD~1`; a docs-only final commit made all gates vacuously green while the full PR remained red, and the parallel release job still created attestations. Dispatch now compares against the repository default branch, invalid bases fail closed, and `release-build` waits for the test matrix plus policy evidence.     | A separately administered trusted builder enforces an equivalent source-policy predicate.                        |
 
 ## Progress
 
@@ -110,6 +111,8 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
   checksums, and published artifacts are all tied to the same revision.
 - A source copy without its own `.git` directory can still discover an ancestor repository;
   release provenance must prove repository ownership, not merely that Git commands succeed.
+- A valid signature proves which workflow attested bytes, not that the workflow used the
+  right comparison scope; release authority must depend on the authoritative policy result.
 - An exact transitive tool dependency can prevent normal audit remediation; a narrow root
   override is safer than accepting the advisory when conformance proves the tool still
   starts and propagates failures.

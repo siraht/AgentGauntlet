@@ -37,6 +37,8 @@ The following items named in the referenced conversation were absent or incomple
 - Deterministic CycloneDX 1.6 inventories from supported committed locks.
 - Deterministic portable release builder with local in-toto/SLSA provenance.
 - Keyless GitHub OIDC/Sigstore build-provenance and CycloneDX attestations.
+- Manual release dispatches compare against the authoritative default branch, and
+  attestation authority depends on successful policy evidence plus the source test matrix.
 - PEP 561 typed-package metadata.
 - 108 Python test cases plus 78 recorded subtests, one JavaScript dashboard contract test,
   and internal, installed-tool, disposable-project, browser, and control-surface

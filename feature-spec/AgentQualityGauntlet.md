@@ -22,6 +22,10 @@
 - Release building MUST remain functional in isolated source and mutation copies without repository metadata.
 - A release built from an isolated source copy MUST NOT inherit revision, remote,
   dirty-state, or commit-time provenance from an unrelated parent repository.
+- A manually dispatched hosted quality run MUST compare against the authoritative
+  default branch and MUST NOT fall back to the candidate's previous commit.
+- Release attestation or publication MUST NOT proceed unless the authoritative
+  risk-selected policy run and required test matrix succeed.
 
 ## Related specifications
 
