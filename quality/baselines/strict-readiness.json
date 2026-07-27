@@ -13,7 +13,7 @@
     "statements": 6445
   },
   "enforcement_mode": "adopt",
-  "generated_at": "2026-07-27T04:33:02+00:00",
+  "generated_at": "2026-07-27T04:45:24+00:00",
   "highest_complexity_functions": [
     {
       "complexity": 101,
@@ -31,7 +31,7 @@
     },
     {
       "complexity": 35,
-      "line": 1322,
+      "line": 1334,
       "name": "install_toolchains",
       "path": "src/aqg/scaffold.py",
       "rank": "E"
@@ -231,7 +231,7 @@
     }
   ],
   "ready_for_strict": false,
-  "revision": "25136eb7c1e8f666ea805c3272a8aa9f33bc4a2a",
+  "revision": "8d20228c72e984fa0f5c3bee6f63f5fddf1e1500",
   "schema_version": 1,
   "switch_contract": [
     "whole-tree line and branch coverage meet Standard thresholds",

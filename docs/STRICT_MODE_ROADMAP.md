@@ -1,6 +1,6 @@
 # Strict-mode readiness
 
-Revision: `25136eb7c1e8f666ea805c3272a8aa9f33bc4a2a` · mode: **adopt** · strict ready: **no**
+Revision: `8d20228c72e984fa0f5c3bee6f63f5fddf1e1500` · mode: **adopt** · strict ready: **no**
 
 ## Current evidence
 
@@ -32,7 +32,7 @@ Revision: `25136eb7c1e8f666ea805c3272a8aa9f33bc4a2a` · mode: **adopt** · stric
 | -------------------------------------------------- | ---------: | :--: |
 | `src/aqg/review.py:305::analyze_review`            |        101 |  F   |
 | `src/aqg/scaffold.py:800::build_onboarding`        |         47 |  F   |
-| `src/aqg/scaffold.py:1322::install_toolchains`     |         35 |  E   |
+| `src/aqg/scaffold.py:1334::install_toolchains`     |         35 |  E   |
 | `src/aqg/checks.py:304::parse_feature`             |         33 |  E   |
 | `src/aqg/approvals.py:105::validate_approval`      |         30 |  D   |
 | `src/aqg/doctor.py:273::_check_toolchains`         |         30 |  D   |
