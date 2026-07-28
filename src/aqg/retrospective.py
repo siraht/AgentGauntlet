@@ -259,11 +259,7 @@ def ratchet_exit_code(report: Mapping[str, Any]) -> int:
         return max(
             1,
             max(
-                (
-                    int(item.get("exit_code", 1))
-                    for item in missing
-                    if isinstance(item, Mapping)
-                ),
+                (int(item.get("exit_code", 1)) for item in missing if isinstance(item, Mapping)),
                 default=1,
             ),
         )

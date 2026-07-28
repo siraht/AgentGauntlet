@@ -204,6 +204,44 @@ def test_standalone_gate_finalizes_and_missing_adapter_detail_is_infrastructure(
         run_gate(tmp_path, _gate_policy("python3 -c \"print('ok')\""), "unit", "standalone")
 
 
+def test_trusted_gate_never_executes_candidate_controlled_grader(tmp_path: Path) -> None:
+    candidate_launcher = tmp_path / "quality" / "qg.py"
+    candidate_launcher.parent.mkdir(parents=True)
+    candidate_launcher.write_text(
+        "from pathlib import Path\nPath('candidate-grader-ran').write_text('unsafe')\n",
+        encoding="utf-8",
+    )
+    trusted_launcher = tmp_path / "trusted-qg.py"
+    trusted_launcher.write_text(
+        "import json,pathlib,sys\n"
+        "root=pathlib.Path(sys.argv[sys.argv.index('--root')+1])\n"
+        "gate=sys.argv[-1]\n"
+        "p=root/'.aqg'/'work'/gate/'report.json'\n"
+        "p.parent.mkdir(parents=True,exist_ok=True)\n"
+        "p.write_text(json.dumps({'schema_version':2,'gate':gate,"
+        "'status':'pass','exit_code':0}),encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    trusted_tools = tmp_path / "trusted-tools"
+    trusted_tools.mkdir()
+    environment = {
+        "AQG_TRUSTED_MODE": "1",
+        "AQG_TRUSTED_LAUNCHER": str(trusted_launcher.resolve()),
+        "AQG_TRUSTED_TOOLCHAIN_ROOT": str(trusted_tools.resolve()),
+    }
+    with mock.patch.dict(os.environ, environment, clear=False):
+        code, evidence = run_gate(
+            tmp_path,
+            _gate_policy("python3 quality/qg.py adapter probe", gate="probe"),
+            "probe",
+            "trusted-grader",
+        )
+    assert code == PASS
+    assert str(trusted_launcher.resolve()) in evidence["command"]
+    assert not (tmp_path / "candidate-grader-ran").exists()
+    assert verify_run_manifest(tmp_path / ".aqg" / "runs" / "trusted-grader")["ok"] is True
+
+
 def test_profile_snapshots_details_then_manifests_before_latest(tmp_path: Path) -> None:
     command = _writer_script(tmp_path)
     provenance = {

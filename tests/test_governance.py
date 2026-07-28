@@ -47,6 +47,7 @@ class GitHubGovernanceContractTests(unittest.TestCase):
             "Python 3.12",
             "Python 3.13",
             "policy-evidence",
+            "trusted-policy-evidence",
             "release-build",
             "Contract (ubuntu-latest, Python 3.11)",
             "Contract (ubuntu-latest, Python 3.13)",
@@ -87,7 +88,11 @@ class GitHubGovernanceContractTests(unittest.TestCase):
     def test_hosted_workflows_checkout_the_exact_candidate_revision(self) -> None:
         root = Path(__file__).resolve().parents[1]
         paths = [
-            *sorted((root / ".github" / "workflows").glob("*.yml")),
+            *sorted(
+                path
+                for path in (root / ".github" / "workflows").glob("*.yml")
+                if path.name != "trusted-policy-evidence.yml"
+            ),
             root / "ci" / "github-actions-quality.yml.example",
         ]
         exact_candidate_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
@@ -104,6 +109,23 @@ class GitHubGovernanceContractTests(unittest.TestCase):
                     "to the pull-request head SHA instead of GitHub's synthetic merge commit"
                 ),
             )
+
+    def test_trusted_workflow_uses_base_grader_and_separate_candidate(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github" / "workflows" / "trusted-policy-evidence.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("pull_request_target:", workflow)
+        self.assertIn("ref: ${{ github.event.pull_request.base.sha }}", workflow)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", workflow)
+        self.assertIn("path: trusted", workflow)
+        self.assertIn("path: subject", workflow)
+        self.assertEqual(workflow.count("persist-credentials: false"), 2)
+        self.assertIn('AQG_TRUSTED_MODE: "1"', workflow)
+        self.assertIn("AQG_TRUSTED_LAUNCHER:", workflow)
+        self.assertIn("python ../trusted/quality/qg.py", workflow)
+        self.assertNotIn("python quality/qg.py check-risk", workflow)
+        self.assertNotIn("secrets:", workflow)
 
 
 if __name__ == "__main__":

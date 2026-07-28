@@ -14,7 +14,8 @@ default branch by:
 - requiring one independent approval, approval of the last reviewable push, dismissal
   of stale approvals, and resolution of review conversations;
 - requiring every source, cross-platform contract, live-project, browser, release-build,
-  and risk-selected `policy-evidence` check from the GitHub Actions app;
+  candidate `policy-evidence`, and base-controlled `trusted-policy-evidence` check from
+  the GitHub Actions app;
 - requiring the pull request to be current with the default branch.
 
 There are no bypass actors. Because this is currently a personal repository with one
@@ -56,8 +57,37 @@ The current pull request is deliberately kept unmergeable until all required che
 and an independent human approves it. Agent verification is additional evidence, not a
 substitute for that approval.
 
-The `policy-evidence` context is intentionally different from the faster source and
-conformance checks. It installs the protected checker toolchains in a clean runner and
-executes `qg check-risk`, which resolves the committed risk card and runs its required
-profile. A red policy context cannot be reinterpreted as green because the other contexts
-pass; remediation or a narrow, owned, expiring, human-approved exception is required.
+## Immutable grader activation
+
+The ordinary `policy-evidence` job remains useful candidate integration evidence, but it
+checks out and invokes candidate files and therefore is not an immutable grading
+authority. The separate `trusted-policy-evidence.yml` workflow uses
+`pull_request_target`, read-only repository permission, and two credential-free
+checkouts:
+
+- `trusted/` is the exact protected base SHA and supplies the AQG runtime, policy,
+  project configuration, checker locks, checker configuration, and gate launcher;
+- `subject/` is the exact untrusted head SHA and supplies only the code, tests, feature
+  intent, risk card, and other candidate subject matter being measured.
+
+Trusted mode ignores the candidate's `quality/qg.py`, policy, project configuration,
+checker binaries, and checker configuration. Every gate subprocess is re-routed through
+the base launcher, and the uploaded evidence records the base and candidate identities
+plus hashes for the complete base runtime. Candidate tests still execute because they
+are the object under test, so the workflow exposes no secrets, persists no checkout
+credentials, and has no write permission.
+
+Activation is deliberately two-stage to avoid a branch-protection deadlock:
+
+1. Merge the trusted workflow while the existing required checks and independent review
+   still govern the change.
+2. Observe the workflow running from the default branch, then apply the versioned
+   ruleset that requires `trusted-policy-evidence`.
+3. Keep candidate `policy-evidence` during the shadow period. It may be removed from the
+   required set only after the trusted context is stable and the versioned governance
+   declaration is updated through policy maintenance.
+
+GitHub always loads a `pull_request_target` workflow from the protected base. Therefore
+the pull request that first introduces this file cannot certify itself with the new
+context. The versioned ruleset already describes the intended post-merge state, but the
+live ruleset must not require that context until step 2.

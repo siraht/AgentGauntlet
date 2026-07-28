@@ -228,7 +228,13 @@ def render_policy(owner: str) -> str:
 
 
 def load_policy(root: Path) -> dict[str, Any]:
-    path = root / "quality" / "policy.toml"
+    trusted = os.environ.get("AQG_TRUSTED_POLICY_PATH")
+    if os.environ.get("AQG_TRUSTED_MODE") == "1" and trusted:
+        path = Path(trusted)
+        if not path.is_absolute():
+            raise ConfigurationError("AQG_TRUSTED_POLICY_PATH must be absolute")
+    else:
+        path = root / "quality" / "policy.toml"
     try:
         with path.open("rb") as handle:
             policy = tomllib.load(handle)

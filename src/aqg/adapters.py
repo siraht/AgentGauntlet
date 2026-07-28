@@ -98,7 +98,24 @@ CommandSpec = (
 )
 
 
+def _trusted_control_root(root: Path) -> Path:
+    if os.environ.get("AQG_TRUSTED_MODE") != "1":
+        return root
+    configured = os.environ.get("AQG_TRUSTED_TOOLCHAIN_ROOT", "")
+    trusted = Path(configured)
+    if not trusted.is_absolute() or not trusted.is_dir():
+        raise ConfigurationError(
+            "trusted verification requires an absolute existing AQG_TRUSTED_TOOLCHAIN_ROOT"
+        )
+    return trusted
+
+
+def _control_path(root: Path, relative: str) -> str:
+    return str(_trusted_control_root(root) / relative)
+
+
 def _bin(root: Path, name: str, ecosystem: str) -> Path:
+    root = _trusted_control_root(root)
     if ecosystem == "js":
         suffix = ".cmd" if os.name == "nt" else ""
         return root / "quality" / "tools" / "js" / "node_modules" / ".bin" / f"{name}{suffix}"
@@ -302,7 +319,7 @@ def _format(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
                         "format",
                         "--check",
                         "--config",
-                        "quality/config/python/ruff.toml",
+                        _control_path(root, "quality/config/python/ruff.toml"),
                         *files,
                     ],
                     300,
@@ -336,7 +353,7 @@ def _lint(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
                     [
                         eslint,
                         "--config",
-                        "quality/tools/js/config/eslint.config.mjs",
+                        _control_path(root, "quality/tools/js/config/eslint.config.mjs"),
                         "--report-unused-disable-directives",
                         "--max-warnings",
                         "0",
@@ -355,7 +372,12 @@ def _lint(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         for group in _chunks(css_files):
             commands.append(
                 (
-                    [stylelint, "--config", "quality/tools/js/config/stylelint.config.mjs", *group],
+                    [
+                        stylelint,
+                        "--config",
+                        _control_path(root, "quality/tools/js/config/stylelint.config.mjs"),
+                        *group,
+                    ],
                     600,
                     None,
                     (1, 2),
@@ -371,7 +393,7 @@ def _lint(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
                     [
                         html_validate,
                         "--config",
-                        "quality/tools/js/config/htmlvalidate.json",
+                        _control_path(root, "quality/tools/js/config/htmlvalidate.json"),
                         *group,
                     ],
                     600,
@@ -385,7 +407,13 @@ def _lint(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
             ruff = _tool(root, "ruff", "python")
             commands.append(
                 (
-                    [ruff, "check", "--config", "quality/config/python/ruff.toml", *py_files],
+                    [
+                        ruff,
+                        "check",
+                        "--config",
+                        _control_path(root, "quality/config/python/ruff.toml"),
+                        *py_files,
+                    ],
                     600,
                     None,
                 )
@@ -411,7 +439,7 @@ def _typecheck(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
         config = (
             "tsconfig.json"
             if (root / "tsconfig.json").exists()
-            else "quality/config/js/tsconfig.aqg.json"
+            else _control_path(root, "quality/config/js/tsconfig.aqg.json")
         )
         commands.append(([tsc, "--noEmit", "--pretty", "false", "-p", config], 900, None, (1, 2)))
     if project["stacks"].get("python"):
@@ -422,7 +450,16 @@ def _typecheck(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
                 "Python typecheck is applicable but no configured source path exists"
             )
         commands.append(
-            ([mypy, "--config-file", "quality/config/python/mypy.ini", *py_targets], 900, None)
+            (
+                [
+                    mypy,
+                    "--config-file",
+                    _control_path(root, "quality/config/python/mypy.ini"),
+                    *py_targets,
+                ],
+                900,
+                None,
+            )
         )
     code, results = _run_many(root, commands)
     return _write_report(
@@ -500,7 +537,7 @@ def _javascript_collection_spec(root: Path, project: dict[str, Any]) -> CommandS
             _tool(root, "vitest", "js"),
             "list",
             "--config",
-            "quality/tools/js/config/vitest.config.mjs",
+            _control_path(root, "quality/tools/js/config/vitest.config.mjs"),
         ]
     else:
         return None
@@ -543,7 +580,7 @@ def _javascript_unit_spec(root: Path, project: dict[str, Any]) -> CommandSpec:
             _tool(root, "vitest", "js"),
             "run",
             "--config",
-            "quality/tools/js/config/vitest.config.mjs",
+            _control_path(root, "quality/tools/js/config/vitest.config.mjs"),
         ]
     )
     return argv, 1800, _project_test_env(CI="1", TZ="UTC", FORCE_COLOR="0")
@@ -688,7 +725,7 @@ def _javascript_structure_commands(root: Path, files: list[str]) -> list[Command
             [
                 eslint,
                 "--config",
-                "quality/tools/js/config/eslint.config.mjs",
+                _control_path(root, "quality/tools/js/config/eslint.config.mjs"),
                 "--max-warnings",
                 "0",
                 *group,
@@ -988,7 +1025,7 @@ def _javascript_coverage_command(root: Path, project: dict[str, Any]) -> list[st
             "run",
             "--coverage",
             "--config",
-            "quality/tools/js/config/vitest.config.mjs",
+            _control_path(root, "quality/tools/js/config/vitest.config.mjs"),
         ]
     raise ConfigurationError(
         "JavaScript coverage needs javascript.coverage_command or a Vitest test runner"
@@ -1130,7 +1167,7 @@ def _contracts(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
                     _tool(root, "vitest", "js"),
                     "run",
                     "--config",
-                    "quality/tools/js/config/vitest.config.mjs",
+                    _control_path(root, "quality/tools/js/config/vitest.config.mjs"),
                     *paths,
                 ],
                 1800,
@@ -1168,7 +1205,7 @@ def _browser_acceptance_spec(root: Path, project: dict[str, Any]) -> CommandSpec
             _tool(root, "playwright", "js"),
             "test",
             "--config",
-            "quality/tools/js/config/playwright.config.mjs",
+            _control_path(root, "quality/tools/js/config/playwright.config.mjs"),
         ],
         2400,
         _project_test_env(CI="1", TZ="UTC"),
@@ -1930,8 +1967,11 @@ def _mutation_js(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, An
     work.mkdir(parents=True, exist_ok=True)
     config_path = work / "stryker.changed.config.mjs"
     mutate_json = json.dumps(changed)
+    base_config = (
+        Path(_control_path(root, "quality/tools/js/config/stryker.config.mjs")).resolve().as_uri()
+    )
     config_path.write_text(
-        "import base from '../../../quality/tools/js/config/stryker.config.mjs';\n"
+        f"import base from {json.dumps(base_config)};\n"
         f"export default {{ ...base, mutate: {mutate_json}, incremental: false }};\n",
         encoding="utf-8",
     )
@@ -2111,7 +2151,7 @@ def _security_fast(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, 
                     bandit_severity,
                     "-r",
                     "-c",
-                    "quality/config/python/bandit.yaml",
+                    _control_path(root, "quality/config/python/bandit.yaml"),
                     *_existing_paths(root, source_paths(project)),
                 ],
                 1200,
@@ -2191,7 +2231,7 @@ def _security_deep(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, 
                     "-lll",
                     "-iii",
                     "-c",
-                    "quality/config/python/bandit.yaml",
+                    _control_path(root, "quality/config/python/bandit.yaml"),
                     *source_paths(project),
                 ],
                 1800,

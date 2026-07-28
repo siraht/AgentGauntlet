@@ -1,0 +1,102 @@
+name: AQG Trusted Policy Evidence
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trusted-policy-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+jobs:
+  trusted-policy-evidence:
+    name: trusted-policy-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      AQG_TRUSTED_MODE: "1"
+      AQG_TRUSTED_POLICY_PATH: ${{ github.workspace }}/trusted/quality/policy.toml
+      AQG_TRUSTED_PROJECT_PATH: ${{ github.workspace }}/trusted/quality/project.json
+      AQG_TRUSTED_LAUNCHER: ${{ github.workspace }}/trusted/quality/qg.py
+      AQG_TRUSTED_TOOLCHAIN_ROOT: ${{ github.workspace }}/trusted
+      AQG_DIFF_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Checkout protected base grader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.base.repo.full_name }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout untrusted candidate subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: subject
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the protected comparison revision into the subject repository
+        shell: bash
+        run: |
+          git -C subject remote add aqg-protected-base \
+            "https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git"
+          git -C subject fetch --no-tags aqg-protected-base \
+            "${{ github.event.pull_request.base.sha }}"
+          test "$(git -C trusted rev-parse HEAD)" = \
+            "${{ github.event.pull_request.base.sha }}"
+          test "$(git -C subject rev-parse HEAD)" = \
+            "${{ github.event.pull_request.head.sha }}"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: trusted/quality/tools/js/package-lock.json
+      - name: Install base-controlled hash-locked toolchains
+        working-directory: trusted
+        run: python quality/qg.py tools install --ci --browsers
+      - name: Record immutable grader identity
+        shell: bash
+        run: |
+          mkdir -p subject/.aqg/trust
+          {
+            echo "base_revision=${{ github.event.pull_request.base.sha }}"
+            echo "candidate_revision=${{ github.event.pull_request.head.sha }}"
+            sha256sum trusted/quality/qg.py
+            find trusted/src/aqg -type f -name '*.py' -print0 |
+              sort -z |
+              xargs -0 sha256sum
+          } > subject/.aqg/trust/grader.sha256
+      - name: Run risk-selected profile with the base grader
+        working-directory: subject
+        run: >-
+          python ../trusted/quality/qg.py
+          --root .
+          check-risk --keep-going --quiet
+      - name: Generate review evidence with the base grader
+        if: always()
+        working-directory: subject
+        run: >-
+          python ../trusted/quality/qg.py
+          --root .
+          review --write --sarif
+          --github-summary "$GITHUB_STEP_SUMMARY" || true
+      - name: Upload immutable trusted evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trusted-policy-evidence-${{ github.event.pull_request.number }}
+          path: |
+            subject/.aqg/trust/
+            subject/.aqg/runs/
+            subject/.aqg/review/
+          if-no-files-found: error
+          retention-days: 30

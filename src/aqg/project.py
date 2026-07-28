@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,13 @@ from .util import read_json
 
 
 def load_project(root: Path) -> dict[str, Any]:
-    path = root / "quality" / "project.json"
+    trusted = os.environ.get("AQG_TRUSTED_PROJECT_PATH")
+    if os.environ.get("AQG_TRUSTED_MODE") == "1" and trusted:
+        path = Path(trusted)
+        if not path.is_absolute():
+            raise ConfigurationError("AQG_TRUSTED_PROJECT_PATH must be absolute")
+    else:
+        path = root / "quality" / "project.json"
     payload = read_json(path)
     if not isinstance(payload, dict):
         raise ConfigurationError(f"{path} must contain a JSON object")

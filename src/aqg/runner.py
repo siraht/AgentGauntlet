@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -88,6 +89,25 @@ def _merge_settings(base: dict[str, Any], override: dict[str, Any]) -> dict[str,
     return merged
 
 
+def _gate_argv(command: str, root: Path, gate_name: str) -> list[str]:
+    if os.environ.get("AQG_TRUSTED_MODE") != "1":
+        return shlex.split(command, posix=os.name != "nt")
+    configured = os.environ.get("AQG_TRUSTED_LAUNCHER", "")
+    launcher = Path(configured)
+    if not launcher.is_absolute() or not launcher.is_file():
+        raise ConfigurationError(
+            "trusted verification requires an absolute existing AQG_TRUSTED_LAUNCHER"
+        )
+    return [
+        sys.executable,
+        str(launcher),
+        "--root",
+        str(root),
+        "adapter",
+        gate_name,
+    ]
+
+
 def _retrospective_inputs(
     root: Path, run_dir: Path, project: dict[str, Any], profile_name: str
 ) -> tuple[
@@ -151,10 +171,12 @@ def run_gate(
     env.update({"AQG_RUN_ID": run_id, "AQG_GATE": gate_name, "AQG_ROOT": str(root)})
     if profile_name:
         env["AQG_PROFILE"] = profile_name
+    executed_command = command
     try:
-        argv = shlex.split(command, posix=os.name != "nt")
+        argv = _gate_argv(command, root, gate_name)
         if not argv:
             raise ConfigurationError(f"gate {gate_name!r} has an empty command")
+        executed_command = shlex.join(argv)
         completed = subprocess.run(
             argv,
             cwd=root,
@@ -192,7 +214,7 @@ def run_gate(
         root,
         run_dir=run_dir,
         gate_name=gate_name,
-        command=command,
+        command=executed_command,
         clean_paths=clean_paths,
         started_at=started_at,
         expected_exit=raw_code,
@@ -209,7 +231,7 @@ def run_gate(
         "status": STATUS_NAMES[code],
         "exit_code": code,
         "raw_exit_code": raw_code,
-        "command": command,
+        "command": executed_command,
         "started_at": utc_now(),
         "duration_ms": duration,
         "timed_out": timed_out,
@@ -225,7 +247,7 @@ def run_gate(
     write_evidence_json(gate_dir / f"{gate_name}.json", evidence)
     write_evidence_text(
         gate_dir / f"{gate_name}.log",
-        f"$ {command}\n\n--- stdout ---\n{stdout}\n\n--- stderr ---\n{stderr}\n",
+        f"$ {executed_command}\n\n--- stdout ---\n{stdout}\n\n--- stderr ---\n{stderr}\n",
     )
     if not owned_run:
         write_run_manifest(run_dir, run_id)
