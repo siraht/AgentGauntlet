@@ -1,6 +1,6 @@
 {
   "schema_version": "1",
-  "summary": "Productionize the public Agent Quality Gauntlet v2 beta through governance, debt remediation, cross-stack conformance, dogfooding, and a provenance-backed release.",
+  "summary": "Productionize and self-host Agent Quality Gauntlet v2 with retrospective shadow auditing, reviewed debt baselines, no-regression enforcement, immutable verification, and staged assurance.",
   "risk_profile": "high_assurance",
   "production_scope": true,
   "reversible": true,
@@ -18,7 +18,13 @@
     "Release provenance accepts Git revision, remote, dirty-state, and commit-time metadata only when the release source root owns that repository; isolated copies fail closed to a local unversioned identity.",
     "Manual hosted runs compare against the authoritative default branch, and release artifacts or attestations cannot proceed until the full test matrix and risk-selected policy evidence succeed.",
     "Changed-only Python mutation maps changed executable lines to exact mutmut function selectors, enforces protected 80/90/95 percent selection-coverage floors by profile, filters unrelated repository mutants from scoring, and fails closed on empty or failed result collection.",
-    "Changed-code mutation counts executable additions and deletions, maps deletion-only edits to the surviving enclosing selector when possible, and fails closed when removed production behavior has no current selector to mutate."
+    "Changed-code mutation counts executable additions and deletions, maps deletion-only edits to the surviving enclosing selector when possible, and fails closed when removed production behavior has no current selector to mutate.",
+    "Existing repositories can inventory inherited debt through a non-blocking shadow audit, establish a reviewed fingerprinted baseline, and block only new or worsened debt while adopting strict controls.",
+    "Retrospective reports distinguish inherited debt, regressions, missing evidence, configuration errors, infrastructure errors, and unknown product intent.",
+    "Each completed run snapshots detailed gate evidence into an immutable manifested run directory.",
+    "Authoritative CI grades candidates with a base-controlled or immutable grader rather than trusting candidate-controlled checking code.",
+    "Policy maintenance uses scoped fingerprinted approval records, and high-assurance work requires independent verification, behavior approval, manual QA, and rollback evidence.",
+    "All required test roots, requirement identifiers, semantic acceptance mutations, and stable repeated performance measurements are governed by executable contracts."
   ],
   "behavior_preserved": [
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",

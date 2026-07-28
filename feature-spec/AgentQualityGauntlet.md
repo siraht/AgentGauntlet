@@ -29,10 +29,28 @@
   default branch and MUST NOT fall back to the candidate's previous commit.
 - Release attestation or publication MUST NOT proceed unless the authoritative
   risk-selected policy run and required test matrix succeed.
+- An authoritative verifier MUST execute from an immutable trust anchor outside
+  the candidate-controlled grading surface.
+- Existing repositories MUST support a non-blocking retrospective shadow audit,
+  a reviewed debt baseline, no-regression comparison, changed-code enforcement,
+  and explicit promotion through adopt and strict enforcement states.
+- AQG MUST distinguish inherited debt, current-change regressions, missing
+  evidence, infrastructure errors, and unknown product intent in retrospective
+  reports without converting an unknown measurement into a pass.
+- Detailed evidence used to classify a gate MUST be copied into its run
+  directory and protected by a deterministic manifest before the run completes.
+- High-assurance policy MUST require independently fingerprinted verification,
+  behavior approval, manual QA, and rollback evidence.
+- Protected policy maintenance MUST require a scoped, fingerprinted approval
+  record and MUST NOT make authoritative evidence pass while maintenance
+  overrides are active.
+- Active requirements MUST have stable identifiers that tests and acceptance
+  scenarios can reference directly.
 
 ## Related specifications
 
 - `AgentQualityGauntlet.Setup`
 - `AgentQualityGauntlet.Execution`
 - `AgentQualityGauntlet.Review`
+- `AgentQualityGauntlet.Retrospective`
 - `AgentQualityGauntlet.SupplyChain`
