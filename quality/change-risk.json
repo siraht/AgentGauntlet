@@ -28,6 +28,7 @@
     "CLI, dashboard, TUI, reports, and CI summaries derive Develop, Merge, and Release guidance from one fail-closed owner-status model.",
     "Owner status verifies run manifests and exact candidate fingerprints, distinguishes inherited debt from current regressions, and never promotes local evidence into external merge or release authority.",
     "A multi-model review council runs isolated role-specific reviews through explicit provider adapters, preserves dissent and unknowns, and stores prompt, model, scope, and response provenance as immutable evidence.",
+    "Oversized council candidates use a content-addressed diff-only bundle series with repeated shared context, per-chunk quorum, conservative aggregation, exact reconstruction, and explicit cross-chunk visibility limitations.",
     "Agent review remains advisory unless protected policy explicitly assigns it a gate; it cannot override deterministic failures, missing product intent, or required release authority.",
     "A connected greenfield TypeScript, HTML, and CSS pilot proves installation, unit/property testing, structure, coverage, acceptance behavior, and generation of browser/accessibility wiring; live browser and mutation evidence remain separate explicit controls.",
     "The development loop gains only conservative speedups whose selection and cache provenance are recorded and whose uncertainty falls back to the complete applicable suite."

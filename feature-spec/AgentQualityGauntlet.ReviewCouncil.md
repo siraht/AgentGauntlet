@@ -3,8 +3,10 @@
 ## Requirements
 
 - `AQG-COUNCIL-001` A council run MUST bind every member review to the same
-  immutable candidate bundle, revision, change fingerprint, control
-  fingerprint, and declared review purpose.
+  immutable candidate or candidate-series identity, revision, change
+  fingerprint, control fingerprint, and declared review purpose. In a bounded
+  series, each ballot MUST additionally bind to exactly one manifested member
+  bundle and its position in that series.
 - `AQG-COUNCIL-002` Provider adapters MUST invoke explicitly configured model
   and tool identities without shell interpolation, use timeouts and
   least-privilege execution, and preserve command and version provenance
@@ -46,6 +48,23 @@
   failure, timeout, prompt injection in candidate text, conflicting verdicts,
   blocker preservation, stale scope, and immutable evidence before a real
   provider run can be trusted.
+- `AQG-COUNCIL-013` When a complete serialized candidate exceeds the protected
+  provider-bundle cap, the controller MAY create a content-addressed bounded
+  series. It MUST repeat the complete shared risk, requirement, review, and
+  quality context; split only the exact diff; record byte ranges, order, size,
+  and digests; require every configured role to review every member bundle;
+  and prove exact diff reconstruction. It MUST NOT silently raise the cap,
+  truncate content, or split shared product context.
+- `AQG-COUNCIL-014` A bounded-series conclusion MUST aggregate conservatively.
+  A blocker, dissent, failed member, malformed response, missing quorum, or
+  incomplete member bundle MUST remain visible in the series result. Provider
+  diversity MUST be the intersection present on every member bundle, not the
+  union observed somewhere in the series.
+- `AQG-COUNCIL-015` A bounded-series plan and report MUST disclose that each
+  ballot sees one diff segment rather than the entire patch and that
+  cross-segment relationships remain a residual review unknown. `complete`
+  means every required per-segment ballot was received and validated; it MUST
+  NOT imply whole-patch comprehension, approval, or release authority.
 
 ## Related specifications
 

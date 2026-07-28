@@ -131,6 +131,14 @@ reordering, deletion, alteration, or insertion detectable. If the shared
 context without the diff exceeds the cap, planning fails closed because
 splitting that context would deprive reviewers of a common product contract.
 
+Chunking has an unavoidable visibility limit: each ballot sees one bounded
+diff segment, not the entire patch. The plan and report expose that residual
+cross-chunk unknown. A chunked report's `complete` field means that every
+required ballot for every chunk was received and validated; it does not mean
+that one reviewer understood every cross-chunk interaction, and it never means
+approval or release authority. Large changes should still be split into
+coherent implementation commits whenever practical.
+
 Provider processes receive a minimal environment and an empty temporary
 working directory. Grok tools are disabled; OpenCode receives the controlled
 prompt through standard input and runs in pure plan mode.
