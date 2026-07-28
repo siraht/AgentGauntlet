@@ -861,7 +861,7 @@ def _print_gate_evidence(name: str, evidence: dict[str, Any]) -> None:
 def _dispatch_gate(args: argparse.Namespace, root: Path) -> int:
     run_id = (
         os.environ.get("AQG_RUN_ID")
-        or f"manual-{utc_now().replace(':', '').replace('+00:00', 'Z')}"
+        or f"manual-{utc_now().replace('+00:00', 'Z').replace(':', '')}"
     )
     code, evidence = run_gate(root, load_policy(root), args.name, run_id)
     _json_dump(evidence) if args.json else _print_gate_evidence(args.name, evidence)

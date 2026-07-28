@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from argparse import _SubParsersAction
 from pathlib import Path
+from unittest.mock import patch
 
 from aqg.cli import COMMAND_HANDLERS, build_parser, main
 from aqg.constants import CONFIGURATION_ERROR, PASS, QUALITY_FAILURE
@@ -113,6 +114,20 @@ class CliControlSurfaceTests(unittest.TestCase):
             code = main(["status", "--root", str(self.root), "--json"])
         self.assertEqual(code, PASS)
         self.assertEqual(json.loads(stdout.getvalue())["project"]["name"], self.root.name)
+
+    def test_manual_gate_run_id_is_a_safe_single_path_component(self) -> None:
+        evidence = {
+            "status": "pass",
+            "stdout": "",
+            "stderr": "",
+        }
+        with (
+            patch("aqg.cli.utc_now", return_value="2026-07-28T00:41:31+00:00"),
+            patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
+        ):
+            code = main(["--root", str(self.root), "gate", "format"])
+        self.assertEqual(code, PASS)
+        self.assertEqual(run.call_args.args[3], "manual-2026-07-28T004131Z")
 
     def test_capabilities_is_complete_deterministic_and_project_independent(self) -> None:
         outputs: list[str] = []
