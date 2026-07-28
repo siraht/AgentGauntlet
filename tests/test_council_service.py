@@ -121,6 +121,14 @@ def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
     assert selected_summary == summary
 
 
+def test_deep_security_gate_satisfies_council_secret_prerequisite() -> None:
+    summary = {"gates": [{"name": "security_fast", "status": "pass", "exit_code": 0}]}
+
+    assert service._secret_gate_passed(summary) is True
+    assert service._is_secret_gate("secrets") is True
+    assert service._is_secret_gate("other") is False
+
+
 def test_high_tier_does_not_bundle_a_newer_fast_run(
     tmp_path: Path,
 ) -> None:

@@ -88,13 +88,17 @@ def _base_ref(root: Path) -> str:
     return str(load_project(root).get("enforcement", {}).get("base_ref", "HEAD"))
 
 
+def _is_secret_gate(name: object) -> bool:
+    return name in {"secrets", "security_fast"}
+
+
 def _secret_gate_passed(summary: Mapping[str, Any]) -> bool:
     gates = summary.get("gates", [])
     if not isinstance(gates, list):
         return False
     return any(
         isinstance(gate, Mapping)
-        and gate.get("name") == "secrets"
+        and _is_secret_gate(gate.get("name"))
         and gate.get("status") == "pass"
         and gate.get("exit_code") == PASS
         for gate in gates
