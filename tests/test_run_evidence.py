@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import os
-import time
 from pathlib import Path
 from unittest import mock
 
@@ -119,7 +118,7 @@ def test_detail_snapshot_is_independent_of_mutable_work_report(tmp_path: Path) -
         gate_name="unit",
         command="python3 quality/qg.py adapter unit",
         clean_paths=[".aqg/work/unit"],
-        started_at=time.time(),
+        started_at=report.stat().st_mtime,
         expected_exit=0,
     )
     assert error is None and destination is not None
@@ -145,13 +144,16 @@ def test_unusable_adapter_detail_fails_closed(
     message: str,
 ) -> None:
     run_dir = create_exclusive_run_dir(tmp_path, f"bad-{prepare}")
+    started_at = 0.0
     if prepare == "malformed":
         report = _report(tmp_path)
         report.write_text("[]", encoding="utf-8")
+        started_at = report.stat().st_mtime
     elif prepare != "missing":
         report = _report(tmp_path, **changes)
+        started_at = report.stat().st_mtime
         if prepare == "stale":
-            old = time.time() - 120
+            old = started_at - 120
             os.utime(report, (old, old))
     destination, error = snapshot_gate_details(
         tmp_path,
@@ -159,7 +161,7 @@ def test_unusable_adapter_detail_fails_closed(
         gate_name="unit",
         command="python3 quality/qg.py adapter unit",
         clean_paths=[".aqg/work/unit"],
-        started_at=time.time(),
+        started_at=started_at,
         expected_exit=0,
     )
     assert destination is None
@@ -168,7 +170,7 @@ def test_unusable_adapter_detail_fails_closed(
 
 def test_multiple_matching_reports_are_ambiguous(tmp_path: Path) -> None:
     run_dir = create_exclusive_run_dir(tmp_path, "ambiguous")
-    _report(tmp_path)
+    report = _report(tmp_path)
     nested = tmp_path / ".aqg" / "work" / "unit" / "nested" / "report.json"
     write_json(
         nested,
@@ -180,7 +182,7 @@ def test_multiple_matching_reports_are_ambiguous(tmp_path: Path) -> None:
         gate_name="unit",
         command="python3 quality/qg.py adapter unit",
         clean_paths=[".aqg/work/unit"],
-        started_at=time.time(),
+        started_at=min(report.stat().st_mtime, nested.stat().st_mtime),
         expected_exit=0,
     )
     assert error is not None and "found 2" in error
