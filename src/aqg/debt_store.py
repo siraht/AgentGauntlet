@@ -111,6 +111,38 @@ def _measurement_values(
     return inventory, revision, profile, measured_at
 
 
+def _proposed_baseline(
+    *,
+    revision: str,
+    baseline_controls: str,
+    source_manifest_fingerprint: str,
+    resolved: str,
+    profile: str,
+    measured_at: str,
+    measured_change: Any,
+    inventory: list[Any],
+    policy_fingerprint: str,
+) -> dict[str, Any]:
+    return validate_baseline(
+        {
+            "schema_version": 1,
+            "state": "proposed",
+            "source_revision": revision,
+            "policy_fingerprint": policy_fingerprint,
+            "control_fingerprint": baseline_controls,
+            "created_at": utc_now(),
+            "measurement": {
+                "run_id": resolved,
+                "profile": profile,
+                "measured_at": measured_at,
+                "change_fingerprint": str(measured_change),
+                "manifest_fingerprint": source_manifest_fingerprint,
+            },
+            "inventory": inventory,
+        }
+    )
+
+
 def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
     """Create a write-once proposal from manifested shadow evidence.
 
@@ -124,24 +156,16 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
         resolved, summary, retrospective, manifest
     )
     source_manifest_fingerprint = f"sha256:{sha256_file(run_dir / 'manifest.json')}"
-
-    proposed = validate_baseline(
-        {
-            "schema_version": 1,
-            "state": "proposed",
-            "source_revision": revision,
-            "policy_fingerprint": f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}",
-            "control_fingerprint": baseline_controls,
-            "created_at": utc_now(),
-            "measurement": {
-                "run_id": resolved,
-                "profile": profile,
-                "measured_at": measured_at,
-                "change_fingerprint": str(measured_change),
-                "manifest_fingerprint": source_manifest_fingerprint,
-            },
-            "inventory": inventory,
-        }
+    proposed = _proposed_baseline(
+        revision=revision,
+        baseline_controls=baseline_controls,
+        source_manifest_fingerprint=source_manifest_fingerprint,
+        resolved=resolved,
+        profile=profile,
+        measured_at=measured_at,
+        measured_change=measured_change,
+        inventory=inventory,
+        policy_fingerprint=f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}",
     )
     fingerprint = document_fingerprint(proposed)
     proposal_id = f"debt-{resolved}-{source_manifest_fingerprint.removeprefix('sha256:')[:12]}"

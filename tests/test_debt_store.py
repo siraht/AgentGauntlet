@@ -16,6 +16,7 @@ from aqg.constants import PASS
 from aqg.debt import DebtError, compare, validate_baseline
 from aqg.debt_store import (
     _measurement_values,
+    _proposed_baseline,
     _validate_shadow_scope,
     _verified_shadow_documents,
     load_current_debt_baseline,
@@ -247,6 +248,40 @@ def test_proposal_wires_resolved_run_identity_to_helpers(
     documents.assert_called_once_with(run_dir, "wired-shadow")
     scope.assert_called_once_with(tmp_path, "wired-shadow", summary)
     measurement.assert_called_once_with("wired-shadow", summary, retrospective, manifest)
+
+
+def test_proposed_baseline_contract_is_exact(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("aqg.debt_store.utc_now", lambda: "2026-07-28T23:00:00+00:00")
+    inventory: list[dict[str, object]] = []
+
+    proposal = _proposed_baseline(
+        revision="a" * 40,
+        baseline_controls="sha256:" + "1" * 64,
+        source_manifest_fingerprint="sha256:" + "2" * 64,
+        resolved="shadow-run",
+        profile="deep",
+        measured_at="2026-07-28T22:00:00+00:00",
+        measured_change="sha256:" + "3" * 64,
+        inventory=inventory,
+        policy_fingerprint="sha256:" + "4" * 64,
+    )
+
+    assert proposal == {
+        "schema_version": 1,
+        "state": "proposed",
+        "source_revision": "a" * 40,
+        "policy_fingerprint": "sha256:" + "4" * 64,
+        "control_fingerprint": "sha256:" + "1" * 64,
+        "created_at": "2026-07-28T23:00:00+00:00",
+        "measurement": {
+            "run_id": "shadow-run",
+            "profile": "deep",
+            "measured_at": "2026-07-28T22:00:00+00:00",
+            "change_fingerprint": "sha256:" + "3" * 64,
+            "manifest_fingerprint": "sha256:" + "2" * 64,
+        },
+        "inventory": inventory,
+    }
 
 
 def test_latest_selects_newest_shadow_and_rejects_enforcement_run(tmp_path: Path) -> None:
