@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import sys
+import uuid
 from collections.abc import Callable
 from contextvars import ContextVar
 from pathlib import Path
@@ -1007,9 +1008,8 @@ def _print_gate_evidence(name: str, evidence: dict[str, Any]) -> None:
 
 
 def _dispatch_gate(args: argparse.Namespace, root: Path) -> int:
-    run_id = (
-        os.environ.get("AQG_RUN_ID")
-        or f"manual-{utc_now().replace('+00:00', 'Z').replace(':', '')}"
+    run_id = os.environ.get("AQG_RUN_ID") or (
+        f"manual-{utc_now().replace('+00:00', 'Z').replace(':', '')}-{uuid.uuid4().hex[:8]}"
     )
     code, evidence = run_gate(root, load_policy(root), args.name, run_id)
     _json_dump(evidence) if args.json else _print_gate_evidence(args.name, evidence)

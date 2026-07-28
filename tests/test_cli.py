@@ -195,13 +195,37 @@ class CliControlSurfaceTests(unittest.TestCase):
             "stdout": "",
             "stderr": "",
         }
-        with (
-            patch("aqg.cli.utc_now", return_value="2026-07-28T00:41:31+00:00"),
-            patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
-        ):
-            code = main(["--root", str(self.root), "gate", "format"])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            with (
+                patch("aqg.cli.utc_now", return_value="2026-07-28T00:41:31+00:00"),
+                patch("aqg.cli.uuid.uuid4") as uuid4,
+                patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
+            ):
+                uuid4.return_value.hex = "12345678deadbeef"
+                code = main(["--root", str(self.root), "gate", "format"])
         self.assertEqual(code, PASS)
-        self.assertEqual(run.call_args.args[3], "manual-2026-07-28T004131Z")
+        self.assertEqual(stdout.getvalue(), "format: pass\n")
+        self.assertEqual(run.call_args.args[0], self.root)
+        self.assertIsInstance(run.call_args.args[1], dict)
+        self.assertEqual(run.call_args.args[2], "format")
+        self.assertEqual(run.call_args.args[3], "manual-2026-07-28T004131Z-12345678")
+
+    def test_manual_gate_honors_explicit_run_id_and_json_output(self) -> None:
+        evidence = {"status": "pass", "stdout": "", "stderr": "", "gate": "format"}
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            with (
+                patch.dict(os.environ, {"AQG_RUN_ID": "caller-owned-run"}),
+                patch("aqg.cli.uuid.uuid4") as uuid4,
+                patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
+            ):
+                code = main(["--root", str(self.root), "gate", "format", "--json"])
+
+        self.assertEqual(code, PASS)
+        self.assertEqual(json.loads(stdout.getvalue()), evidence)
+        self.assertEqual(run.call_args.args[3], "caller-owned-run")
+        uuid4.assert_not_called()
 
     def test_capabilities_is_complete_deterministic_and_project_independent(self) -> None:
         outputs: list[str] = []
