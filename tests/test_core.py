@@ -1248,6 +1248,21 @@ class SetupContractTests(RepoCase):
             ],
         )
 
+    def test_stryker_sandbox_excludes_local_tool_environments(self) -> None:
+        source_root = Path(__file__).resolve().parents[1]
+        configs = (
+            source_root / "quality" / "tools" / "js" / "config" / "stryker.config.mjs",
+            source_root / "src" / "aqg" / "templates" / "js" / "stryker.config.mjs",
+        )
+        required = {".aqg", ".venv", "venv", ".tox", ".nox", "__pycache__", "node_modules"}
+
+        for config in configs:
+            text = config.read_text(encoding="utf-8")
+            self.assertTrue(
+                all(json.dumps(pattern) in text for pattern in required),
+                config,
+            )
+
     def test_project_test_commands_clear_the_outer_comparison_base(self) -> None:
         python_environment = _python_test_env(self.root, timezone=True)
         _, _, javascript_environment = _javascript_unit_spec(

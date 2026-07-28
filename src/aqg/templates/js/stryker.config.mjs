@@ -37,6 +37,12 @@ export default {
   allowEmpty: false,
   ignorePatterns: [
     ".aqg",
+    ".venv",
+    "venv",
+    ".tox",
+    ".nox",
+    "__pycache__",
+    "node_modules",
     "quality/tools",
     "dist",
     "build",
