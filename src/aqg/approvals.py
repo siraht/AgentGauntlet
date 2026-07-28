@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import getpass
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
 
 from .constants import PASS, QUALITY_FAILURE
 from .errors import ConfigurationError
+from .evidence_manifest import validate_run_id, verify_run_manifest
 from .project import load_project
 from .util import (
     change_fingerprint,
@@ -49,6 +51,9 @@ KINDS = {
         "required_for": [],
     },
 }
+RUN_BOUND_KINDS = frozenset(
+    {"manual-qa", "rollback-rehearsal", "independent-verification", "human-code-review"}
+)
 
 
 def _approval_provenance(root: Path) -> dict[str, str]:
@@ -83,12 +88,14 @@ def template(root: Path, kind: str, *, reviewer: str | None = None) -> dict[str,
         "kind": kind,
         "purpose": info["purpose"],
         **_approval_provenance(root),
+        "actor_type": "human",
         "reviewer": reviewer or getpass.getuser(),
         "reviewed_at": utc_now(),
         "result": "pending",
         "scope": [],
         "procedure": [],
         "evidence": [],
+        "evidence_run": None,
         "findings": [],
         "notes": "",
         "independence": {
@@ -126,48 +133,77 @@ def validate_approval(
     errors: list[str] = []
     if not isinstance(payload, dict):
         return [f"{path.relative_to(root)} must contain a JSON object"]
-    if payload.get("schema_version") != 1:
-        errors.append("schema_version must be 1")
-    if payload.get("kind") != kind:
-        errors.append(f"kind must be {kind!r}")
-    reviewer = payload.get("reviewer")
-    if not isinstance(reviewer, str) or not reviewer.strip():
-        errors.append("reviewer must be a non-empty human identity")
-    if (
-        not isinstance(payload.get("reviewed_at"), str)
-        or not payload.get("reviewed_at", "").strip()
-    ):
-        errors.append("reviewed_at must be an ISO timestamp")
-    if require_pass and payload.get("result") != "pass":
-        errors.append("result must be 'pass'")
+    errors.extend(_validate_record_identity(payload, kind, require_pass))
     if require_current_revision:
-        current = _approval_provenance(root)
-        if payload.get("revision") != current["revision"]:
-            errors.append(f"revision must match current HEAD {current['revision']}")
-        if payload.get("base_ref") != current["base_ref"]:
-            errors.append(f"base_ref must match current comparison base {current['base_ref']!r}")
-        if payload.get("change_fingerprint") != current["change_fingerprint"]:
-            errors.append(
-                "change_fingerprint is stale; the reviewed source/test/spec surface changed after approval"
-            )
-        if payload.get("control_fingerprint") != current["control_fingerprint"]:
-            errors.append(
-                "control_fingerprint is stale; policy, commands, or toolchain inputs changed after approval"
-            )
-    for key in ("scope", "procedure", "evidence", "findings"):
-        if not isinstance(payload.get(key), list):
-            errors.append(f"{key} must be an array")
+        errors.extend(_validate_current_provenance(root, payload))
+    errors.extend(_validate_record_arrays(payload))
     if require_pass and payload.get("result") == "pass":
-        for key in ("scope", "procedure", "evidence"):
-            value = payload.get(key)
-            if isinstance(value, list) and not any(str(item).strip() for item in value):
-                errors.append(
-                    f"{key} must contain concrete reviewed items before result can be 'pass'"
-                )
-        if kind == "rollback-rehearsal" and not str(payload.get("notes", "")).strip():
-            errors.append(
-                "rollback-rehearsal notes must record the observed recovery result and timing"
-            )
+        errors.extend(_validate_pass_evidence(root, kind, payload))
+    errors.extend(_validate_independence(kind, payload))
+    return errors
+
+
+def _validate_record_identity(payload: dict[str, Any], kind: str, require_pass: bool) -> list[str]:
+    checks = (
+        (payload.get("schema_version") == 1, "schema_version must be 1"),
+        (payload.get("kind") == kind, f"kind must be {kind!r}"),
+        (
+            payload.get("actor_type") == "human",
+            "actor_type must be 'human'; agent evidence belongs in the review council",
+        ),
+        (
+            isinstance(payload.get("reviewer"), str) and bool(str(payload.get("reviewer")).strip()),
+            "reviewer must be a non-empty human identity",
+        ),
+        (
+            isinstance(payload.get("reviewed_at"), str)
+            and bool(str(payload.get("reviewed_at")).strip()),
+            "reviewed_at must be an ISO timestamp",
+        ),
+        (not require_pass or payload.get("result") == "pass", "result must be 'pass'"),
+    )
+    return [message for valid, message in checks if not valid]
+
+
+def _validate_current_provenance(root: Path, payload: dict[str, Any]) -> list[str]:
+    current = _approval_provenance(root)
+    errors: list[str] = []
+    if payload.get("revision") != current["revision"]:
+        errors.append(f"revision must match current HEAD {current['revision']}")
+    if payload.get("base_ref") != current["base_ref"]:
+        errors.append(f"base_ref must match current comparison base {current['base_ref']!r}")
+    if payload.get("change_fingerprint") != current["change_fingerprint"]:
+        errors.append(
+            "change_fingerprint is stale; the reviewed source/test/spec surface changed after approval"
+        )
+    if payload.get("control_fingerprint") != current["control_fingerprint"]:
+        errors.append(
+            "control_fingerprint is stale; policy, commands, or toolchain inputs changed after approval"
+        )
+    return errors
+
+
+def _validate_record_arrays(payload: dict[str, Any]) -> list[str]:
+    keys = ("scope", "procedure", "evidence", "findings")
+    return [f"{key} must be an array" for key in keys if not isinstance(payload.get(key), list)]
+
+
+def _validate_pass_evidence(root: Path, kind: str, payload: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    for key in ("scope", "procedure", "evidence"):
+        value = payload.get(key)
+        if isinstance(value, list) and not any(str(item).strip() for item in value):
+            errors.append(f"{key} must contain concrete reviewed items before result can be 'pass'")
+    if kind == "rollback-rehearsal" and not str(payload.get("notes", "")).strip():
+        errors.append(
+            "rollback-rehearsal notes must record the observed recovery result and timing"
+        )
+    if kind in RUN_BOUND_KINDS:
+        errors.extend(_validate_evidence_run(root, payload))
+    return errors
+
+
+def _validate_independence(kind: str, payload: dict[str, Any]) -> list[str]:
     independence = payload.get("independence")
     if kind in {
         "independent-verification",
@@ -176,11 +212,41 @@ def validate_approval(
         "policy-maintenance",
     }:
         if not isinstance(independence, dict):
-            errors.append("independence declaration is required")
-        else:
-            for key in ("reviewer_did_not_author_change", "reviewer_did_not_modify_evidence"):
-                if independence.get(key) is not True:
-                    errors.append(f"independence.{key} must be true")
+            return ["independence declaration is required"]
+        keys = ("reviewer_did_not_author_change", "reviewer_did_not_modify_evidence")
+        return [
+            f"independence.{key} must be true" for key in keys if independence.get(key) is not True
+        ]
+    return []
+
+
+def _validate_evidence_run(root: Path, approval: dict[str, Any]) -> list[str]:
+    record = approval.get("evidence_run")
+    if not isinstance(record, dict):
+        return ["evidence_run must bind this approval to manifested AQG evidence"]
+    required = {"run_id", "manifest_sha256", "candidate_fingerprint"}
+    if set(record) != required:
+        return ["evidence_run must contain only run_id, manifest_sha256, candidate_fingerprint"]
+    raw_run_id = record.get("run_id")
+    if not isinstance(raw_run_id, str):
+        return ["evidence_run.run_id must be a string"]
+    try:
+        run_id = validate_run_id(raw_run_id)
+    except ConfigurationError as exc:
+        return [f"evidence_run.run_id is invalid: {exc}"]
+    run_dir = root / ".aqg" / "runs" / run_id
+    verification = verify_run_manifest(run_dir)
+    errors = [f"evidence_run manifest is invalid: {item}" for item in verification["errors"]]
+    manifest = run_dir / "manifest.json"
+    actual_digest = (
+        "sha256:" + hashlib.sha256(manifest.read_bytes()).hexdigest()
+        if manifest.is_file()
+        else None
+    )
+    if record.get("manifest_sha256") != actual_digest:
+        errors.append("evidence_run.manifest_sha256 does not match the immutable run manifest")
+    if record.get("candidate_fingerprint") != approval.get("change_fingerprint"):
+        errors.append("evidence_run.candidate_fingerprint does not match the approved candidate")
     return errors
 
 

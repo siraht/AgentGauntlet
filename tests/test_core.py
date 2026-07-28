@@ -60,6 +60,7 @@ from aqg.dashboard import DashboardServer, project_status
 from aqg.detect import detect_project
 from aqg.doctor import diagnose
 from aqg.errors import ConfigurationError
+from aqg.evidence_manifest import write_run_manifest
 from aqg.policy import GATE_NAMES, load_policy, render_policy, validate_policy
 from aqg.project import load_project, validate_project
 from aqg.review import analyze_review
@@ -117,6 +118,20 @@ def build_release(source_root: Path, output: Path) -> subprocess.CompletedProces
         capture_output=True,
         check=False,
     )
+
+
+def bind_approval_evidence(root: Path, payload: dict[str, object]) -> Path:
+    run_id = "approval-evidence"
+    run_dir = root / ".aqg" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    write_json(run_dir / "summary.json", {"run_id": run_id, "status": "pass"})
+    manifest = write_run_manifest(run_dir, run_id)
+    payload["evidence_run"] = {
+        "run_id": run_id,
+        "manifest_sha256": "sha256:" + hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "candidate_fingerprint": payload["change_fingerprint"],
+    }
+    return run_dir
 
 
 class RepoCase(unittest.TestCase):
@@ -876,6 +891,7 @@ class ReviewAndApprovalTests(RepoCase):
                 "evidence": ["immutable run manifest"],
             }
         )
+        run_dir = bind_approval_evidence(self.root, payload)
         write_json(
             self.root / "quality" / "approvals" / "independent-verification.json",
             payload,
@@ -891,6 +907,16 @@ class ReviewAndApprovalTests(RepoCase):
             payload,
         )
         self.assertEqual(validate_approval(self.root, "independent-verification"), [])
+        (run_dir / "summary.json").write_text('{"tampered": true}\n', encoding="utf-8")
+        tampered = validate_approval(self.root, "independent-verification")
+        self.assertTrue(any("manifest is invalid" in error for error in tampered), tampered)
+        payload["actor_type"] = "agent"
+        write_json(
+            self.root / "quality" / "approvals" / "independent-verification.json",
+            payload,
+        )
+        actor_errors = validate_approval(self.root, "independent-verification")
+        self.assertTrue(any("actor_type" in error for error in actor_errors), actor_errors)
 
     def test_assurance_gate_blocks_missing_risk_selected_approval_evidence(self) -> None:
         self._initialized()
