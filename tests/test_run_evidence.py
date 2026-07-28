@@ -70,6 +70,22 @@ def _profile_policy(command: str, gate: str = "probe") -> dict:
     return policy
 
 
+def _project() -> dict:
+    return {
+        "thresholds": {
+            "structure": {
+                "max_cyclomatic_complexity": 10,
+                "max_function_lines": 50,
+                "max_nesting_depth": 4,
+                "max_crap": 15,
+            },
+            "coverage": {"lines": 85, "branches": 75, "functions": 80, "statements": 85},
+        },
+        "profile_thresholds": {},
+        "enforcement": {},
+    }
+
+
 def _writer_script(root: Path, gate: str = "probe") -> str:
     script = root / "write_report.py"
     script.write_text(
@@ -199,6 +215,7 @@ def test_profile_snapshots_details_then_manifests_before_latest(tmp_path: Path) 
     with (
         mock.patch.dict(os.environ, {"AQG_RUN_ID": "profile-run"}, clear=False),
         mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=_project()),
     ):
         code, summary = run_profile(tmp_path, _profile_policy(command), "fast", quiet=True)
     run_dir = tmp_path / ".aqg" / "runs" / "profile-run"
@@ -218,6 +235,7 @@ def test_latest_is_not_updated_when_manifest_finalization_fails(tmp_path: Path) 
     with (
         mock.patch.dict(os.environ, {"AQG_RUN_ID": "broken-manifest"}, clear=False),
         mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=_project()),
         mock.patch(
             "aqg.runner.write_run_manifest",
             side_effect=InfrastructureError("storage unavailable"),
@@ -231,3 +249,46 @@ def test_latest_is_not_updated_when_manifest_finalization_fails(tmp_path: Path) 
             quiet=True,
         )
     assert not (tmp_path / ".aqg" / "latest.json").exists()
+
+
+def test_shadow_run_preserves_quality_observation_but_returns_non_blocking(tmp_path: Path) -> None:
+    script = tmp_path / "failing_report.py"
+    script.write_text(
+        "import json,pathlib,sys\n"
+        "p=pathlib.Path('.aqg/work/probe/report.json')\n"
+        "p.parent.mkdir(parents=True,exist_ok=True)\n"
+        "p.write_text(json.dumps({'schema_version':2,'gate':'probe',"
+        "'status':'quality_failure','exit_code':1}),encoding='utf-8')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    provenance = {
+        "revision": "candidate",
+        "base_ref": "main",
+        "change_fingerprint": "sha256:change",
+        "control_fingerprint": "sha256:control",
+    }
+    with (
+        mock.patch.dict(os.environ, {"AQG_RUN_ID": "shadow-run"}, clear=False),
+        mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=_project()),
+    ):
+        code, summary = run_profile(
+            tmp_path,
+            _profile_policy(f"python3 {script.name} adapter probe"),
+            "fast",
+            keep_going=True,
+            quiet=True,
+            shadow=True,
+        )
+    report = json.loads(
+        (tmp_path / ".aqg" / "runs" / "shadow-run" / "retrospective.json").read_text()
+    )
+    assert code == PASS
+    assert summary["status"] == "quality_failure"
+    assert summary["command_status"] == "pass"
+    assert summary["observed_exit_code"] == 1
+    assert summary["mode"] == "shadow"
+    assert report["certification"] == "observations_only"
+    assert report["counts"]["measured_failures"] == 1
+    assert report["counts"]["blocking_failures"] == 1

@@ -353,6 +353,18 @@ def _add_execution_parsers(sub: Any) -> None:
     check.add_argument("--keep-going", action="store_true")
     check.add_argument("--quiet", action="store_true")
 
+    audit = sub.add_parser("audit", help="run non-blocking retrospective measurements")
+    audit_sub = _nested_subparsers(audit, "audit_command")
+    shadow = audit_sub.add_parser(
+        "shadow", help="collect all observations without blocking on measured quality debt"
+    )
+    shadow.add_argument(
+        "--profile",
+        choices=("fast", "pr", "deep", "release"),
+        default="fast",
+    )
+    shadow.add_argument("--quiet", action="store_true")
+
     gate = sub.add_parser("gate", help="run one policy gate with normalized evidence")
     gate.add_argument("name")
 
@@ -875,6 +887,22 @@ def _dispatch_adapter(args: argparse.Namespace, root: Path) -> int:
     return code
 
 
+def _dispatch_audit(args: argparse.Namespace, root: Path) -> int:
+    if args.audit_command != "shadow":
+        raise ConfigurationError(f"unknown audit command {args.audit_command!r}")
+    code, summary = run_profile(
+        root,
+        load_policy(root),
+        args.profile,
+        keep_going=True,
+        quiet=args.quiet or args.json,
+        shadow=True,
+    )
+    if args.json:
+        _json_dump(summary)
+    return code
+
+
 def _dispatch_check_risk(args: argparse.Namespace, root: Path) -> int:
     return _check_risk(args, root)
 
@@ -1280,6 +1308,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "acceptance": _dispatch_acceptance,
     "adapter": _dispatch_adapter,
     "approval": _dispatch_approval,
+    "audit": _dispatch_audit,
     "baseline": _dispatch_baseline,
     "capabilities": _dispatch_capabilities,
     "changed-files": _dispatch_changed_files,

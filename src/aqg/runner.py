@@ -33,11 +33,13 @@ from .evidence_manifest import (
 )
 from .policy import safe_remove, validate_policy
 from .project import load_project
+from .retrospective import build_retrospective
 from .util import (
     change_fingerprint,
     control_fingerprint,
     git_revision,
     human_duration,
+    read_json,
     utc_now,
     write_json,
 )
@@ -71,6 +73,55 @@ def _provenance(root: Path) -> dict[str, str]:
         "change_fingerprint": change_fingerprint(root, base),
         "control_fingerprint": control_fingerprint(root),
     }
+
+
+def _merge_settings(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = {
+        key: value.copy() if isinstance(value, dict) else value for key, value in base.items()
+    }
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_settings(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _retrospective_inputs(
+    root: Path, run_dir: Path, project: dict[str, Any], profile_name: str
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
+    details: dict[str, Any] = {}
+    for path in sorted((run_dir / "gates").glob("*.details.json")):
+        payload = read_json(path)
+        if isinstance(payload, dict) and isinstance(payload.get("gate"), str):
+            details[str(payload["gate"])] = payload
+    thresholds = _merge_settings(
+        project.get("thresholds", {}),
+        project.get("profile_thresholds", {}).get(profile_name, {}),
+    )
+    traceability = details.get("test_integrity", {}).get("traceability")
+    enforcement = project.get("enforcement", {})
+    baseline_path = root / str(enforcement.get("debt_baseline", "quality/baselines/debt.json"))
+    baseline = read_json(baseline_path) if baseline_path.is_file() else None
+    return details, thresholds, traceability, baseline
+
+
+def _ratchet_quality(report: dict[str, Any]) -> bool:
+    return report["certification"] == "not_regression_free" and any(
+        report[name]
+        for name in (
+            "blocking_failures",
+            "regressions",
+            "new_debt",
+            "invalid_debt",
+            "unknown_product_intent",
+        )
+    )
 
 
 def run_gate(
@@ -192,6 +243,7 @@ def run_profile(
     *,
     keep_going: bool = False,
     quiet: bool = False,
+    shadow: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     errors = validate_policy(policy)
     if errors:
@@ -259,17 +311,39 @@ def run_profile(
                 "  ✗ workspace_integrity [quality_failure] · a checker modified the review surface"
             )
 
+    project = load_project(root)
+    details, thresholds, traceability, baseline = _retrospective_inputs(
+        root, run_dir, project, profile_name
+    )
+    retrospective = build_retrospective(
+        results,
+        details,
+        thresholds,
+        traceability=traceability,
+        baseline=baseline,
+    )
+    write_evidence_json(run_dir / "retrospective.json", retrospective)
+    if baseline is not None and _ratchet_quality(retrospective):
+        final = max(final, QUALITY_FAILURE)
+    command_exit = PASS if shadow and final == QUALITY_FAILURE else final
     summary = {
         "schema_version": "2",
         "run_id": run_id,
         "profile": profile_name,
+        "mode": "shadow" if shadow else "enforce",
         "status": STATUS_NAMES[final],
-        "exit_code": final,
+        "exit_code": command_exit,
+        "observed_exit_code": final,
+        "command_status": STATUS_NAMES[command_exit],
         "started_at": utc_now(),
         "duration_ms": int((time.monotonic() - started) * 1000),
         **end_provenance,
         "workspace_mutated": workspace_mutated,
         "start_change_fingerprint": start_provenance["change_fingerprint"],
+        "retrospective": {
+            "certification": retrospective["certification"],
+            "counts": retrospective["counts"],
+        },
         "gates": [
             {
                 "name": item["gate"],
@@ -285,9 +359,15 @@ def run_profile(
     write_json(root / ".aqg" / "latest.json", {"run_id": run_id, "path": str(run_dir), **summary})
     if not quiet:
         print(
-            f"AQG {profile_name}: {STATUS_NAMES[final]} in {human_duration(int(str(summary['duration_ms'])))}"
+            f"AQG {profile_name}: {STATUS_NAMES[final]}"
+            + (
+                " (shadow observations; non-blocking)"
+                if shadow and final == QUALITY_FAILURE
+                else ""
+            )
+            + f" in {human_duration(int(str(summary['duration_ms'])))}"
         )
-    return final, summary
+    return command_exit, summary
 
 
 def list_runs(root: Path, limit: int = 50) -> list[dict[str, Any]]:
