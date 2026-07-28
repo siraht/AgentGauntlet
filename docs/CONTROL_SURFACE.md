@@ -25,12 +25,47 @@ qg conformance --tools
 ```sh
 python3 quality/qg.py status
 python3 quality/qg.py risk-card
+python3 quality/qg.py check inner
 python3 quality/qg.py check fast
 python3 quality/qg.py check-risk --keep-going
 python3 quality/qg.py review --write --sarif
 ```
 
-Use `fast` while editing. `check-risk` computes the required PR/deep/release profile from the protected risk rules and current change-risk card.
+Use `inner` while editing and `fast` at coherent local checkpoints.
+`check-risk` computes the required PR/deep/release profile from the protected
+risk rules and current change-risk card.
+
+## Retrospective adoption flow
+
+Existing repositories begin with observation, not instant whole-tree
+certification:
+
+```sh
+python3 quality/qg.py audit shadow --profile fast
+python3 quality/qg.py baseline debt propose
+python3 quality/qg.py promote status
+```
+
+The shadow command returns success only when all non-quality evidence is
+usable. Its summary retains the observed result and detailed taxonomy. A debt
+proposal is immutable, reviewable input; it is not an accepted baseline.
+
+After a human reviews the complete inventory, create exact maintenance scope:
+
+```sh
+python3 quality/qg.py maintenance request \
+  --change add:quality/baselines/debt.json \
+  --reason "Install the reviewed retrospective debt authority"
+AQG_POLICY_MAINTENANCE=1 python3 quality/qg.py baseline debt review \
+  --proposal PROPOSAL_ID --reviewer HUMAN_ID --confirm-reviewed
+python3 quality/qg.py promote propose --to ratchet
+```
+
+The baseline and stage change still require independent code-owner approval.
+Ratchet mode reports matching inherited debt without blocking unrelated
+conforming changes and rejects new, worsened, malformed, or unclassified debt.
+Strict promotion additionally requires a current debt-free enforcing deep run
+over the exact controls and change surface.
 
 ## Authoring flow
 
@@ -57,6 +92,37 @@ AQG_ALLOW_GOLDEN_UPDATE=1 python3 quality/qg.py golden --update
 ```
 
 Approval fingerprints include the current review surface and evidence. Any relevant change makes a prior approval stale.
+
+Each completed profile or standalone gate stores detailed evidence beneath its
+run directory and finalizes `manifest.json`. A missing or non-verifying
+manifest makes historical evidence unusable. The mutable `.aqg/work` directory
+is execution scratch space, never historical authority.
+
+## Protected policy maintenance
+
+Ordinary builders cannot edit protected paths. A legitimate maintenance flow
+declares exact operations first:
+
+```sh
+python3 quality/qg.py maintenance request \
+  --change modify:quality/project.json \
+  --reason "Promote reviewed self-hosting from shadow to ratchet"
+```
+
+Local hooks accept only declared path/operation pairs while the maintenance
+override is active. Shell-based or broader writes remain blocked. PR, deep,
+and release profiles derive the real protected diff and require an exact,
+current, independent approval. Authoritative commands refuse to run while the
+override is active.
+
+## Trusted authoritative verification
+
+Candidate CI is useful feedback but cannot be the sole grader of changes to
+its own policy or checker. The hosted trusted workflow runs the protected-base
+launcher, policy, project definition, tool definitions, and gate commands
+against a separate candidate checkout with read-only credentials. Activate it
+in two stages: first land and observe the workflow on the default branch under
+the old ruleset, then add its context to required checks.
 
 ## Onboarding flow
 

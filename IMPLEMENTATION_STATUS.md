@@ -126,8 +126,10 @@ equivalent, and 1,175 review mutants with 1,091 killed and 84 retained as explic
 survivor debt. All three campaigns completed without unchecked work. The review result is
 92.85%, but the 84 survivors are neither waived nor relabeled as equivalent.
 
-AQG is therefore published in `adopt`/ratchet mode. New changes must not add debt, while
-the existing hotspots need focused characterization tests and incremental extraction
-before switching this repository to full strict enforcement. This limitation affects
-confidence in AQG’s implementation, not the availability of the CLI, installer, evidence
-model, dashboard, or supported adapters.
+AQG therefore installs existing repositories in `adopt`/shadow mode. A policy owner must
+review and approve the first immutable debt baseline before ratchet promotion can make
+new or worsened debt blocking. The existing hotspots need focused characterization tests
+and incremental extraction before this repository can produce a debt-free ratchet-stage
+deep run and switch to full strict enforcement. This limitation affects confidence in
+AQG’s implementation, not the availability of the CLI, installer, evidence model,
+dashboard, or supported adapters.

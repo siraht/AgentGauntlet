@@ -34,7 +34,10 @@ To install the global `qg` command instead:
 qg setup /path/to/project --owner @your-org/quality
 ```
 
-`--mode auto` selects full-tree enforcement for a new Git repository without history and changed-code ratcheting for an existing repository. Use `--mode greenfield` or `--mode adopt` to override that choice.
+`--mode auto` selects strict full-tree enforcement for a new Git repository without
+history. Existing repositories start in non-blocking shadow mode so AQG can measure
+inherited debt before any result becomes authoritative. Use `--mode greenfield` or
+`--mode adopt` to override that choice.
 
 ## Daily control surface
 
@@ -57,6 +60,34 @@ python3 quality/qg.py dashboard --open
 ```
 
 The CLI, TUI, dashboard, Markdown review packet, SARIF, JSON evidence, and SQLite run history use the same project and policy model.
+
+## Retrospective adoption
+
+Existing repositories move through explicit, monotonic stages:
+
+```sh
+# 1. Measure everything without blocking ordinary development.
+./aqg audit shadow --profile fast
+
+# 2. Propose a debt baseline from a manifested shadow run.
+./aqg baseline debt propose --run-id RUN_ID
+
+# 3. A human policy owner reviews the raw findings and confirms the proposal.
+./aqg baseline debt review \
+  --proposal PROPOSAL_ID \
+  --reviewer @your-org/quality \
+  --confirm-reviewed
+
+# 4. Propose the protected policy change that activates no-regression ratcheting.
+./aqg promote propose --to ratchet
+```
+
+Shadow reports classify measured failures, missing evidence, configuration errors,
+infrastructure errors, and unknown product intent separately. A reviewed ratchet allows
+inherited debt to remain visible while blocking new debt, worsened debt, and changed code
+that misses current policy. Strict promotion is available only after a manifested
+ratchet-stage deep run proves the governed tree is debt-free and all required controls
+are complete.
 
 ## What setup installs
 
