@@ -55,25 +55,25 @@ def resolve_shadow_run(root: Path, run_id: str) -> tuple[str, Path]:
     return resolved, root / ".aqg" / "runs" / resolved
 
 
-def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
-    """Create a write-once proposal from manifested shadow evidence.
-
-    A proposal is deliberately not a reviewed baseline and cannot authorize
-    ratchet enforcement.
-    """
-    resolved, run_dir = resolve_shadow_run(root, run_id)
+def _verified_shadow_documents(
+    run_dir: Path, resolved: str
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     verification = verify_run_manifest(run_dir)
     if not verification["ok"]:
         detail = "; ".join(str(error) for error in verification["errors"])
         raise InfrastructureError(f"shadow run {resolved} failed manifest verification: {detail}")
+    return (
+        verification,
+        _object(run_dir / "summary.json", "run summary"),
+        _object(run_dir / "retrospective.json", "retrospective evidence"),
+        _object(run_dir / "manifest.json", "run manifest"),
+    )
 
-    summary = _object(run_dir / "summary.json", "run summary")
-    retrospective = _object(run_dir / "retrospective.json", "retrospective evidence")
-    manifest = _object(run_dir / "manifest.json", "run manifest")
+
+def _validate_shadow_scope(root: Path, resolved: str, summary: dict[str, Any]) -> tuple[str, Any]:
     if summary.get("run_id") != resolved or summary.get("mode") != "shadow":
         raise ConfigurationError(f"run {resolved} is not a shadow audit")
-    measured_controls = summary.get("control_fingerprint")
-    if measured_controls != control_fingerprint(root):
+    if summary.get("control_fingerprint") != control_fingerprint(root):
         raise ConfigurationError(
             f"controls changed after shadow run {resolved}; run a new shadow audit"
         )
@@ -87,6 +87,15 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
         raise ConfigurationError(
             f"the review surface changed after shadow run {resolved}; run a new shadow audit"
         )
+    return baseline_controls, measured_change
+
+
+def _measurement_values(
+    resolved: str,
+    summary: dict[str, Any],
+    retrospective: dict[str, Any],
+    manifest: dict[str, Any],
+) -> tuple[list[Any], str, str, str]:
     if retrospective.get("schema_version") != 1:
         raise InfrastructureError(f"run {resolved} has unsupported retrospective evidence")
     inventory = retrospective.get("inventory")
@@ -99,6 +108,22 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
     measured_at = manifest.get("completed_at")
     if not isinstance(profile, str) or not isinstance(measured_at, str):
         raise InfrastructureError(f"run {resolved} has incomplete measurement provenance")
+    return inventory, revision, profile, measured_at
+
+
+def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
+    """Create a write-once proposal from manifested shadow evidence.
+
+    A proposal is deliberately not a reviewed baseline and cannot authorize
+    ratchet enforcement.
+    """
+    resolved, run_dir = resolve_shadow_run(root, run_id)
+    verification, summary, retrospective, manifest = _verified_shadow_documents(run_dir, resolved)
+    baseline_controls, measured_change = _validate_shadow_scope(root, resolved, summary)
+    inventory, revision, profile, measured_at = _measurement_values(
+        resolved, summary, retrospective, manifest
+    )
+    source_manifest_fingerprint = f"sha256:{sha256_file(run_dir / 'manifest.json')}"
 
     proposed = validate_baseline(
         {
@@ -113,13 +138,13 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
                 "profile": profile,
                 "measured_at": measured_at,
                 "change_fingerprint": str(measured_change),
-                "manifest_fingerprint": f"sha256:{sha256_file(run_dir / 'manifest.json')}",
+                "manifest_fingerprint": source_manifest_fingerprint,
             },
             "inventory": inventory,
         }
     )
     fingerprint = document_fingerprint(proposed)
-    proposal_id = f"debt-{resolved}-{fingerprint.removeprefix('sha256:')[:12]}"
+    proposal_id = f"debt-{resolved}-{source_manifest_fingerprint.removeprefix('sha256:')[:12]}"
     path = root / ".aqg" / "proposals" / "debt" / f"{proposal_id}.json"
     write_evidence_json(path, proposed)
     return {
@@ -127,7 +152,7 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "proposal_id": proposal_id,
         "path": str(path),
         "document_fingerprint": fingerprint,
-        "source_manifest_fingerprint": f"sha256:{sha256_file(run_dir / 'manifest.json')}",
+        "source_manifest_fingerprint": source_manifest_fingerprint,
         "baseline": proposed,
         "manifest_verification": verification,
     }

@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -14,6 +15,9 @@ from aqg.cli import main
 from aqg.constants import PASS
 from aqg.debt import DebtError, compare, validate_baseline
 from aqg.debt_store import (
+    _measurement_values,
+    _validate_shadow_scope,
+    _verified_shadow_documents,
     load_current_debt_baseline,
     propose_debt_baseline,
     review_debt_proposal,
@@ -73,7 +77,11 @@ def _policy(root: Path) -> None:
     path.write_text("version = 2\n", encoding="utf-8")
 
 
-def test_proposal_preserves_complete_manifested_measurement(tmp_path: Path) -> None:
+def test_proposal_preserves_complete_manifested_measurement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    timestamps = iter(["2026-07-28T22:49:39+00:00", "2026-07-28T22:49:40+00:00"])
+    monkeypatch.setattr("aqg.debt_store.utc_now", lambda: next(timestamps))
     _policy(tmp_path)
     run_dir = _run(tmp_path, "20260728-shadow")
     report = propose_debt_baseline(tmp_path, "20260728-shadow")
@@ -85,6 +93,20 @@ def test_proposal_preserves_complete_manifested_measurement(tmp_path: Path) -> N
     assert proposal["inventory"][0]["value"] == 80
     assert report["manifest_verification"]["ok"] is True
     assert report["source_manifest_fingerprint"].startswith("sha256:")
+    assert report["document_fingerprint"].startswith("sha256:")
+    assert report["schema_version"] == 1
+    assert set(report) == {
+        "schema_version",
+        "proposal_id",
+        "path",
+        "document_fingerprint",
+        "source_manifest_fingerprint",
+        "baseline",
+        "manifest_verification",
+    }
+    assert report["proposal_id"] == (
+        "debt-20260728-shadow-" + report["source_manifest_fingerprint"][7:19]
+    )
     assert Path(report["path"]).is_file()
     with pytest.raises(DebtError, match="reviewed"):
         compare(proposal["inventory"], proposal)
@@ -92,6 +114,139 @@ def test_proposal_preserves_complete_manifested_measurement(tmp_path: Path) -> N
     with pytest.raises(ConfigurationError, match="overwrite"):
         propose_debt_baseline(tmp_path, "20260728-shadow")
     assert json.loads((run_dir / "manifest.json").read_text())["run_id"] == "20260728-shadow"
+
+
+def test_verified_shadow_documents_preserves_diagnostics_and_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = Mock(side_effect=[{"summary": 1}, {"retrospective": 1}, {"manifest": 1}])
+    monkeypatch.setattr("aqg.debt_store._object", reader)
+    monkeypatch.setattr(
+        "aqg.debt_store.verify_run_manifest",
+        Mock(return_value={"ok": True, "errors": []}),
+    )
+
+    documents = _verified_shadow_documents(tmp_path, "run-1")
+
+    assert documents == (
+        {"ok": True, "errors": []},
+        {"summary": 1},
+        {"retrospective": 1},
+        {"manifest": 1},
+    )
+    assert reader.call_args_list == [
+        call(tmp_path / "summary.json", "run summary"),
+        call(tmp_path / "retrospective.json", "retrospective evidence"),
+        call(tmp_path / "manifest.json", "run manifest"),
+    ]
+    reader.reset_mock()
+    monkeypatch.setattr(
+        "aqg.debt_store.verify_run_manifest",
+        Mock(return_value={"ok": False, "errors": ["first", "second"]}),
+    )
+
+    with pytest.raises(InfrastructureError) as error:
+        _verified_shadow_documents(tmp_path, "run-1")
+
+    assert str(error.value) == "shadow run run-1 failed manifest verification: first; second"
+    reader.assert_not_called()
+
+
+def test_shadow_scope_uses_exact_baseline_exclusion_and_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controls = Mock(
+        side_effect=[
+            "sha256:" + "1" * 64,
+            "sha256:" + "2" * 64,
+            "sha256:" + "1" * 64,
+            "sha256:" + "2" * 64,
+        ]
+    )
+    changes = Mock(return_value="sha256:" + "3" * 64)
+    monkeypatch.setattr("aqg.debt_store.control_fingerprint", controls)
+    monkeypatch.setattr("aqg.debt_store.change_fingerprint", changes)
+    summary = {
+        "run_id": "run-1",
+        "mode": "shadow",
+        "control_fingerprint": "sha256:" + "1" * 64,
+        "change_fingerprint": "sha256:" + "3" * 64,
+        "base_ref": "origin/main",
+    }
+
+    actual = _validate_shadow_scope(tmp_path, "run-1", summary)
+
+    assert actual == ("sha256:" + "2" * 64, "sha256:" + "3" * 64)
+    assert controls.call_args_list == [
+        call(tmp_path),
+        call(tmp_path, exclude_patterns=["quality/baselines/debt.json"]),
+    ]
+    changes.assert_called_once_with(tmp_path, "origin/main")
+    changes.reset_mock()
+    summary["base_ref"] = None
+
+    with pytest.raises(ConfigurationError, match="review surface changed"):
+        _validate_shadow_scope(tmp_path, "run-1", summary)
+
+    changes.assert_not_called()
+
+
+@pytest.mark.parametrize("revision", [None, "", "uncommitted"])
+def test_measurement_rejects_each_invalid_revision(revision: object) -> None:
+    with pytest.raises(ConfigurationError) as error:
+        _measurement_values(
+            "run-1",
+            {"revision": revision, "profile": "fast"},
+            {"schema_version": 1, "inventory": []},
+            {"completed_at": "2026-07-28T00:00:00+00:00"},
+        )
+
+    assert str(error.value) == "a debt proposal requires a committed source revision"
+
+
+@pytest.mark.parametrize(
+    ("profile", "measured_at"),
+    [(None, "2026-07-28T00:00:00+00:00"), ("fast", None)],
+)
+def test_measurement_rejects_each_incomplete_provenance(
+    profile: object, measured_at: object
+) -> None:
+    with pytest.raises(InfrastructureError, match="incomplete measurement provenance"):
+        _measurement_values(
+            "run-1",
+            {"revision": "a" * 40, "profile": profile},
+            {"schema_version": 1, "inventory": []},
+            {"completed_at": measured_at},
+        )
+
+
+def test_proposal_wires_resolved_run_identity_to_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _policy(tmp_path)
+    run_dir = _run(tmp_path, "wired-shadow")
+    summary = json.loads((run_dir / "summary.json").read_text())
+    retrospective = json.loads((run_dir / "retrospective.json").read_text())
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    documents = Mock(return_value=({"ok": True, "errors": []}, summary, retrospective, manifest))
+    scope = Mock(return_value=("sha256:" + "4" * 64, summary["change_fingerprint"]))
+    measurement = Mock(
+        return_value=(
+            retrospective["inventory"],
+            summary["revision"],
+            summary["profile"],
+            manifest["completed_at"],
+        )
+    )
+    monkeypatch.setattr("aqg.debt_store._verified_shadow_documents", documents)
+    monkeypatch.setattr("aqg.debt_store._validate_shadow_scope", scope)
+    monkeypatch.setattr("aqg.debt_store._measurement_values", measurement)
+
+    propose_debt_baseline(tmp_path, "wired-shadow")
+
+    documents.assert_called_once_with(run_dir, "wired-shadow")
+    scope.assert_called_once_with(tmp_path, "wired-shadow", summary)
+    measurement.assert_called_once_with("wired-shadow", summary, retrospective, manifest)
 
 
 def test_latest_selects_newest_shadow_and_rejects_enforcement_run(tmp_path: Path) -> None:
