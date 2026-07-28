@@ -8,6 +8,30 @@
   },
   "acceptance_mutation": {
     "command": ["python3", "tests/test_acceptance.py"],
+    "require_boundary_trace": true,
+    "semantic_mutations": [
+      {
+        "feature": "features/AgentQualityGauntlet.Setup.feature",
+        "id": "setup-history-state",
+        "key": "history",
+        "mapping": {
+          "none": "present",
+          "present": "none"
+        },
+        "scenario": "setup selects the expected enforcement scope"
+      },
+      {
+        "feature": "features/AgentQualityGauntlet.Setup.feature",
+        "id": "setup-enforcement-scope",
+        "key": "scope",
+        "mapping": {
+          "changed": "full",
+          "full": "changed"
+        },
+        "scenario": "setup selects the expected enforcement scope"
+      }
+    ],
+    "semantic_required": true,
     "timeout_seconds": 120
   },
   "build_command": ["python3", "scripts/build_release.py", "--output", "dist"],

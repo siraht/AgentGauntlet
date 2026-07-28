@@ -20,6 +20,24 @@ from aqg.constants import CONFIGURATION_ERROR  # noqa: E402
 from aqg.scaffold import initialize_project  # noqa: E402
 
 
+def _record_application_boundary(history: str, expected_scope: str) -> None:
+    trace = os.environ.get("AQG_ACCEPTANCE_TRACE")
+    if not trace:
+        return
+    Path(trace).write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "reached_application_boundary": True,
+                "stage": "initialize_project",
+                "history": history,
+                "expected_scope": expected_scope,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def _git(root: Path, *args: str) -> None:
     completed = subprocess.run(
         ["git", *args],
@@ -43,6 +61,7 @@ def _setup_scope(history: str, expected_scope: str) -> None:
             (target / "existing.py").write_text("VALUE = 1\n", encoding="utf-8")
             _git(target, "add", "existing.py")
             _git(target, "commit", "-qm", "existing history")
+        _record_application_boundary(history, expected_scope)
         result = initialize_project(target, install=False, ci=False, mode="auto")
         assert result["project"]["enforcement"]["scope"] == expected_scope
         assert (target / "aqg").is_file()
