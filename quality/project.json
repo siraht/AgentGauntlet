@@ -4,7 +4,8 @@
     "existing_debt_must_not_increase": true,
     "mode": "adopt",
     "new_code_must_meet_current_policy": true,
-    "scope": "changed"
+    "scope": "changed",
+    "stage": "shadow"
   },
   "acceptance_mutation": {
     "command": ["python3", "tests/test_acceptance.py"],

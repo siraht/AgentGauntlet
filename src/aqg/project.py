@@ -72,8 +72,16 @@ def _validate_enforcement(project: dict[str, Any]) -> list[str]:
         errors.append("enforcement.mode must be adopt or greenfield")
     if enforcement.get("scope") not in {"changed", "full"}:
         errors.append("enforcement.scope must be changed or full")
+    if enforcement.get("stage") is not None and enforcement.get("stage") not in {
+        "shadow",
+        "ratchet",
+        "strict",
+    }:
+        errors.append("enforcement.stage must be shadow, ratchet, or strict")
     if not isinstance(enforcement.get("base_ref"), str) or not enforcement["base_ref"].strip():
         errors.append("enforcement.base_ref must be a non-empty Git ref")
+    if enforcement.get("stage") == "strict" and enforcement.get("scope") != "full":
+        errors.append("enforcement.stage=strict requires enforcement.scope=full")
     return errors
 
 

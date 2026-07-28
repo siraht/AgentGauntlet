@@ -18,7 +18,7 @@
   worsened, or unclassified debt in the changed scope.
 - `AQG-RETRO-006` Changed-code enforcement MUST include untracked production
   files and MUST fail closed when its comparison revision cannot be resolved.
-- `AQG-RETRO-007` Promotion MUST be monotonic through `shadow`, `adopt`, and
+- `AQG-RETRO-007` Promotion MUST be monotonic through `shadow`, `ratchet`, and
   `strict`; automatic promotion MAY be proposed but MUST NOT silently alter
   protected policy.
 - `AQG-RETRO-008` A retrospective report MUST separately count measured

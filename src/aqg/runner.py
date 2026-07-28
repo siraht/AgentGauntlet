@@ -35,6 +35,7 @@ from .evidence_manifest import (
 )
 from .policy import safe_remove, validate_policy
 from .project import load_project
+from .promotion import enforcement_stage
 from .retrospective import build_retrospective, ratchet_exit_code
 from .util import (
     change_fingerprint,
@@ -116,6 +117,7 @@ def _retrospective_inputs(
     dict[str, Any] | None,
     dict[str, Any] | None,
     str | None,
+    str,
 ]:
     details: dict[str, Any] = {}
     for path in sorted((run_dir / "gates").glob("*.details.json")):
@@ -128,15 +130,18 @@ def _retrospective_inputs(
     )
     traceability = details.get("test_integrity", {}).get("traceability")
     enforcement = project.get("enforcement", {})
+    stage = enforcement_stage(project)
     baseline_path = root / str(enforcement.get("debt_baseline", "quality/baselines/debt.json"))
     baseline: dict[str, Any] | None = None
     baseline_error: str | None = None
-    if baseline_path.is_file():
+    if stage in {"shadow", "ratchet"} and baseline_path.is_file():
         try:
             baseline = load_current_debt_baseline(root, baseline_path)
         except ConfigurationError as exc:
             baseline_error = str(exc)
-    return details, thresholds, traceability, baseline, baseline_error
+    elif stage == "ratchet":
+        baseline_error = "ratchet enforcement requires a current reviewed debt baseline"
+    return details, thresholds, traceability, baseline, baseline_error, stage
 
 
 def run_gate(
@@ -337,7 +342,7 @@ def run_profile(
 
     measured_gate_exit = final
     project = load_project(root)
-    details, thresholds, traceability, baseline, baseline_error = _retrospective_inputs(
+    details, thresholds, traceability, baseline, baseline_error, stage = _retrospective_inputs(
         root, run_dir, project, profile_name
     )
     retrospective = build_retrospective(
@@ -351,13 +356,14 @@ def run_profile(
     write_evidence_json(run_dir / "retrospective.json", retrospective)
     if baseline_error:
         final = max(final, CONFIGURATION_ERROR)
-    elif baseline is not None:
+    elif baseline is not None and stage == "ratchet":
         final = ratchet_exit_code(retrospective)
     command_exit = PASS if shadow and final == QUALITY_FAILURE else final
     summary = {
         "schema_version": "2",
         "run_id": run_id,
         "profile": profile_name,
+        "enforcement_stage": stage,
         "mode": "shadow" if shadow else "enforce",
         "status": STATUS_NAMES[final],
         "exit_code": command_exit,

@@ -33,6 +33,7 @@ from .maintenance import create_maintenance_request, parse_change_spec
 from .policy import load_policy, policy_override_enabled, risk_summary
 from .portfolio import add_project, load_portfolio, project_roots, remove_project, scan_portfolio
 from .project import load_project
+from .promotion import STAGES, promotion_status, propose_promotion
 from .reporting import latest_evidence_bundle, write_github_summary, write_review_sarif
 from .review import analyze_review, review_exit_code, write_review_packet
 from .runner import list_runs, run_gate, run_profile
@@ -500,6 +501,16 @@ def _add_evidence_parsers(sub: Any) -> None:
     )
     maintenance_request.add_argument("--reason", required=True)
     maintenance_request.add_argument("--requester")
+
+    promote = sub.add_parser(
+        "promote", help="inspect or propose monotonic enforcement-stage promotion"
+    )
+    promote_sub = _nested_subparsers(promote, "promote_command")
+    promote_sub.add_parser("status", help="show ratchet and strict promotion readiness")
+    promote_proposal = promote_sub.add_parser(
+        "propose", help="write a non-authorizing reviewed promotion proposal"
+    )
+    promote_proposal.add_argument("--to", choices=STAGES, required=True)
 
     approval = sub.add_parser(
         "approval", help="create templates or validate human approval records"
@@ -1278,6 +1289,17 @@ def _dispatch_maintenance(args: argparse.Namespace, root: Path) -> int:
     return PASS
 
 
+def _dispatch_promote(args: argparse.Namespace, root: Path) -> int:
+    if args.promote_command == "status":
+        report = promotion_status(root)
+    elif args.promote_command == "propose":
+        report = propose_promotion(root, args.to)
+    else:
+        raise ConfigurationError("unknown enforcement promotion command")
+    _json_dump(report) if args.json else print(json.dumps(report, indent=2))
+    return PASS
+
+
 def _approval_report(args: argparse.Namespace, root: Path) -> dict[str, Any]:
     if args.risk_profile:
         return validate_required_approvals(root, args.risk_profile)
@@ -1437,6 +1459,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "new": _dispatch_new,
     "onboarding": _dispatch_onboarding,
     "portfolio": _dispatch_portfolio,
+    "promote": _dispatch_promote,
     "report": _dispatch_report,
     "review": _dispatch_review,
     "risk-card": _dispatch_risk_card,

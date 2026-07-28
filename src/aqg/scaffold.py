@@ -499,6 +499,7 @@ def _project_paths(detection: Detection) -> dict[str, list[str]]:
 def _enforcement_settings(root: Path, mode: str) -> dict[str, Any]:
     return {
         "mode": mode,
+        "stage": "shadow" if mode == "adopt" else "strict",
         "scope": "changed" if mode == "adopt" else "full",
         "base_ref": detect_base_ref(root),
         "new_code_must_meet_current_policy": True,

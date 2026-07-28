@@ -340,6 +340,7 @@ def test_stale_debt_baseline_is_a_manifested_configuration_failure(tmp_path: Pat
     baseline.write_text("{}\n", encoding="utf-8")
     project = _project()
     project["enforcement"]["debt_baseline"] = "quality/baselines/debt.json"
+    project["enforcement"]["stage"] = "ratchet"
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
@@ -427,6 +428,7 @@ def test_reviewed_ratchet_reports_inherited_debt_but_rejects_worsening(
     baseline_path.write_text("{}\n", encoding="utf-8")
     project = _project()
     project["enforcement"]["debt_baseline"] = "quality/baselines/debt.json"
+    project["enforcement"]["stage"] = "ratchet"
     provenance = {
         "revision": "candidate",
         "base_ref": "main",

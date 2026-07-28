@@ -83,6 +83,7 @@ class CliControlSurfaceTests(unittest.TestCase):
             (("acceptance", "lint"), {PASS}),
             (("golden",), {CONFIGURATION_ERROR}),
             (("conformance",), {PASS}),
+            (("promote", "status"), {PASS}),
             (("report",), {PASS}),
         )
         for arguments, expected_codes in cases:
