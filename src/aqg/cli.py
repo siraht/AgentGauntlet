@@ -248,8 +248,13 @@ def _comparison_base(root: Path, explicit: str | None = None) -> str:
 
 
 def _reject_authoritative_overrides(root: Path, command: str) -> None:
-    policy = load_policy(root)
-    configured = policy.get("policy", {})
+    try:
+        policy = load_policy(root)
+        configured = policy.get("policy", {})
+    except ConfigurationError:
+        if command != "doctor":
+            raise
+        configured = {}
     names = {
         str(
             configured.get(

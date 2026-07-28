@@ -692,6 +692,23 @@ def test_doctor_cli_policy_missing_exits_configuration_error(
         payload = json.loads(capsys.readouterr().out)
     assert code == CONFIGURATION_ERROR
     assert payload["diagnostics"][0]["code"] == "policy-missing"
+
+
+def test_doctor_without_policy_still_rejects_default_maintenance_override(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "bare"
+    (root / "quality").mkdir(parents=True)
+    (root / "quality" / "project.json").write_text("{}", encoding="utf-8")
+    with (
+        patch("aqg.cli.find_project_root", return_value=root.resolve()),
+        patch.dict(os.environ, {"AQG_POLICY_MAINTENANCE": "1"}, clear=False),
+    ):
+        code = main(["doctor", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+    assert code == CONFIGURATION_ERROR
+    assert payload["error"]["category"] == "configuration_error"
+    assert "refuses active maintenance" in payload["error"]["message"]
     assert payload["status"] == "error"
 
 
