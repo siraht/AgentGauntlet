@@ -24,6 +24,9 @@ from aqg.council import (
     write_council_evidence,
 )
 from aqg.council_providers import (
+    ATTACHED_PROMPT_MESSAGE,
+    PROMPT_FILENAME,
+    build_file_provider_spec,
     build_provider_spec,
     collect_ballot,
     execute_provider,
@@ -186,6 +189,19 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     assert synthetic["provider_group"] == "synthetic:api.synthetic.new"
     assert deepseek["provider_group"] == "opencode:opencode.ai"
 
+    grok_file = validate_provider_spec(build_file_provider_spec("grok-4.5"))
+    synthetic_file = validate_provider_spec(
+        build_file_provider_spec("synthetic/hf:zai-org/GLM-5.2")
+    )
+    assert grok_file["command"][:3] == ["grok", "--prompt-file", PROMPT_FILENAME]
+    assert synthetic_file["command"][:5] == [
+        "opencode",
+        "run",
+        ATTACHED_PROMPT_MESSAGE,
+        "--file",
+        PROMPT_FILENAME,
+    ]
+
 
 def test_aqg_council_004_minimal_environment_scrubs_unapproved_secrets() -> None:
     source = {
@@ -236,6 +252,10 @@ def test_aqg_council_005_valid_output_creates_ballot_and_malformed_schema_fails(
     assert ballot is not None
     assert validate_ballot(ballot, bundle=bundle) == ballot
     assert captured[0][0] == "grok"
+    assert captured[0][1:3] == ["--prompt-file", PROMPT_FILENAME]
+    assert (tmp_path / PROMPT_FILENAME).read_text(encoding="utf-8") == build_review_prompt(
+        bundle, "requirements_behavior"
+    )
 
     malformed = {**payload, "unexpected": True}
 
