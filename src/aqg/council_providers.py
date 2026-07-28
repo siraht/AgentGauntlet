@@ -517,7 +517,15 @@ def _direct_payload(value: Any) -> dict[str, Any] | None:
 
 def _payload_children(value: Any, depth: int) -> list[tuple[Any, int]]:
     if isinstance(value, Mapping):
-        keys = ("result", "output", "content", "text", "part", "message")
+        keys = (
+            "structuredOutput",
+            "result",
+            "output",
+            "content",
+            "text",
+            "part",
+            "message",
+        )
         return [(value[key], depth) for key in reversed(keys) if key in value]
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return [(item, depth) for item in value]
@@ -527,10 +535,28 @@ def _payload_children(value: Any, depth: int) -> list[tuple[Any, int]]:
 
 
 def _decoded_child(value: str, depth: int) -> list[tuple[Any, int]]:
-    try:
-        return [(json.loads(value), depth)]
-    except json.JSONDecodeError:
-        return []
+    decoded: list[tuple[Any, int]] = []
+    candidates = [value.strip()]
+    candidates.extend(
+        match.group(1).strip()
+        for match in re.finditer(r"```(?:json)?\s*([\s\S]*?)```", value, re.IGNORECASE)
+    )
+    for candidate in candidates:
+        decoded.extend((item, depth) for item in _embedded_json(candidate))
+    return decoded
+
+
+def _embedded_json(value: str) -> list[Any]:
+    decoded: list[Any] = []
+    decoder = json.JSONDecoder()
+    starts = [index for index, character in enumerate(value) if character in "[{"][:100]
+    for start in starts:
+        try:
+            item, _ = decoder.raw_decode(value[start:])
+        except json.JSONDecodeError:
+            continue
+        decoded.append(item)
+    return decoded
 
 
 def _text(value: str | bytes | None) -> str:

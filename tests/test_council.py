@@ -283,6 +283,47 @@ def test_aqg_council_005_valid_output_creates_ballot_and_malformed_schema_fails(
     assert failed["status"].startswith("malformed provider review")
 
 
+@pytest.mark.parametrize(
+    "wrapped",
+    [
+        {"structuredOutput": {"placeholder": True}},
+        {
+            "type": "text",
+            "part": {
+                "text": "Analysis complete.\n```json\nPAYLOAD\n```\n",
+            },
+        },
+    ],
+)
+def test_aqg_council_005_real_cli_wrappers_preserve_strict_payload_validation(
+    tmp_path: Path, wrapped: dict[str, Any]
+) -> None:
+    bundle = _bundle()
+    payload = _payload(bundle)
+    if "structuredOutput" in wrapped:
+        wrapped["structuredOutput"] = payload
+    else:
+        wrapped["part"]["text"] = wrapped["part"]["text"].replace("PAYLOAD", json.dumps(payload))
+
+    def executor(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return _completed(json.dumps(wrapped))
+
+    ballot, execution = collect_ballot(
+        review_id="wrapped-review",
+        model_id="grok-4.5",
+        role="requirements_behavior",
+        bundle=bundle,
+        cwd=tmp_path,
+        environment={"PATH": "/usr/bin"},
+        timeout_seconds=10,
+        executor=executor,
+    )
+
+    assert execution["exit_code"] == PASS
+    assert ballot is not None
+    assert validate_ballot(ballot, bundle=bundle) == ballot
+
+
 def test_aqg_council_006_timeout_and_start_failure_are_infrastructure_errors(
     tmp_path: Path,
 ) -> None:
