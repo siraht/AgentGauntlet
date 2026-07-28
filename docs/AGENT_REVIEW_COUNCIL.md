@@ -114,10 +114,26 @@ The default bundle includes:
 - the current quality summary and manifest.
 
 It excludes unrelated repository content. A passing secret scan is mandatory.
-The serialized bundle is capped at one million bytes by default. Provider
-processes receive a minimal environment and an empty temporary working
-directory. Grok tools are disabled; OpenCode receives the controlled prompt
-through standard input and runs in pure plan mode.
+Every serialized provider bundle is capped at one million bytes by default.
+When the exact diff makes the bundle larger, the controller creates a
+content-addressed bundle series. It repeats the complete risk, requirements,
+review, and quality context in every bundle and splits only
+`current.diff.patch`. Every configured role and provider reviews every chunk.
+The controller then combines the chunk results conservatively: a blocker,
+dissent, timeout, malformed response, missing result, or incomplete quorum in
+any chunk affects the whole council result. It never raises the cap, truncates
+the diff, or reports provider diversity unless that diversity is present in
+every chunk.
+
+The series records exact UTF-8 byte ranges, each canonical bundle digest and
+size, and the reconstructed diff digest. Parent and child manifests make later
+reordering, deletion, alteration, or insertion detectable. If the shared
+context without the diff exceeds the cap, planning fails closed because
+splitting that context would deprive reviewers of a common product contract.
+
+Provider processes receive a minimal environment and an empty temporary
+working directory. Grok tools are disabled; OpenCode receives the controlled
+prompt through standard input and runs in pure plan mode.
 
 Immutable evidence contains normalized validated ballots and hashes of the
 prompt, command, raw response, and error stream. Raw provider stdout/stderr is
