@@ -8,9 +8,12 @@ import os
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
+from aqg.errors import ConfigurationError
 from aqg.evidence_manifest import write_run_manifest
 from aqg.runner import run_profile
-from aqg.schema_contracts import validate_instance, validate_named_schema
+from aqg.schema_contracts import load_named_schema, validate_instance, validate_named_schema
 
 
 def _project() -> dict:
@@ -112,6 +115,49 @@ def test_schema_validator_rejects_nested_contract_drift() -> None:
     assert validate_instance(True, {"enum": [0, 1]}) == [
         "$: value True is not in the declared enum"
     ]
+    assert validate_instance({}, {"type": "object", "required": ["value"], "properties": {}}) == [
+        "$: missing required property 'value'"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("value", "schema", "message"),
+    [
+        ("", {"type": "string", "minLength": 1}, "$: string is shorter than 1"),
+        (
+            "2026-07-28T00:00:00",
+            {"type": "string", "format": "date-time"},
+            "$: expected a timezone-aware date-time",
+        ),
+        (2, {"type": "integer", "minimum": 3}, "$: value is below minimum 3"),
+        (True, {"type": "integer"}, "$: expected type 'integer'"),
+        (None, {"type": ["string", "null"]}, None),
+        ("value", {"type": "unsupported"}, "$: expected type 'unsupported'"),
+    ],
+)
+def test_schema_validator_scalar_and_type_boundaries(
+    value: object,
+    schema: dict[str, object],
+    message: str | None,
+) -> None:
+    assert validate_instance(value, schema) == ([] if message is None else [message])
+
+
+def test_named_schema_loader_rejects_unsafe_missing_and_malformed_sources(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ConfigurationError, match="unsafe schema"):
+        load_named_schema(tmp_path, "../escape")
+    with pytest.raises(ConfigurationError, match="does not exist"):
+        load_named_schema(tmp_path, "missing")
+    schemas = tmp_path / "quality" / "schemas"
+    schemas.mkdir(parents=True)
+    (schemas / "broken.schema.json").write_text("{", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="cannot read"):
+        load_named_schema(tmp_path, "broken")
+    (schemas / "array.schema.json").write_text("[]", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="must contain an object"):
+        load_named_schema(tmp_path, "array")
 
 
 def test_risk_and_debt_documents_conform_to_public_contracts() -> None:
