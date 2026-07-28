@@ -22,7 +22,13 @@ from typing import Any
 
 from .acceptance import run_acceptance_mutation
 from .approvals import validate_required_approvals
-from .checks import crap_score, lint_features, scan_secrets, scan_test_integrity
+from .checks import (
+    crap_score,
+    lint_features,
+    scan_secrets,
+    scan_test_integrity,
+    test_feature_traceability,
+)
 from .constants import (
     CONFIGURATION_ERROR,
     INFRASTRUCTURE_ERROR,
@@ -504,13 +510,19 @@ def _collection_specs(root: Path, project: dict[str, Any]) -> list[CommandSpec]:
 
 def _test_integrity(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     scan = scan_test_integrity(root, project)
+    traceability = test_feature_traceability(root, project)
     command_code, results = _run_many(root, _collection_specs(root, project))
     code = max(command_code, QUALITY_FAILURE if scan["errors"] else PASS)
     return _write_report(
         root,
         "test_integrity",
         code,
-        {"applicability": "applicable", "integrity": scan, "commands": results},
+        {
+            "applicability": "applicable",
+            "integrity": scan,
+            "traceability": traceability,
+            "commands": results,
+        },
     )
 
 

@@ -700,12 +700,47 @@ class ReviewAndApprovalTests(RepoCase):
         self.assertIn("production-without-tests", codes)
         self.assertIn("lint-or-type-suppression", codes)
 
-    def test_traceability_ignores_feature_spec_documentation(self) -> None:
+    def test_traceability_rejects_legacy_name_only_mapping(self) -> None:
         self._initialized()
 
         report = feature_traceability(self.root, load_project(self.root))
 
         self.assertEqual(report["active_specs"], 1)
+        self.assertEqual(report["requirements"], 0)
+        self.assertEqual(report["mapped_requirements"], 0)
+        self.assertEqual(
+            [finding["code"] for finding in report["findings"]],
+            ["requirement-id-missing"],
+        )
+
+    def test_traceability_requires_exact_declared_requirement_ids(self) -> None:
+        self._initialized()
+        spec = self.root / "feature-spec" / "Product.Calculation.md"
+        test = self.root / "tests" / "test_app.py"
+        spec.write_text(
+            "# Product.Calculation\n\n## Requirements\n\n"
+            "- `PRODUCT-CALC-001` The product MUST calculate a result.\n",
+            encoding="utf-8",
+        )
+        test.write_text(
+            "# PRODUCT-CALC-001 appears incidentally\n"
+            "# Feature-Spec: Product.Calculation PRODUCT-CALC-999\n"
+            "def test_calculate():\n    assert 2 == 2\n",
+            encoding="utf-8",
+        )
+        report = feature_traceability(self.root, load_project(self.root))
+        self.assertEqual(report["mapped_requirements"], 0)
+        self.assertEqual(
+            {finding["code"] for finding in report["findings"]},
+            {"unmapped-active-requirement", "unknown-requirement-reference"},
+        )
+        test.write_text(
+            "# Feature-Spec: Product.Calculation PRODUCT-CALC-001\n"
+            "def test_calculate():\n    assert 2 == 2\n",
+            encoding="utf-8",
+        )
+        report = feature_traceability(self.root, load_project(self.root))
+        self.assertEqual(report["mapped_requirements"], 1)
         self.assertEqual(report["findings"], [])
 
     def test_review_ignores_debt_words_inside_python_strings(self) -> None:

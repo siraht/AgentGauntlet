@@ -622,25 +622,93 @@ def test_feature_traceability(root: Path, project: dict[str, Any]) -> dict[str, 
         if (root / "feature-spec").exists()
         else []
     )
-    test_content = "\n".join(
-        path.read_text(encoding="utf-8", errors="ignore") for path in _test_files(root, project)
+    requirement_pattern = re.compile(r"^\s*-\s+`([A-Z][A-Z0-9_-]+)`\s+", re.MULTILINE)
+    bullet_pattern = re.compile(r"^\s*-\s+.+\bMUST\b", re.MULTILINE)
+    annotation_pattern = re.compile(
+        r"Feature-Spec:\s*([A-Za-z0-9_.-]+)([^\r\n]*)",
     )
+    identifier_pattern = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+){2,}\b")
+    annotations: dict[str, set[str]] = {}
+    annotation_locations: dict[tuple[str, str], str] = {}
+    for path in _test_files(root, project):
+        relative = path.relative_to(root).as_posix()
+        content = path.read_text(encoding="utf-8", errors="ignore")
+        for match in annotation_pattern.finditer(content):
+            name = match.group(1)
+            for identifier in identifier_pattern.findall(match.group(2)):
+                annotations.setdefault(name, set()).add(identifier)
+                annotation_locations[(name, identifier)] = relative
     findings: list[Finding] = []
+    requirements = 0
+    mapped = 0
+    known: set[tuple[str, str]] = set()
+    globally_seen: dict[str, str] = {}
     for spec in active_specs:
         name = spec.stem
-        if name not in test_content:
+        content = spec.read_text(encoding="utf-8", errors="replace")
+        declared = requirement_pattern.findall(content)
+        requirements += len(declared)
+        for identifier in declared:
+            known.add((name, identifier))
+            other = globally_seen.get(identifier)
+            if other and other != name:
+                findings.append(
+                    Finding(
+                        "duplicate-requirement-id",
+                        "warning",
+                        f"Requirement identifier {identifier!r} is also declared by {other!r}.",
+                        spec.relative_to(root).as_posix(),
+                        remediation="Assign one globally unique stable identifier to each active requirement.",
+                        fingerprint=f"duplicate-requirement-id:{identifier}",
+                    )
+                )
+            globally_seen[identifier] = name
+            if identifier in annotations.get(name, set()):
+                mapped += 1
+                continue
             findings.append(
                 Finding(
-                    "unmapped-active-spec",
+                    "unmapped-active-requirement",
                     "warning",
-                    f"Active feature specification {name!r} has no test annotation or reference.",
+                    f"Active requirement {identifier!r} in {name!r} has no exact test mapping.",
                     spec.relative_to(root).as_posix(),
-                    remediation=f"Reference the most specific feature with `Feature-Spec: {name}` in an executable test.",
-                    fingerprint=f"unmapped-active-spec:{name}",
+                    remediation=(
+                        f"Add `Feature-Spec: {name} {identifier}` to executable evidence "
+                        "that proves this requirement."
+                    ),
+                    fingerprint=f"unmapped-active-requirement:{name}:{identifier}",
                 )
             )
+        if not declared and bullet_pattern.search(content):
+            findings.append(
+                Finding(
+                    "requirement-id-missing",
+                    "warning",
+                    f"Active feature specification {name!r} has MUST requirements without stable IDs.",
+                    spec.relative_to(root).as_posix(),
+                    remediation="Prefix each active requirement with a stable backticked identifier.",
+                    fingerprint=f"requirement-id-missing:{name}",
+                )
+            )
+    for name, identifiers in annotations.items():
+        for identifier in identifiers:
+            if (name, identifier) in known:
+                continue
+            findings.append(
+                Finding(
+                    "unknown-requirement-reference",
+                    "warning",
+                    f"Test mapping references undefined requirement {name} {identifier}.",
+                    annotation_locations[(name, identifier)],
+                    remediation="Correct the identifier or add the active requirement before claiming coverage.",
+                    fingerprint=f"unknown-requirement-reference:{name}:{identifier}",
+                )
+            )
+    findings.sort(key=lambda finding: (finding.code, finding.fingerprint or ""))
     return {
         "active_specs": len(active_specs),
+        "requirements": requirements,
+        "mapped_requirements": mapped,
         "findings": [finding.as_dict() for finding in findings],
         "warnings": len(findings),
     }
