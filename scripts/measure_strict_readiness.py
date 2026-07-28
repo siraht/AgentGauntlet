@@ -52,8 +52,33 @@ def _coverage_payload(report: dict[str, Any]) -> tuple[dict[str, Any], list[dict
     return summary, modules
 
 
-def _complexity_payload(report: dict[str, Any]) -> list[dict[str, Any]]:
-    hotspots = [
+def _complexity_rank(value: int) -> str:
+    for maximum, rank in ((5, "A"), (10, "B"), (20, "C"), (30, "D"), (40, "E")):
+        if value <= maximum:
+            return rank
+    return "F"
+
+
+def _normalized_hotspots(report: dict[str, Any]) -> list[dict[str, Any]]:
+    functions = report.get("functions")
+    if not isinstance(functions, list):
+        raise ValueError("normalized structure report is missing python.functions")
+    if any(not isinstance(item, dict) for item in functions):
+        raise ValueError("normalized structure report contains a malformed function")
+    return [
+        {
+            "path": item["path"],
+            "name": item["name"],
+            "line": int(item["line"]),
+            "complexity": int(item["complexity"]),
+            "rank": _complexity_rank(int(item["complexity"])),
+        }
+        for item in functions
+    ]
+
+
+def _legacy_hotspots(report: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
         {
             "path": path,
             "name": item["name"],
@@ -62,9 +87,20 @@ def _complexity_payload(report: dict[str, Any]) -> list[dict[str, Any]]:
             "rank": item["rank"],
         }
         for path, items in report.items()
+        if isinstance(items, list)
         for item in items
-        if item.get("type") in {"function", "method"} or "complexity" in item
+        if isinstance(item, dict)
+        and (item.get("type") in {"function", "method"} or "complexity" in item)
     ]
+
+
+def _complexity_payload(report: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = report.get("python")
+    hotspots = (
+        _normalized_hotspots(normalized)
+        if isinstance(normalized, dict)
+        else _legacy_hotspots(report)
+    )
     hotspots.sort(key=lambda item: (-item["complexity"], item["path"], item["line"]))
     return hotspots
 
@@ -119,6 +155,22 @@ def build_report(
     }
 
 
+def _roadmap_lines() -> list[str]:
+    return [
+        "",
+        "## Ratchet-to-strict roadmap",
+        "",
+        "1. Keep changed-code Standard gates authoritative while inherited debt remains visible.",
+        "2. Test low-coverage control and evidence modules by observable failure mode, not by line.",
+        "3. Split the highest-complexity functions behind characterization tests without changing diagnostics.",
+        "4. Run broader source mutation only after fresh coverage makes the scope trustworthy.",
+        "5. Switch `quality/project.json` to strict in a dedicated policy-maintenance change only when every switch-contract item is green.",
+        "",
+        "Suggested coverage checkpoints are 60%, 70%, then the 85% Standard line target. "
+        "They are progress markers, not substitutes for the final threshold.",
+    ]
+
+
 def _markdown(payload: dict[str, Any]) -> str:
     coverage = payload["coverage"]
     blockers = payload["blockers"]
@@ -163,21 +215,7 @@ def _markdown(payload: dict[str, Any]) -> str:
     )
     lines.extend(["", "## Switch contract", ""])
     lines.extend(f"- {item}" for item in payload["switch_contract"])
-    lines.extend(
-        [
-            "",
-            "## Ratchet-to-strict roadmap",
-            "",
-            "1. Keep changed-code Standard gates authoritative while inherited debt remains visible.",
-            "2. Test low-coverage control and evidence modules by observable failure mode, not by line.",
-            "3. Split the highest-complexity functions behind characterization tests without changing diagnostics.",
-            "4. Run broader source mutation only after fresh coverage makes the scope trustworthy.",
-            "5. Switch `quality/project.json` to strict in a dedicated policy-maintenance change only when every switch-contract item is green.",
-            "",
-            "Suggested coverage checkpoints are 60%, 70%, then the 85% Standard line target. "
-            "They are progress markers, not substitutes for the final threshold.",
-        ]
-    )
+    lines.extend(_roadmap_lines())
     return "\n".join(lines) + "\n"
 
 
