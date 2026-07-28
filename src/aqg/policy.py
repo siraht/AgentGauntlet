@@ -52,6 +52,7 @@ protected_paths = [
   "quality/golden/expected/**",
   "quality/schemas/**",
   "quality/conformance/**",
+  "quality/github/**",
   ".agents/skills/quality-gauntlet/**",
   ".claude/settings.json",
   ".claude/skills/quality-gauntlet/**",

@@ -16,9 +16,18 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         )
         cls.rules = {rule["type"]: rule for rule in cls.ruleset["rules"]}
 
-    def test_default_branch_requires_review_without_bypass(self) -> None:
+    def test_default_branch_requires_review_with_admin_only_owner_bypass(self) -> None:
         self.assertEqual(self.ruleset["enforcement"], "active")
-        self.assertEqual(self.ruleset["bypass_actors"], [])
+        self.assertEqual(
+            self.ruleset["bypass_actors"],
+            [
+                {
+                    "actor_id": 5,
+                    "actor_type": "RepositoryRole",
+                    "bypass_mode": "always",
+                }
+            ],
+        )
         self.assertEqual(
             self.ruleset["conditions"]["ref_name"]["include"],
             ["~DEFAULT_BRANCH"],
@@ -32,6 +41,14 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         self.assertTrue(review["dismiss_stale_reviews_on_push"])
         self.assertTrue(review["require_last_push_approval"])
         self.assertTrue(review["required_review_thread_resolution"])
+
+    def test_versioned_repository_governance_is_protected_policy(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        policy = (root / "quality" / "policy.toml").read_text(encoding="utf-8")
+        policy_template = (root / "src" / "aqg" / "policy.py").read_text(encoding="utf-8")
+
+        self.assertIn('"quality/github/**"', policy)
+        self.assertIn('"quality/github/**"', policy_template)
 
     def test_repository_review_scope_uses_the_published_mainline(self) -> None:
         root = Path(__file__).resolve().parents[1]

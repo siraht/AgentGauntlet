@@ -18,11 +18,18 @@ default branch by:
   the GitHub Actions app;
 - requiring the pull request to be current with the default branch.
 
-There are no bypass actors. Because this is currently a personal repository with one
-maintainer, the owner cannot approve their own pull request. A second trusted maintainer
-with write access must review before merge. `CODEOWNERS` still routes policy-plane changes
-to the declared owner, but code-owner approval is not enabled until ownership can be
-separated from authorship without deadlocking every change.
+Repository administrators have an explicit, auditable bypass because this is currently a
+single-maintainer personal repository and the owner has selected a direct-main workflow.
+All non-administrator contributors remain subject to the complete pull-request and required
+check rules. The bypass is an emergency and owner-maintenance capability, not passing
+evidence: every direct push still triggers the main-branch workflows and must be followed
+through to a terminal result. `CODEOWNERS` still routes policy-plane changes to the declared
+owner, but code-owner approval is not enabled until ownership can be separated from
+authorship without deadlocking every change.
+
+The versioned ruleset is itself in `protected_paths`. Changing its bypass actors, required
+checks, or merge controls requires the same scoped policy-maintenance evidence as changing
+the gauntlet policy.
 
 Apply the versioned declaration with an administration-capable GitHub CLI session:
 
