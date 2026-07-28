@@ -1,3 +1,4 @@
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-003 AQG-CORE-004 AQG-CORE-005 AQG-CORE-024
 # Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-010
 """Run ownership and detailed-evidence snapshot contracts."""
 

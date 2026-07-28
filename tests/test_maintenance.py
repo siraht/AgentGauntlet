@@ -1,3 +1,4 @@
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-026
 # Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-012
 """Contracts for legitimate, exact policy-maintenance approval."""
 

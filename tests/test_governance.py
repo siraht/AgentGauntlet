@@ -1,3 +1,5 @@
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-019 AQG-CORE-020
+# Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-014
 from __future__ import annotations
 
 import json

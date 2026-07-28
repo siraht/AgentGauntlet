@@ -1,3 +1,4 @@
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-021
 # Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-011
 """Contracts for base-controlled authoritative grading."""
 

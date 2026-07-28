@@ -1,3 +1,4 @@
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-022
 # Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-007
 """Monotonic enforcement-stage promotion contracts."""
 

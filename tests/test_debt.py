@@ -1,3 +1,4 @@
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-022
 # Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-003 AQG-RETRO-004 AQG-RETRO-005
 """Unit tests for the pure reviewed debt-baseline core."""
 

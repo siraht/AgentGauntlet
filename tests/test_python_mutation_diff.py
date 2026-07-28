@@ -1,3 +1,4 @@
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-006
 """Boundary tests for net Python mutation diff parsing."""
 
 from __future__ import annotations

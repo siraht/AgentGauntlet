@@ -1,4 +1,5 @@
-# Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-003 AQG-RETRO-005
+# Feature-Spec: AgentQualityGauntlet AQG-CORE-027
+# Feature-Spec: AgentQualityGauntlet.Retrospective AQG-RETRO-003 AQG-RETRO-005 AQG-RETRO-015
 """Stable test-integrity identity contracts."""
 
 from __future__ import annotations
