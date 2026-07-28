@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/siraht/AgentGauntlet/blob/main/quality/schemas/change-risk.schema.json",
+  "title": "Change risk card",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "summary",
+    "risk_profile",
+    "production_scope",
+    "reversible",
+    "blast_radius",
+    "behavior_changes",
+    "behavior_preserved",
+    "risk_factors",
+    "failure_detection",
+    "rollback",
+    "human_review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "risk_profile": {
+      "enum": ["experiment", "standard", "high_assurance", "critical"]
+    },
+    "production_scope": {
+      "type": "boolean",
+      "description": "True when the change can affect a production or production-like system."
+    },
+    "reversible": {
+      "type": "boolean",
+      "description": "True only when a tested rollback can restore the previous safe state."
+    },
+    "blast_radius": {
+      "enum": [
+        "local",
+        "single_service",
+        "multi_service",
+        "organization",
+        "public"
+      ]
+    },
+    "behavior_changes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "behavior_preserved": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_factors": {
+      "type": "object",
+      "required": [
+        "data_loss",
+        "authentication",
+        "authorization",
+        "privacy",
+        "money",
+        "external_contract",
+        "migration",
+        "concurrency",
+        "irreversible_action",
+        "supply_chain",
+        "safety"
+      ],
+      "properties": {
+        "data_loss": {
+          "type": "boolean"
+        },
+        "authentication": {
+          "type": "boolean"
+        },
+        "authorization": {
+          "type": "boolean"
+        },
+        "privacy": {
+          "type": "boolean"
+        },
+        "money": {
+          "type": "boolean"
+        },
+        "external_contract": {
+          "type": "boolean"
+        },
+        "migration": {
+          "type": "boolean"
+        },
+        "concurrency": {
+          "type": "boolean"
+        },
+        "irreversible_action": {
+          "type": "boolean"
+        },
+        "supply_chain": {
+          "type": "boolean"
+        },
+        "safety": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "failure_detection": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rollback": {
+      "type": "string",
+      "minLength": 1
+    },
+    "human_review": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

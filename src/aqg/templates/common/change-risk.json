@@ -5,7 +5,9 @@
   "production_scope": true,
   "reversible": true,
   "blast_radius": "single_service",
-  "behavior_changes": [],
+  "behavior_changes": [
+    "Replace this placeholder with the observable behavior being changed."
+  ],
   "behavior_preserved": [],
   "risk_factors": {
     "data_loss": false,

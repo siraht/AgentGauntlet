@@ -1142,6 +1142,7 @@ def initialize_project(
     _copy_text("common/change-risk.json", quality / "change-risk.json", force=force)
     for directory in ("baselines", "waivers", "conformance", "golden", "approvals", "guidance"):
         (quality / directory).mkdir(parents=True, exist_ok=True)
+    _copy_resource_tree(_resource("templates/common/schemas"), quality / "schemas")
     if detection.javascript or detection.html or detection.css:
         for template, destination in (
             ("js/package.json", "quality/tools/js/package.json"),

@@ -513,6 +513,15 @@ class SetupTests(RepoCase):
         self.assertTrue((self.root / "aqg").is_file())
         self.assertTrue((self.root / "quality" / "qg.py").is_file())
         self.assertTrue((self.root / "quality" / "_aqg" / "cli.py").is_file())
+        self.assertTrue((self.root / "quality" / "schemas" / "run-summary.schema.json").is_file())
+        self.assertEqual(
+            validate_named_schema(
+                self.root,
+                "change-risk",
+                read_json(self.root / "quality" / "change-risk.json"),
+            ),
+            [],
+        )
         self.assertTrue((self.root / ".github" / "workflows" / "quality-gauntlet.yml").is_file())
         command = subprocess.run(
             [sys.executable, "quality/qg.py", "--version"],
