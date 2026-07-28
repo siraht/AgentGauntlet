@@ -324,6 +324,47 @@ def test_aqg_council_005_real_cli_wrappers_preserve_strict_payload_validation(
     assert validate_ballot(ballot, bundle=bundle) == ballot
 
 
+def test_aqg_council_005_out_of_bundle_citation_fails_the_member(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle()
+    payload = _payload(bundle)
+    payload["findings"] = [
+        {
+            "id": "OUTSIDE-1",
+            "severity": "warning",
+            "category": "evidence",
+            "claim": "This cites material the controller did not provide.",
+            "evidence_refs": [
+                {
+                    "material": "outside.txt",
+                    "sha256": "sha256:" + "0" * 64,
+                }
+            ],
+            "recommendation": "Cite an exact bundled material.",
+        }
+    ]
+    payload["verdict"] = "concerns"
+
+    def executor(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return _completed(json.dumps(payload))
+
+    ballot, execution = collect_ballot(
+        review_id="outside-review",
+        model_id="grok-4.5",
+        role="requirements_behavior",
+        bundle=bundle,
+        cwd=tmp_path,
+        environment={"PATH": "/usr/bin"},
+        timeout_seconds=10,
+        executor=executor,
+    )
+
+    assert ballot is None
+    assert execution["exit_code"] == CONFIGURATION_ERROR
+    assert "outside the candidate bundle" in execution["status"]
+
+
 def test_aqg_council_006_timeout_and_start_failure_are_infrastructure_errors(
     tmp_path: Path,
 ) -> None:

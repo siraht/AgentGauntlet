@@ -18,6 +18,7 @@ from .council import (
     create_ballot,
     fingerprint,
     provider_identity,
+    validate_ballot,
     validate_candidate_bundle,
     validate_review_payload,
 )
@@ -459,26 +460,34 @@ def collect_ballot(
     try:
         payload = validate_review_payload(_extract_review_payload(execution["stdout"]))
     except ConfigurationError as exc:
-        failed = dict(execution)
-        failed.update(
-            {
-                "exit_code": CONFIGURATION_ERROR,
-                "status": f"malformed provider review: {exc}",
-            }
+        return None, _malformed_execution(execution, exc)
+    try:
+        ballot = create_ballot(
+            review_id=review_id,
+            model_id=model_id,
+            role=role,
+            bundle=normalized_bundle,
+            payload=payload,
+            prompt_sha256=fingerprint(prompt),
+            response_sha256=execution["response_sha256"],
+            command_sha256=execution["command_sha256"],
+            duration_ms=execution["duration_ms"],
         )
-        return None, failed
-    ballot = create_ballot(
-        review_id=review_id,
-        model_id=model_id,
-        role=role,
-        bundle=normalized_bundle,
-        payload=payload,
-        prompt_sha256=fingerprint(prompt),
-        response_sha256=execution["response_sha256"],
-        command_sha256=execution["command_sha256"],
-        duration_ms=execution["duration_ms"],
-    )
+        ballot = validate_ballot(ballot, bundle=normalized_bundle)
+    except ConfigurationError as exc:
+        return None, _malformed_execution(execution, exc)
     return ballot, execution
+
+
+def _malformed_execution(execution: Mapping[str, Any], error: ConfigurationError) -> dict[str, Any]:
+    failed = dict(execution)
+    failed.update(
+        {
+            "exit_code": CONFIGURATION_ERROR,
+            "status": f"malformed provider review: {error}",
+        }
+    )
+    return failed
 
 
 def _extract_review_payload(stdout: str) -> dict[str, Any]:
