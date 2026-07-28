@@ -2,10 +2,16 @@
   "detected": {
     "build_command": null,
     "css": true,
-    "css_paths": ["src"],
-    "frameworks": ["pytest"],
+    "css_paths": [
+      "src"
+    ],
+    "frameworks": [
+      "pytest"
+    ],
     "html": true,
-    "html_paths": ["src"],
+    "html_paths": [
+      "src"
+    ],
     "javascript": true,
     "js_test_runner": null,
     "name": "AgentGauntlet",
@@ -17,7 +23,11 @@
     "python": true,
     "python_manager": "uv",
     "python_test_runner": "pytest",
-    "source_paths": ["agent_ergonomics_audit", "scripts", "src"],
+    "source_paths": [
+      "agent_ergonomics_audit",
+      "scripts",
+      "src"
+    ],
     "start_command": null,
     "test_files": [
       "agent_ergonomics_audit/audit/regression_tests/test_R_001_json_errors.py",
@@ -39,12 +49,16 @@
       "tests/test_cli.py",
       "tests/test_control_guards.py",
       "tests/test_core.py",
+      "tests/test_council.py",
+      "tests/test_council_chunks.py",
+      "tests/test_council_service.py",
       "tests/test_debt.py",
       "tests/test_debt_store.py",
       "tests/test_diagnose.py",
       "tests/test_evidence_manifest.py",
       "tests/test_governance.py",
       "tests/test_maintenance.py",
+      "tests/test_owner_status.py",
       "tests/test_parse_feature.py",
       "tests/test_performance.py",
       "tests/test_project_matrix.py",
@@ -54,13 +68,19 @@
       "tests/test_python_mutation_selection.py",
       "tests/test_retrospective.py",
       "tests/test_retrospective_inventory.py",
+      "tests/test_review_risk_classifier.py",
       "tests/test_run_evidence.py",
       "tests/test_schema_contracts.py",
       "tests/test_strict_readiness.py",
       "tests/test_test_integrity.py",
       "tests/test_trusted_grader.py"
     ],
-    "test_paths": ["agent_ergonomics_audit", "quality", "src", "tests"],
+    "test_paths": [
+      "agent_ergonomics_audit",
+      "quality",
+      "src",
+      "tests"
+    ],
     "typescript": false
   },
   "gaps": [
@@ -77,7 +97,7 @@
       "severity": "info"
     }
   ],
-  "generated_at": "2026-07-28T03:48:48+00:00",
+  "generated_at": "2026-07-28T23:34:32+00:00",
   "generated_by": "agent-quality-gauntlet/2.0.0",
   "mode": "adopt",
   "next_action": {
@@ -156,7 +176,9 @@
   "state": {
     "acceptance_present": true,
     "active_specs": [
+      "feature-spec/AgentQualityGauntlet.OwnerStatus.md",
       "feature-spec/AgentQualityGauntlet.Retrospective.md",
+      "feature-spec/AgentQualityGauntlet.ReviewCouncil.md",
       "feature-spec/AgentQualityGauntlet.md"
     ],
     "agent_integrations": true,
@@ -176,13 +198,17 @@
       "src",
       "tests"
     ],
-    "gherkin_features": ["features/AgentQualityGauntlet.Setup.feature"],
+    "gherkin_features": [
+      "features/AgentQualityGauntlet.Setup.feature"
+    ],
     "golden_configured": false,
     "js_lock": true,
     "keystone_placeholder": false,
     "python_lock": true,
     "qa_procedures": [
       "qa/procedures/TEMPLATE.md",
+      "qa/procedures/advisory-review-council.md",
+      "qa/procedures/owner-status-dashboard.md",
       "qa/procedures/release-portable.md",
       "qa/procedures/web-primary-journey.md"
     ],
@@ -193,9 +219,11 @@
       "python": true,
       "typescript": false
     },
-    "todo_specs": ["feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"]
+    "todo_specs": [
+      "feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"
+    ]
   },
-  "state_fingerprint": "3c13311ca645f05866d31113d6135efeaf9037fb01276ee18c3e3ead1e07b7de",
+  "state_fingerprint": "25b17068a927b298a97aadc9c6f41a6cdce7a7e1cc8da900004615b086d49938",
   "summary": {
     "blockers": 0,
     "info": 2,
