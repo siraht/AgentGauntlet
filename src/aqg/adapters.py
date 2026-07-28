@@ -1378,7 +1378,8 @@ def _append_mutmut_config(
             for path in project.get("python", {}).get("mutation_copy_paths", [])
             if (project_copy / str(path)).exists()
         ]
-        also_copy = list(dict.fromkeys([*extra_test_roots, *additional_copy]))
+        runtime_copy = ["aqg"] if (project_copy / "aqg").is_file() else []
+        also_copy = list(dict.fromkeys([*extra_test_roots, *additional_copy, *runtime_copy]))
         original = original.rstrip() + "\n\n[tool.mutmut]\n"
         original += "source_paths = " + json.dumps(sources) + "\n"
         original += (

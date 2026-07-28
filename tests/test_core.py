@@ -1229,6 +1229,7 @@ class SetupContractTests(RepoCase):
         nested = self.root / "audit" / "regression_tests"
         nested.mkdir(parents=True)
         (self.root / "fixtures").mkdir()
+        (self.root / "aqg").write_text("#!/bin/sh\n", encoding="utf-8")
         _append_mutmut_config(
             self.root,
             {
@@ -1246,7 +1247,7 @@ class SetupContractTests(RepoCase):
             '"tests", "audit/regression_tests"]',
             content,
         )
-        self.assertIn('also_copy = ["audit/regression_tests", "fixtures"]', content)
+        self.assertIn('also_copy = ["audit/regression_tests", "fixtures", "aqg"]', content)
         self.assertIn("timeout_multiplier = 5.0", content)
         self.assertIn("timeout_constant = 1.0", content)
 
