@@ -349,7 +349,7 @@ def _add_execution_parsers(sub: Any) -> None:
     tools_sub.add_parser("status", help="show protected quality toolchain readiness")
 
     check = sub.add_parser("check", help="run an execution profile")
-    check.add_argument("profile", choices=("fast", "pr", "deep", "release"))
+    check.add_argument("profile", choices=("inner", "fast", "pr", "deep", "release"))
     check.add_argument("--keep-going", action="store_true")
     check.add_argument("--quiet", action="store_true")
 
@@ -360,7 +360,7 @@ def _add_execution_parsers(sub: Any) -> None:
     )
     shadow.add_argument(
         "--profile",
-        choices=("fast", "pr", "deep", "release"),
+        choices=("inner", "fast", "pr", "deep", "release"),
         default="fast",
     )
     shadow.add_argument("--quiet", action="store_true")

@@ -17,7 +17,7 @@ STATUS_NAMES = {
 }
 
 RISK_ORDER = ["experiment", "standard", "high_assurance", "critical"]
-EXECUTION_ORDER = ["fast", "pr", "deep", "release"]
+EXECUTION_ORDER = ["inner", "fast", "pr", "deep", "release"]
 PLACEHOLDER = "__CONFIGURE__"
 
 DEFAULT_EXCLUDES = [

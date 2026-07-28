@@ -167,7 +167,7 @@ def _validate_profile_thresholds(project: dict[str, Any]) -> list[str]:
         return ["profile_thresholds must be an object"]
     errors: list[str] = []
     for profile, overrides in profile_thresholds.items():
-        if profile not in {"fast", "pr", "deep", "release"}:
+        if profile not in {"inner", "fast", "pr", "deep", "release"}:
             errors.append(f"profile_thresholds has unknown execution profile {profile!r}")
         if not isinstance(overrides, dict):
             errors.append(f"profile_thresholds.{profile} must be an object")

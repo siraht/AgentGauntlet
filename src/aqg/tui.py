@@ -187,9 +187,13 @@ def _run(stdscr: Any, root: Path) -> None:
                 continue
             profiles = [str(item) for item in risk.get("required_execution_profiles", [])]
         else:
-            profile = {ord("f"): "fast", ord("p"): "pr", ord("d"): "deep", ord("R"): "release"}.get(
-                key
-            )
+            profile = {
+                ord("i"): "inner",
+                ord("f"): "fast",
+                ord("p"): "pr",
+                ord("d"): "deep",
+                ord("R"): "release",
+            }.get(key)
             if profile:
                 profiles = [profile]
         if profiles:

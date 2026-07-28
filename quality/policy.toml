@@ -119,6 +119,10 @@ requires_read_only_verifier = true
 requires_human_code_review = true
 requires_manual_qa = true
 
+[profiles.inner]
+gates = ["format", "lint", "typecheck"]
+max_total_seconds = 60
+
 [profiles.fast]
 gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "secrets"]
 max_total_seconds = 600

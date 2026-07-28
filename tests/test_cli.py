@@ -250,7 +250,7 @@ class CliControlSurfaceTests(unittest.TestCase):
             self.assertEqual(main(["help", "check", "--json"]), PASS)
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["path"], ["check"])
-        self.assertIn("{fast,pr,deep,release}", payload["help"])
+        self.assertIn("{inner,fast,pr,deep,release}", payload["help"])
 
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
