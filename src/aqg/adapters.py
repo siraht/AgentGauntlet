@@ -38,6 +38,7 @@ from .constants import (
 )
 from .errors import ConfigurationError
 from .golden import run_goldens
+from .maintenance import validate_policy_maintenance
 from .policy import load_policy, risk_summary
 from .project import excludes, gate_applicable, load_project, source_paths
 from .python_mutation_diff import (
@@ -2053,6 +2054,21 @@ def _assurance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
     )
 
 
+def _policy_maintenance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    policy = load_policy(root)
+    report = validate_policy_maintenance(root, policy, _base_ref(project))
+    return _write_report(
+        root,
+        "policy_maintenance",
+        int(report["exit_code"]),
+        {
+            "applicability": "applicable",
+            **report,
+            "failures": report["errors"],
+        },
+    )
+
+
 def _secrets(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     report = scan_secrets(root, project, changed_only=False)
     code = QUALITY_FAILURE if report["errors"] else PASS
@@ -2484,6 +2500,7 @@ HANDLERS: dict[str, Callable[[Path, dict[str, Any]], tuple[int, dict[str, Any]]]
     "mutation_changed": _mutation_changed,
     "mutation_acceptance": _mutation_acceptance,
     "review": _review,
+    "policy_maintenance": _policy_maintenance,
     "assurance": _assurance,
     "secrets": _secrets,
     "security_fast": _security_fast,

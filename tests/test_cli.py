@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -107,6 +108,21 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertEqual(code, QUALITY_FAILURE)
         self.assertTrue(payload["errors"])
         self.assertEqual(payload["exit_code"], QUALITY_FAILURE)
+
+    def test_authoritative_commands_reject_active_update_overrides(self) -> None:
+        cases = (
+            ("AQG_POLICY_MAINTENANCE", ("doctor",)),
+            ("AQG_POLICY_MAINTENANCE", ("check", "fast")),
+            ("AQG_ALLOW_GOLDEN_UPDATE", ("audit", "shadow")),
+            ("AQG_ALLOW_GOLDEN_UPDATE", ("gate", "format")),
+        )
+        for variable, command in cases:
+            with self.subTest(variable=variable, command=command):
+                with patch.dict(os.environ, {variable: "1"}, clear=False):
+                    code, payload, _ = self._json_command(*command)
+                self.assertEqual(code, CONFIGURATION_ERROR)
+                self.assertIn("refuses active", payload["error"]["message"])
+                self.assertIn(variable, payload["error"]["message"])
 
     def test_global_flags_work_after_the_subcommand(self) -> None:
         stdout = io.StringIO()

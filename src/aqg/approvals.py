@@ -78,7 +78,7 @@ def template(root: Path, kind: str, *, reviewer: str | None = None) -> dict[str,
     info = KINDS.get(kind)
     if info is None:
         raise ConfigurationError(f"unknown approval kind {kind!r}; choose: {', '.join(KINDS)}")
-    return {
+    payload = {
         "schema_version": 1,
         "kind": kind,
         "purpose": info["purpose"],
@@ -96,6 +96,12 @@ def template(root: Path, kind: str, *, reviewer: str | None = None) -> dict[str,
             "reviewer_did_not_modify_evidence": None,
         },
     }
+    if kind == "policy-maintenance":
+        payload["maintenance"] = {
+            "reason": "",
+            "authorized_changes": [],
+        }
+    return payload
 
 
 def write_template(

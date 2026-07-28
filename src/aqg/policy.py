@@ -147,15 +147,15 @@ gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "
 max_total_seconds = 600
 
 [profiles.pr]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "review", "security_fast", "assurance"]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "review", "security_fast", "policy_maintenance", "assurance"]
 max_total_seconds = 1800
 
 [profiles.deep]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "assurance"]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "policy_maintenance", "assurance"]
 max_total_seconds = 10800
 
 [profiles.release]
-gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "assurance", "release_readiness"]
+gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "policy_maintenance", "assurance", "release_readiness"]
 max_total_seconds = 14400
 
 {gates}
@@ -175,6 +175,7 @@ GATE_NAMES = [
     "mutation_changed",
     "mutation_acceptance",
     "review",
+    "policy_maintenance",
     "assurance",
     "secrets",
     "security_fast",
@@ -199,6 +200,7 @@ GATE_TIMEOUTS = {
     "mutation_changed": 7200,
     "mutation_acceptance": 7200,
     "review": 300,
+    "policy_maintenance": 300,
     "assurance": 300,
     "secrets": 300,
     "security_fast": 900,

@@ -2479,10 +2479,13 @@ class SetupContractTests(RepoCase):
         self.assertNotIn("assurance", policy["profiles"]["inner"]["gates"])
         self.assertNotIn("assurance", policy["profiles"]["fast"]["gates"])
         self.assertIn("assurance", policy["profiles"]["pr"]["gates"])
+        self.assertIn("policy_maintenance", policy["profiles"]["pr"]["gates"])
         self.assertIn("supply_chain", policy["profiles"]["deep"]["gates"])
         self.assertIn("assurance", policy["profiles"]["deep"]["gates"])
+        self.assertIn("policy_maintenance", policy["profiles"]["deep"]["gates"])
         self.assertIn("supply_chain", policy["profiles"]["release"]["gates"])
         self.assertIn("assurance", policy["profiles"]["release"]["gates"])
+        self.assertIn("policy_maintenance", policy["profiles"]["release"]["gates"])
 
     def test_complete_lock_derived_supply_chain_gate_passes(self) -> None:
         (self.root / "requirements.txt").write_text("idna==3.10\n", encoding="utf-8")

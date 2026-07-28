@@ -18,6 +18,10 @@
       "applicable": true,
       "reason": "Risk-selected human assurance evidence is required at PR, deep, and release boundaries."
     },
+    "policy_maintenance": {
+      "applicable": true,
+      "reason": "Protected control changes require an exact current independent approval."
+    },
     "acceptance": {
       "applicable": true,
       "reason": "Executable pytest acceptance tests exercise the public setup contract."

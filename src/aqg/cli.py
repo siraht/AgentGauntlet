@@ -64,6 +64,9 @@ CONVENTIONAL_COMMANDS: dict[str, tuple[str, ...]] = {
 }
 
 GLOBAL_FLAGS = ("--help", "--json", "--root", "--version", "-h")
+AUTHORITATIVE_COMMANDS = frozenset(
+    {"audit", "check", "check-risk", "conformance", "doctor", "gate"}
+)
 
 ROBOT_GUIDE: dict[str, Any] = {
     "schema_version": 1,
@@ -240,6 +243,26 @@ def _comparison_base(root: Path, explicit: str | None = None) -> str:
     if override:
         return override
     return str(load_project(root).get("enforcement", {}).get("base_ref", "HEAD"))
+
+
+def _reject_authoritative_overrides(root: Path, command: str) -> None:
+    policy = load_policy(root)
+    configured = policy.get("policy", {})
+    names = {
+        str(
+            configured.get(
+                "policy_maintenance_env",
+                "AQG_POLICY_MAINTENANCE",
+            )
+        ),
+        str(configured.get("golden_update_env", "AQG_ALLOW_GOLDEN_UPDATE")),
+    }
+    active = sorted(name for name in names if os.environ.get(name) == "1")
+    if active:
+        raise ConfigurationError(
+            f"authoritative command {command!r} refuses active maintenance/update "
+            f"override(s): {', '.join(active)}; unset them and verify the finalized candidate"
+        )
 
 
 def _print_doctor(report: dict[str, Any]) -> None:
@@ -1375,7 +1398,10 @@ def dispatch(args: argparse.Namespace) -> int:
     if handler is None:
         raise ConfigurationError(f"unknown command {args.command!r}")
     rootless = {"capabilities", "guidance", "help", "robot-docs"}
-    return handler(args, _root(args.root, require_initialized=args.command not in rootless))
+    root = _root(args.root, require_initialized=args.command not in rootless)
+    if args.command in AUTHORITATIVE_COMMANDS:
+        _reject_authoritative_overrides(root, args.command)
+    return handler(args, root)
 
 
 def _normalize_global_flags(raw: list[str]) -> list[str]:

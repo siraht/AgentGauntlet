@@ -128,15 +128,15 @@ gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "
 max_total_seconds = 600
 
 [profiles.pr]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "review", "security_fast", "assurance"]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "review", "security_fast", "policy_maintenance", "assurance"]
 max_total_seconds = 1800
 
 [profiles.deep]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "assurance"]
+gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "policy_maintenance", "assurance"]
 max_total_seconds = 10800
 
 [profiles.release]
-gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "assurance", "release_readiness"]
+gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "policy_maintenance", "assurance", "release_readiness"]
 max_total_seconds = 14400
 
 [gates.format]
@@ -220,6 +220,12 @@ quality_failure_exit_codes = [1]
 command = "python3 quality/qg.py adapter assurance"
 timeout_seconds = 300
 clean_paths = [".aqg/work/assurance"]
+quality_failure_exit_codes = [1]
+
+[gates.policy_maintenance]
+command = "python3 quality/qg.py adapter policy_maintenance"
+timeout_seconds = 300
+clean_paths = [".aqg/work/policy_maintenance"]
 quality_failure_exit_codes = [1]
 
 [gates.secrets]
