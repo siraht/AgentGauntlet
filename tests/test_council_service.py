@@ -179,3 +179,6 @@ def test_external_review_requires_explicit_public_classification(
 
     with pytest.raises(ConfigurationError, match="no approved external-provider route"):
         service.run_council(tmp_path, "pr", data_classification="confidential")
+
+    with pytest.raises(ConfigurationError, match="unknown council data classification"):
+        service._provider_routing("secret")

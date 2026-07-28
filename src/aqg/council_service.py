@@ -422,11 +422,7 @@ def run_council(
         raise ConfigurationError("council member timeout must be positive")
     root = Path(root)
     plan, bundle = _prepare_plan(root, tier, max_bundle_bytes, data_classification)
-    if not plan["provider_routing"]["external_providers_allowed"]:
-        raise ConfigurationError(
-            f"council data is {data_classification}; "
-            "no approved external-provider route is configured"
-        )
+    _require_provider_route(plan, data_classification)
     selected_id = validate_run_id(run_id) if run_id else _new_run_id()
     environment = minimal_environment(os.environ)
     with tempfile.TemporaryDirectory(prefix="aqg-council-") as temporary:
@@ -437,18 +433,28 @@ def run_council(
     result = aggregate_ballots(
         bundle, ballots, required_roles=roles, minimum_provider_groups=minimum_groups
     )
-    toolchain = council_doctor()
     run_dir = _write_council_run(
-        root, selected_id, plan, bundle, ballots, executions, result, toolchain
+        root, selected_id, plan, bundle, ballots, executions, result, council_doctor()
     )
-    verification = verify_council_run(root, selected_id)
+    _verify_and_publish(root, run_dir, selected_id, result)
+    return _result_exit_code(result, executions), report_council(root, selected_id)
+
+
+def _require_provider_route(plan: Mapping[str, Any], data_classification: str) -> None:
+    if plan["provider_routing"]["external_providers_allowed"]:
+        return
+    raise ConfigurationError(
+        f"council data is {data_classification}; no approved external-provider route is configured"
+    )
+
+
+def _verify_and_publish(root: Path, run_dir: Path, run_id: str, result: Mapping[str, Any]) -> None:
+    verification = verify_council_run(root, run_id)
     if not verification["ok"]:
         raise InfrastructureError(
             "council evidence failed verification: " + "; ".join(verification["errors"])
         )
     _publish_latest(root, run_dir, result)
-    code = _result_exit_code(result, executions)
-    return code, report_council(root, selected_id)
 
 
 def _resolve_run_id(root: Path, run_id: str) -> str:

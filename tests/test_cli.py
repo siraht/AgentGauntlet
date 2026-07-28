@@ -339,6 +339,84 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertEqual(payload, report)
         self.assertTrue(payload["advisory_only"])
 
+    def test_council_plan_routes_explicit_data_classification(self) -> None:
+        report = {
+            "schema_version": 1,
+            "kind": "aqg-council-plan",
+            "advisory_only": True,
+            "banner": "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY",
+            "tier": "pr",
+            "members": [],
+            "bundle_bytes": 1,
+            "max_bundle_bytes": 100,
+        }
+        with patch("aqg.cli.plan_council", return_value=report) as plan:
+            code, payload, stderr = self._json_command(
+                "council",
+                "plan",
+                "--tier",
+                "pr",
+                "--data-classification",
+                "public",
+            )
+        self.assertEqual(code, PASS, stderr)
+        self.assertEqual(payload, report)
+        self.assertEqual(plan.call_args.args[-1], "public")
+
+    def test_council_run_routes_classification_and_returns_advisory_code(self) -> None:
+        report = {
+            "schema_version": 1,
+            "kind": "aqg-council-report",
+            "advisory_only": True,
+            "banner": "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY",
+            "run_id": "council-test",
+            "status": "advisory_concerns",
+        }
+        with patch("aqg.cli.run_council", return_value=(QUALITY_FAILURE, report)) as run:
+            code, payload, stderr = self._json_command(
+                "council",
+                "run",
+                "--tier",
+                "pr",
+                "--data-classification",
+                "public",
+            )
+        self.assertEqual(code, QUALITY_FAILURE, stderr)
+        self.assertEqual(payload, report)
+        self.assertEqual(run.call_args.kwargs["data_classification"], "public")
+
+    def test_council_verify_and_report_are_routed(self) -> None:
+        verification = {
+            "schema_version": 1,
+            "kind": "aqg-council-verification",
+            "advisory_only": True,
+            "banner": "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY",
+            "run_id": "council-test",
+            "ok": False,
+            "errors": ["tampered"],
+        }
+        with patch("aqg.cli.verify_council_run", return_value=verification):
+            code, payload, stderr = self._json_command(
+                "council", "verify", "--run-id", "council-test"
+            )
+        self.assertEqual(code, CONFIGURATION_ERROR, stderr)
+        self.assertEqual(payload, verification)
+
+        report = {
+            "schema_version": 1,
+            "kind": "aqg-council-report",
+            "advisory_only": True,
+            "banner": "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY",
+            "run_id": "council-test",
+            "status": "advisory_clear",
+        }
+        with patch("aqg.cli.report_council", return_value=report):
+            code, payload, stderr = self._json_command(
+                "council", "report", "--run-id", "council-test"
+            )
+        self.assertEqual(code, PASS, stderr)
+        self.assertEqual(payload, report)
+
 
 if __name__ == "__main__":
     unittest.main()

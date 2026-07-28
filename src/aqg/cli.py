@@ -437,6 +437,33 @@ def _add_review_parsers(sub: Any) -> None:
     review.add_argument("--sarif", action="store_true")
     review.add_argument("--github-summary", nargs="?", const="")
 
+    _add_council_parsers(sub)
+
+    changed = sub.add_parser("changed-files", help="print files in the current review scope")
+    changed.add_argument(
+        "--base", help="comparison ref; defaults to quality/project.json or AQG_DIFF_BASE"
+    )
+
+    guidance = sub.add_parser(
+        "guidance", help="read or search the embedded agent test-writing playbooks"
+    )
+    guidance.add_argument("topic", nargs="?")
+    guidance.add_argument(
+        "terms",
+        nargs="*",
+        help="additional natural-language search terms",
+    )
+    guidance.add_argument("--list", action="store_true")
+    guidance.add_argument("--search")
+
+    onboarding = sub.add_parser("onboarding", help="show or refresh guided setup progress")
+    onboarding_sub = _nested_subparsers(onboarding, "onboarding_command")
+    onboarding_sub.add_parser("show", help="show the complete onboarding state")
+    onboarding_sub.add_parser("refresh", help="recompute and store onboarding state")
+    onboarding_sub.add_parser("next", help="show the next recommended setup action")
+
+
+def _add_council_parsers(sub: Any) -> None:
     council = sub.add_parser("council", help="run advisory multi-model technical review")
     council_sub = _nested_subparsers(council, "council_command")
     council_sub.add_parser("doctor", help="show council tools, versions, and exact model IDs")
@@ -463,29 +490,6 @@ def _add_review_parsers(sub: Any) -> None:
     verify.add_argument("--run-id", default="latest")
     report = council_sub.add_parser("report", help="report verified advisory council evidence")
     report.add_argument("--run-id", default="latest")
-
-    changed = sub.add_parser("changed-files", help="print files in the current review scope")
-    changed.add_argument(
-        "--base", help="comparison ref; defaults to quality/project.json or AQG_DIFF_BASE"
-    )
-
-    guidance = sub.add_parser(
-        "guidance", help="read or search the embedded agent test-writing playbooks"
-    )
-    guidance.add_argument("topic", nargs="?")
-    guidance.add_argument(
-        "terms",
-        nargs="*",
-        help="additional natural-language search terms",
-    )
-    guidance.add_argument("--list", action="store_true")
-    guidance.add_argument("--search")
-
-    onboarding = sub.add_parser("onboarding", help="show or refresh guided setup progress")
-    onboarding_sub = _nested_subparsers(onboarding, "onboarding_command")
-    onboarding_sub.add_parser("show", help="show the complete onboarding state")
-    onboarding_sub.add_parser("refresh", help="recompute and store onboarding state")
-    onboarding_sub.add_parser("next", help="show the next recommended setup action")
 
 
 def _add_evidence_parsers(sub: Any) -> None:
