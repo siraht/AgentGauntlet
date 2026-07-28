@@ -29,19 +29,19 @@ from aqg.python_mutation_diff import (
 class ParseMutationDiffTests(unittest.TestCase):
     def test_nontrivial_lines_exclude_imports_mutmut_cannot_target(self) -> None:
         source = (
+            "VALUE = 1\n"
             "import os\n"
             "from package import (\n"
             "    first,\n"
             "    second,\n"
             ")\n"
-            "\n"
             "def value() -> str:\n"
             "    return os.environ.get('VALUE', first or second)\n"
         )
 
         selected = nontrivial_line_numbers(source, set(range(1, 9)))
 
-        self.assertEqual(selected, {7, 8})
+        self.assertEqual(selected, {1, 7, 8})
 
     def test_nontrivial_lines_fail_closed_when_source_cannot_be_parsed(self) -> None:
         source = "import (\nvalue = 1\n"
