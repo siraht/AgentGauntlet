@@ -128,9 +128,23 @@ class CrossPlatformMatrixContractTests(unittest.TestCase):
             self.assertEqual(project["web"]["base_url"], "http://127.0.0.1:5173")
             self.assertIn("noUncheckedIndexedAccess", (root / "tsconfig.json").read_text())
             self.assertIn("fast-check", (root / "tests" / "counter.test.ts").read_text())
-            self.assertIn("AxeBuilder", (root / "e2e" / "counter.spec.ts").read_text())
-            self.assertIn("CTP-001", (root / "feature-spec" / "Counter.md").read_text())
+            self.assertIn("AxeBuilder", (root / "e2e" / "counter.spec.mjs").read_text())
+            self.assertIn("CTP-WEB-001", (root / "feature-spec" / "Counter.md").read_text())
             self.assertTrue((root / "qa" / "procedures" / "QA-COUNTER.md").is_file())
+
+    def test_installed_vitest_config_excludes_packaged_runtime_tests(self) -> None:
+        """The application runner must not collect AQG's packaged template tests."""
+        template = (
+            Path(__file__).parents[1] / "src" / "aqg" / "templates" / "js" / "vitest.config.mjs"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"**/quality/_aqg/**"', template)
+
+    def test_installed_playwright_server_starts_from_application_root(self) -> None:
+        """The browser runner must resolve the application's package scripts."""
+        template = (
+            Path(__file__).parents[1] / "src" / "aqg" / "templates" / "js" / "playwright.config.mjs"
+        ).read_text(encoding="utf-8")
+        self.assertIn("cwd: process.cwd()", template)
 
 
 if __name__ == "__main__":

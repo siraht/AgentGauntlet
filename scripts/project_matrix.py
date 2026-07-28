@@ -285,21 +285,25 @@ def _prepare_typescript_web(project: Path) -> list[str]:
     _write(
         project / "src" / "main.ts",
         "import { increment } from './counter';\n\n"
-        "const value = document.querySelector<output>('#count');\n"
-        "const button = document.querySelector<HTMLButtonElement>('#increment');\n\n"
-        "if (!value || !button) throw new Error('counter controls are missing');\n"
-        "button.addEventListener('click', () => {\n"
-        "  const next = increment({ value: Number(value.value) }, 1);\n"
-        "  value.value = String(next.value);\n"
-        "  value.textContent = value.value;\n"
-        "});\n",
+        "type CounterDocument = Pick<Document, 'querySelector'>;\n\n"
+        "export function mountCounter(counterDocument: CounterDocument): void {\n"
+        "  const value = counterDocument.querySelector<HTMLOutputElement>('#count');\n"
+        "  const button = counterDocument.querySelector<HTMLButtonElement>('#increment');\n"
+        "  if (!value || !button) throw new Error('counter controls are missing');\n"
+        "  button.addEventListener('click', () => {\n"
+        "    const next = increment({ value: Number(value.value) }, 1);\n"
+        "    value.value = String(next.value);\n"
+        "    value.textContent = value.value;\n"
+        "  });\n"
+        "}\n\n"
+        "if (typeof document !== 'undefined') mountCounter(document);\n",
     )
     _write(
         project / "tests" / "counter.test.ts",
         "import { describe, expect, it } from 'vitest';\n"
         "import fc from 'fast-check';\n"
         "import { increment } from '../src/counter';\n\n"
-        "// Feature-Spec: Counter CTP-001 CTP-002\n"
+        "// Feature-Spec: Counter CTP-WEB-001 CTP-WEB-002\n"
         "describe('increment', () => {\n"
         "  it('adds a positive amount without mutating the input', () => {\n"
         "    const current = { value: 2 };\n"
@@ -318,10 +322,33 @@ def _prepare_typescript_web(project: Path) -> list[str]:
         "});\n",
     )
     _write(
-        project / "e2e" / "counter.spec.ts",
-        "import { expect, test } from '@playwright/test';\n"
-        "import AxeBuilder from '@axe-core/playwright';\n\n"
-        "// Feature-Spec: Counter CTP-001 CTP-002\n"
+        project / "tests" / "main.test.ts",
+        "import { describe, expect, it } from 'vitest';\n"
+        "import { mountCounter } from '../src/main';\n\n"
+        "// Feature-Spec: Counter CTP-WEB-001 CTP-WEB-002\n"
+        "describe('counter browser wiring', () => {\n"
+        "  it('connects the visible control to the accessible status', () => {\n"
+        "    const output = { value: '0', textContent: '0' };\n"
+        "    let activate = () => {};\n"
+        "    const button = { addEventListener: (_name: string, handler: () => void) => { activate = handler; } };\n"
+        "    const counterDocument = { querySelector: (selector: string) => selector === '#count' ? output : button };\n"
+        "    mountCounter(counterDocument as unknown as Pick<Document, 'querySelector'>);\n"
+        "    activate();\n"
+        "    expect(output).toEqual({ value: '1', textContent: '1' });\n"
+        "  });\n\n"
+        "  it('fails clearly when the public controls are missing', () => {\n"
+        "    const missing = { querySelector: () => null };\n"
+        "    expect(() => mountCounter(missing as unknown as Pick<Document, 'querySelector'>)).toThrow('controls are missing');\n"
+        "  });\n"
+        "});\n",
+    )
+    _write(
+        project / "e2e" / "counter.spec.mjs",
+        "import { createRequire } from 'node:module';\n\n"
+        "const requireFromAqg = createRequire(new URL('../quality/tools/js/package.json', import.meta.url));\n"
+        "const { expect, test } = requireFromAqg('@playwright/test');\n"
+        "const AxeBuilder = requireFromAqg('@axe-core/playwright').default;\n\n"
+        "// Feature-Spec: Counter CTP-WEB-001 CTP-WEB-002\n"
         "test('increments with keyboard-accessible controls and has no serious axe findings', async ({ page }) => {\n"
         "  await page.goto('/');\n"
         "  await page.getByRole('button', { name: 'Increment count' }).press('Enter');\n"
@@ -361,8 +388,8 @@ def _prepare_typescript_web(project: Path) -> list[str]:
     _write(
         project / "feature-spec" / "Counter.md",
         "# Counter\n\n"
-        "- `CTP-001` The counter MUST increment by one through its visible control.\n"
-        "- `CTP-002` The counter MUST expose its updated value through an accessible status.\n",
+        "- `CTP-WEB-001` The counter MUST increment by one through its visible control.\n"
+        "- `CTP-WEB-002` The counter MUST expose its updated value through an accessible status.\n",
     )
     _write(
         project / "features" / "counter.feature",
@@ -375,7 +402,7 @@ def _prepare_typescript_web(project: Path) -> list[str]:
     _write(
         project / "qa" / "procedures" / "QA-COUNTER.md",
         "# QA-COUNTER · keyboard and zoom check\n\n"
-        "Requirements: CTP-001, CTP-002\n\n"
+        "Requirements: CTP-WEB-001, CTP-WEB-002\n\n"
         "1. At 200% zoom, use Tab then Enter to activate **Increment**.\n"
         "2. Verify focus remains visible and the status changes from 0 to 1.\n"
         "3. Record browser, OS, revision, result, and any rollback required.\n",
@@ -387,8 +414,6 @@ def _prepare_typescript_web(project: Path) -> list[str]:
         "packageManager": "npm@10.9.8",
         "scripts": {"dev": "vite --host 127.0.0.1", "build": "tsc -p tsconfig.json && vite build"},
         "devDependencies": {
-            "@axe-core/playwright": "4.12.1",
-            "@playwright/test": "1.62.0",
             "fast-check": "4.9.0",
             "typescript": "6.0.3",
             "vite": "7.1.7",
@@ -409,6 +434,16 @@ def _browser_setup_options() -> dict[str, str]:
     }
 
 
+def _typescript_setup_options() -> dict[str, str]:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = int(listener.getsockname()[1])
+    return {
+        "base_url": f"http://127.0.0.1:{port}",
+        "start_command": (f"npm run dev -- --host 127.0.0.1 --port {port} --strictPort"),
+    }
+
+
 def _execute_case(case: str, workspace: Path) -> dict[str, Any]:
     project = workspace / case
     project.mkdir()
@@ -420,12 +455,19 @@ def _execute_case(case: str, workspace: Path) -> dict[str, Any]:
         javascript, python = False, True
     elif case == "typescript-web":
         gates = _prepare_typescript_web(project)
+        _manager_install(project, "npm")
         javascript, python = True, False
     else:
         gates = _prepare_browser(project)
         javascript, python = True, False
     _initialize_git(project)
-    setup_options = _browser_setup_options() if case == "browser-static" else {}
+    setup_options = (
+        _browser_setup_options()
+        if case == "browser-static"
+        else _typescript_setup_options()
+        if case == "typescript-web"
+        else {}
+    )
     initialize_project(
         project,
         owner="@aqg-matrix",

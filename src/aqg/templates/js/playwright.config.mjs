@@ -8,6 +8,7 @@ const web = project.web || {};
 const webServer = web.start_command?.length
   ? {
       command: web.start_command.join(" "),
+      cwd: process.cwd(),
       url: web.base_url || "http://127.0.0.1:4173",
       reuseExistingServer: !process.env.CI,
       timeout: 120000,

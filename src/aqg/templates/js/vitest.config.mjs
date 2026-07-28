@@ -44,6 +44,7 @@ export default defineConfig({
       "**/node_modules/**",
       "**/.aqg/**",
       "**/quality/tools/**",
+      "**/quality/_aqg/**",
       "**/src/aqg/templates/**",
       "**/dist/**",
       "**/build/**",
