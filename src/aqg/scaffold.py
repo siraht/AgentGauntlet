@@ -1083,17 +1083,26 @@ def build_onboarding(root: Path, detection: Detection, project: dict[str, Any]) 
     }
 
 
+def _project_named_detection(detection: Detection, project: dict[str, Any]) -> Detection:
+    payload = detection.as_dict()
+    payload["name"] = str(project.get("name") or detection.name)
+    return Detection(**payload)
+
+
 def refresh_onboarding(root: Path) -> dict[str, Any]:
     root = root.resolve()
     project = load_project(root)
-    payload = build_onboarding(root, detect_project(root), project)
+    detection = _project_named_detection(detect_project(root), project)
+    payload = build_onboarding(root, detection, project)
     write_json(root / "quality" / "onboarding.json", payload)
     return payload
 
 
 def current_onboarding(root: Path) -> dict[str, Any]:
     payload = read_json(root / "quality" / "onboarding.json", default={})
-    current = build_onboarding(root, detect_project(root), load_project(root))
+    project = load_project(root)
+    detection = _project_named_detection(detect_project(root), project)
+    current = build_onboarding(root, detection, project)
     if not isinstance(payload, dict):
         payload = {}
     return {

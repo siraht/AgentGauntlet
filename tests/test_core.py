@@ -73,7 +73,9 @@ from aqg.scaffold import (
     _direct_requirement_markers,
     _restore_direct_requirement_markers,
     build_project_config,
+    current_onboarding,
     initialize_project,
+    refresh_onboarding,
     upgrade_runtime,
 )
 from aqg.schema_contracts import validate_named_schema
@@ -510,6 +512,13 @@ class SetupTests(RepoCase):
         project = load_project(self.root)
         self.assertEqual(validate_project(project), [])
         self.assertEqual(project["enforcement"]["base_ref"], "HEAD")
+        project["name"] = "stable-project-name"
+        write_json(self.root / "quality" / "project.json", project)
+        onboarding = refresh_onboarding(self.root)
+        self.assertEqual(onboarding["detected"]["name"], "stable-project-name")
+        self.assertEqual(
+            current_onboarding(self.root)["current"]["detected"]["name"], project["name"]
+        )
         self.assertTrue((self.root / "aqg").is_file())
         self.assertTrue((self.root / "quality" / "qg.py").is_file())
         self.assertTrue((self.root / "quality" / "_aqg" / "cli.py").is_file())
