@@ -289,6 +289,7 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("qg doctor", first["commands"])
         self.assertIn("qg check-risk --keep-going", first["commands"])
         self.assertEqual(first["owner_status"]["schema_version"], 1)
+        self.assertNotIn("generated_at", first["owner_status"])
         self.assertIn("merge", first["owner_status"]["decisions"])
 
     def test_status_exposes_the_shared_owner_decision_without_changing_legacy_fields(self) -> None:

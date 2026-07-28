@@ -182,3 +182,10 @@ def test_external_review_requires_explicit_public_classification(
 
     with pytest.raises(ConfigurationError, match="unknown council data classification"):
         service._provider_routing("secret")
+
+
+def test_service_evidence_reports_missing_files_as_errors(tmp_path: Path) -> None:
+    errors = service._service_evidence_errors(tmp_path)
+
+    assert errors
+    assert "missing JSON file" in errors[0]

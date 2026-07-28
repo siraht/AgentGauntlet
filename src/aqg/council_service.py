@@ -464,30 +464,58 @@ def _resolve_run_id(root: Path, run_id: str) -> str:
     return validate_run_id(str(latest.get("run_id", "")))
 
 
+def _load_service_evidence(run_dir: Path) -> tuple[dict[str, Any], ...]:
+    return (
+        read_json(run_dir / "plan.json"),
+        read_json(run_dir / "candidate-bundle.json"),
+        read_json(run_dir / "result.json"),
+        read_json(run_dir / "toolchain.json"),
+    )
+
+
+def _execution_evidence_errors(run_dir: Path) -> list[str]:
+    executions = sorted((run_dir / "executions").glob("*.json"))
+    leaked = any("stdout" in read_json(path) or "stderr" in read_json(path) for path in executions)
+    return (
+        ["provider output was persisted instead of digest-only execution evidence"]
+        if leaked
+        else []
+    )
+
+
+def _service_metadata_errors(
+    plan: Mapping[str, Any],
+    bundle: Mapping[str, Any],
+    result: Mapping[str, Any],
+    toolchain: Mapping[str, Any],
+) -> list[str]:
+    checks = (
+        (
+            plan.get("kind") == "aqg-council-plan" and plan.get("advisory_only") is True,
+            "plan is not an advisory council plan",
+        ),
+        (
+            plan.get("bundle_sha256") == bundle.get("bundle_sha256"),
+            "plan does not identify the manifested candidate bundle",
+        ),
+        (result.get("advisory_only") is True, "result is missing its advisory-only marker"),
+        (
+            toolchain.get("kind") == "aqg-council-doctor"
+            and toolchain.get("advisory_only") is True,
+            "toolchain provenance is missing or malformed",
+        ),
+    )
+    return [message for valid, message in checks if not valid]
+
+
 def _service_evidence_errors(run_dir: Path) -> list[str]:
-    errors: list[str] = []
     try:
-        plan = read_json(run_dir / "plan.json")
-        bundle = read_json(run_dir / "candidate-bundle.json")
-        result = read_json(run_dir / "result.json")
-        toolchain = read_json(run_dir / "toolchain.json")
-        executions = sorted((run_dir / "executions").glob("*.json"))
-        if plan.get("kind") != "aqg-council-plan" or plan.get("advisory_only") is not True:
-            errors.append("plan is not an advisory council plan")
-        if plan.get("bundle_sha256") != bundle.get("bundle_sha256"):
-            errors.append("plan does not identify the manifested candidate bundle")
-        if any("stdout" in read_json(path) or "stderr" in read_json(path) for path in executions):
-            errors.append("provider output was persisted instead of digest-only execution evidence")
-        if result.get("advisory_only") is not True:
-            errors.append("result is missing its advisory-only marker")
-        if (
-            toolchain.get("kind") != "aqg-council-doctor"
-            or toolchain.get("advisory_only") is not True
-        ):
-            errors.append("toolchain provenance is missing or malformed")
+        plan, bundle, result, toolchain = _load_service_evidence(run_dir)
+        return _service_metadata_errors(plan, bundle, result, toolchain) + (
+            _execution_evidence_errors(run_dir)
+        )
     except (ConfigurationError, OSError) as exc:
-        errors.append(str(exc))
-    return errors
+        return [str(exc)]
 
 
 def verify_council_run(root: Path, run_id: str = "latest") -> dict[str, Any]:

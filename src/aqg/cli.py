@@ -729,7 +729,9 @@ def _status_payload(root: Path) -> dict[str, Any]:
 
 
 def _triage_payload(root: Path) -> dict[str, Any]:
-    owner_status = build_owner_status(root)
+    owner_status = {
+        key: value for key, value in build_owner_status(root).items() if key != "generated_at"
+    }
     policy = load_policy(root)
     risk_errors, risk = risk_summary(root, policy, "quality/change-risk.json")
     onboarding = current_onboarding(root)
