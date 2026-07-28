@@ -6,6 +6,7 @@ available for production-line budgets and changed-function selection.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 from typing import Any
@@ -183,14 +184,26 @@ def deleted_file_line_counts(
 
 
 def nontrivial_line_numbers(source: str, line_numbers: set[int]) -> set[int]:
-    """Keep executable line numbers: non-blank and not full-line comments."""
+    """Keep lines that the function-selector mutation engine can mutate."""
     lines = source.splitlines()
+    import_lines: set[int] = set()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # Syntax validity belongs to an earlier fail-closed gate. Counting every
+        # non-comment line here avoids silently shrinking mutation scope.
+        pass
+    else:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                import_lines.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
     return {
         line_no
         for line_no in line_numbers
         if 0 < line_no <= len(lines)
         and (content := lines[line_no - 1].strip())
         and not content.startswith("#")
+        and line_no not in import_lines
     }
 
 
