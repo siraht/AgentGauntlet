@@ -156,9 +156,9 @@ def _integrity_fingerprint(finding: Mapping[str, Any], code: str, path: str) -> 
     raw = _text(finding.get("fingerprint"))
     prefix = f"{code}:{path}:"
     marker = raw[len(prefix) :] if raw.startswith(prefix) else raw
-    if marker:
+    if marker and marker.split(":", 1)[0].isdigit():
         pieces = marker.split(":", 1)
-        marker = pieces[1] if pieces[0].isdigit() and len(pieces) == 2 else marker
+        marker = pieces[1] if len(pieces) == 2 else marker
     return f"test_integrity:{code}:{path}" + (f":{marker}" if marker else "")
 
 

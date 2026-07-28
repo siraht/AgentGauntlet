@@ -71,6 +71,30 @@ def _baseline_fingerprints(root: Path, name: str) -> set[str]:
     return {str(value) for value in values}
 
 
+def _test_anchor(content: str, position: int) -> str:
+    patterns = (
+        re.compile(r"^\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(", re.MULTILINE),
+        re.compile(r"^\s*class\s+(Test[A-Za-z0-9_]+)\b", re.MULTILINE),
+        re.compile(r"\b(?:it|test)(?:\.(?:skip|only|todo))?\s*\(\s*['\"]([^'\"]+)['\"]"),
+    )
+    candidates = [
+        (match.start(), match.group(1))
+        for pattern in patterns
+        for match in pattern.finditer(content)
+    ]
+    line_start = content.rfind("\n", 0, position) + 1
+    decorated = content[line_start:position].lstrip().startswith("@") or content[
+        line_start:
+    ].lstrip().startswith("@")
+    after = [candidate for candidate in candidates if candidate[0] > position]
+    if decorated and after:
+        return min(after, key=lambda candidate: candidate[0])[1]
+    before = [candidate for candidate in candidates if candidate[0] <= position]
+    if before:
+        return max(before, key=lambda candidate: candidate[0])[1]
+    return min(after, key=lambda candidate: candidate[0])[1] if after else "module"
+
+
 def scan_test_integrity(root: Path, project: dict[str, Any]) -> dict[str, Any]:
     files = _test_files(root, project)
     findings: list[Finding] = []
@@ -123,7 +147,8 @@ def scan_test_integrity(root: Path, project: dict[str, Any]) -> dict[str, Any]:
         for pattern, code, message in [*focused_patterns, *skip_patterns]:
             for match in pattern.finditer(content):
                 line = content.count("\n", 0, match.start()) + 1
-                fingerprint = f"{code}:{rel}:{line}:{match.group(0)}"
+                anchor = _test_anchor(content, match.start())
+                fingerprint = f"{code}:{rel}:{anchor}:{match.group(0)}"
                 findings.append(
                     Finding(
                         code=code,
