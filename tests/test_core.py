@@ -24,6 +24,7 @@ import pytest
 
 from aqg.adapters import (
     DEFAULT_PYTHON_MUTATION_MAX_CHANGED_LINES,
+    JS_SUFFIXES,
     PYTHON_MUTATION_GATE_TIMEOUT_SECONDS,
     PYTHON_MUTATION_OVERHEAD_SECONDS,
     PYTHON_MUTATION_RESULTS_TIMEOUT_SECONDS,
@@ -33,10 +34,17 @@ from aqg.adapters import (
     _changed_lines,
     _changed_production_files,
     _classify_mutmut_results,
+    _contiguous_ranges,
     _count_changed_python_production_lines,
+    _empty_js_mutation_report,
+    _evaluate_js_mutation,
     _is_test_path,
     _javascript_unit_spec,
+    _js_mutation_files,
+    _js_mutation_metrics,
     _js_mutation_scope,
+    _js_mutation_targets,
+    _mutation_js,
     _mutation_python,
     _mutmut_allows_decorators,
     _mutmut_function_candidates,
@@ -50,6 +58,7 @@ from aqg.adapters import (
     _python_mutation_platform_supported,
     _python_structure_evidence,
     _python_test_env,
+    _write_stryker_changed_config,
     run_adapter,
 )
 from aqg.approvals import template, validate_approval, validate_required_approvals
@@ -1320,6 +1329,419 @@ class SetupContractTests(RepoCase):
                 "quality/tools/js/config/eslint.config.mjs",
             ],
         )
+
+    def test_javascript_mutation_uses_exact_added_line_ranges(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        module = source / "app.js"
+        module.write_text("export const one = 1;\n", encoding="utf-8")
+        self.commit("baseline")
+        module.write_text(
+            "export const one = 1;\n\nexport const two = 2;\nexport const three = 3;\n",
+            encoding="utf-8",
+        )
+        project = {
+            "enforcement": {"base_ref": "HEAD"},
+        }
+
+        targets, selection = _js_mutation_targets(
+            self.root,
+            project,
+            ["src/app.js"],
+        )
+
+        self.assertEqual(targets, ["src/app.js:2-4"])
+        self.assertEqual(
+            selection["files"]["src/app.js"],
+            {
+                "added_lines": 3,
+                "deleted_lines": 0,
+                "range_count": 1,
+                "scope": "changed_line_ranges",
+            },
+        )
+        self.assertEqual(selection["comparison_revision"], git(self.root, "rev-parse", "HEAD"))
+
+    def test_javascript_mutation_falls_back_to_full_file_for_deletions(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        module = source / "app.js"
+        module.write_text(
+            "export const one = 1;\nexport const two = 2;\n",
+            encoding="utf-8",
+        )
+        self.commit("baseline")
+        module.write_text("export const one = 1;\n", encoding="utf-8")
+
+        targets, selection = _js_mutation_targets(
+            self.root,
+            {"enforcement": {"base_ref": "HEAD"}},
+            ["src/app.js"],
+        )
+
+        self.assertEqual(targets, ["src/app.js"])
+        self.assertEqual(
+            selection["files"]["src/app.js"]["scope"],
+            "full_file_deletion_fallback",
+        )
+        self.assertEqual(selection["files"]["src/app.js"]["deleted_lines"], 1)
+
+    def test_javascript_mutation_target_evidence_covers_every_fallback(self) -> None:
+        changes = {
+            "src/added.js": {"added": {2, 3, 7}, "deleted": set()},
+            "src/modified.js": {"added": {4}, "deleted": {2}},
+        }
+        with patch(
+            "aqg.adapters._python_mutation_line_changes_for_base",
+            return_value=(changes, "abc123"),
+        ):
+            targets, selection = _js_mutation_targets(
+                self.root,
+                {"enforcement": {"base_ref": "origin/main"}},
+                ["src/added.js", "src/modified.js", "src/missing.js"],
+            )
+
+        self.assertEqual(
+            targets,
+            [
+                "src/added.js:2-3",
+                "src/added.js:7-7",
+                "src/modified.js",
+                "src/missing.js",
+            ],
+        )
+        self.assertEqual(
+            selection,
+            {
+                "comparison_revision": "abc123",
+                "files": {
+                    "src/added.js": {
+                        "added_lines": 3,
+                        "deleted_lines": 0,
+                        "range_count": 2,
+                        "scope": "changed_line_ranges",
+                    },
+                    "src/modified.js": {
+                        "added_lines": 1,
+                        "deleted_lines": 1,
+                        "range_count": 1,
+                        "scope": "full_file_deletion_fallback",
+                    },
+                    "src/missing.js": {
+                        "added_lines": 0,
+                        "deleted_lines": 0,
+                        "range_count": 0,
+                        "scope": "full_file_deletion_fallback",
+                    },
+                },
+            },
+        )
+
+    def test_javascript_mutation_file_selection_obeys_changed_only(self) -> None:
+        project = {"thresholds": {"mutation": {}}}
+        with (
+            patch(
+                "aqg.adapters._changed_production_files",
+                return_value=["src/app.js", "src/vite.config.js"],
+            ) as changed,
+            patch("aqg.adapters._relative_files") as full,
+        ):
+            self.assertEqual(
+                _js_mutation_files(self.root, project),
+                (["src/app.js"], ["src/vite.config.js"]),
+            )
+        changed.assert_called_once_with(self.root, project, JS_SUFFIXES)
+        full.assert_not_called()
+
+        project["thresholds"]["mutation"]["changed_only"] = False
+        with (
+            patch("aqg.adapters._changed_production_files") as changed,
+            patch("aqg.adapters._relative_files", return_value=["src/all.js"]) as full,
+        ):
+            self.assertEqual(_js_mutation_files(self.root, project), (["src/all.js"], []))
+        changed.assert_not_called()
+        full.assert_called_once_with(self.root, JS_SUFFIXES, project, tests=False)
+
+    def test_javascript_mutation_range_and_result_helpers_are_exact(self) -> None:
+        self.assertEqual(_contiguous_ranges({1, 2, 4, 7, 8, 9}), [(1, 2), (4, 4), (7, 9)])
+        counts, survived, score = _js_mutation_metrics(
+            {
+                "files": {
+                    "src/app.js": {
+                        "mutants": [
+                            {"id": "1", "status": "Killed"},
+                            {"id": "1b", "status": "Killed"},
+                            {"id": "2", "status": "Timeout"},
+                            {"id": "3", "status": "Survived"},
+                            {"id": "4", "status": "NoCoverage"},
+                        ]
+                    }
+                }
+            }
+        )
+        self.assertEqual(
+            counts,
+            {"Killed": 2, "Timeout": 1, "Survived": 1, "NoCoverage": 1},
+        )
+        self.assertEqual(survived, 2)
+        self.assertEqual(score, 60.0)
+        self.assertEqual(
+            _js_mutation_metrics({"mutants": [{"id": "1", "status": "Ignored"}]})[2], 100.0
+        )
+        self.assertEqual(_js_mutation_metrics({}), ({}, 0, 0.0))
+
+    def test_javascript_mutation_evaluation_fails_closed(self) -> None:
+        self.assertEqual(
+            _evaluate_js_mutation(
+                report_exists=False,
+                counts={},
+                survived=0,
+                score=0,
+                threshold=85,
+                maximum=0,
+                command_code=0,
+            ),
+            (
+                INFRASTRUCTURE_ERROR,
+                ["Stryker did not produce a readable non-empty mutation report"],
+            ),
+        )
+        for report_exists, counts in ((False, {"Killed": 1}), (True, {})):
+            with self.subTest(report_exists=report_exists, counts=counts):
+                self.assertEqual(
+                    _evaluate_js_mutation(
+                        report_exists=report_exists,
+                        counts=counts,
+                        survived=0,
+                        score=100,
+                        threshold=85,
+                        maximum=0,
+                        command_code=0,
+                    )[0],
+                    INFRASTRUCTURE_ERROR,
+                )
+        quality_code, failures = _evaluate_js_mutation(
+            report_exists=True,
+            counts={"Survived": 2},
+            survived=2,
+            score=25,
+            threshold=85,
+            maximum=0,
+            command_code=1,
+        )
+        self.assertEqual(quality_code, QUALITY_FAILURE)
+        self.assertEqual(
+            failures,
+            [
+                "2 survived/no-coverage mutants > allowed 0",
+                "mutation score 25.0% < 85.0%",
+            ],
+        )
+        self.assertEqual(
+            _evaluate_js_mutation(
+                report_exists=True,
+                counts={"Killed": 1},
+                survived=0,
+                score=100,
+                threshold=85,
+                maximum=0,
+                command_code=0,
+            ),
+            (PASS, []),
+        )
+        self.assertEqual(
+            _evaluate_js_mutation(
+                report_exists=True,
+                counts={"Killed": 1},
+                survived=0,
+                score=85,
+                threshold=85,
+                maximum=0,
+                command_code=0,
+            ),
+            (PASS, []),
+        )
+        self.assertEqual(
+            _evaluate_js_mutation(
+                report_exists=True,
+                counts={"Killed": 1},
+                survived=0,
+                score=100,
+                threshold=85,
+                maximum=0,
+                command_code=1,
+            ),
+            (QUALITY_FAILURE, []),
+        )
+        self.assertEqual(
+            _evaluate_js_mutation(
+                report_exists=True,
+                counts={"Killed": 1},
+                survived=0,
+                score=100,
+                threshold=85,
+                maximum=0,
+                command_code=2,
+            ),
+            (INFRASTRUCTURE_ERROR, []),
+        )
+        self.assertEqual(
+            _evaluate_js_mutation(
+                report_exists=True,
+                counts={"Killed": 1},
+                survived=0,
+                score=100,
+                threshold=85,
+                maximum=0,
+                command_code=3,
+            ),
+            (INFRASTRUCTURE_ERROR, []),
+        )
+
+    def test_javascript_mutation_writes_and_reports_range_scope(self) -> None:
+        source = self.root / "src"
+        source.mkdir()
+        module = source / "app.js"
+        module.write_text("export const one = 1;\n", encoding="utf-8")
+        self.commit("baseline")
+        module.write_text(
+            "export const one = 1;\nexport const two = 2;\n",
+            encoding="utf-8",
+        )
+        project = {
+            "stacks": {"javascript": True},
+            "paths": {"source": ["src"], "tests": ["tests"], "exclude": []},
+            "enforcement": {"base_ref": "HEAD", "scope": "changed"},
+            "thresholds": {
+                "mutation": {
+                    "changed_only": True,
+                    "minimum_score": 85,
+                    "maximum_survivors": 0,
+                }
+            },
+            "profile_thresholds": {},
+        }
+        report_path = self.root / ".aqg" / "work" / "mutation" / "stryker.json"
+        report_path.parent.mkdir(parents=True)
+        write_json(
+            report_path,
+            {"files": {"src/app.js": {"mutants": [{"id": "1", "status": "Killed"}]}}},
+        )
+        result = CommandResult(
+            command=["stryker", "run"],
+            cwd=str(self.root),
+            code=0,
+            status="pass",
+            stdout="",
+            stderr="",
+            duration_ms=10,
+        )
+
+        with (
+            patch("aqg.adapters._tool", return_value="/tools/stryker") as tool,
+            patch("aqg.adapters.run_command", return_value=result) as run,
+        ):
+            code, report = _mutation_js(self.root, project)
+
+        self.assertEqual(code, PASS)
+        payload = {"files": {"src/app.js": {"mutants": [{"id": "1", "status": "Killed"}]}}}
+        self.assertEqual(
+            report,
+            {
+                "scope": "changed",
+                "mutated_files": ["src/app.js"],
+                "excluded_configuration_files": [],
+                "mutation_targets": ["src/app.js:2-2"],
+                "selection": {
+                    "comparison_revision": git(self.root, "rev-parse", "HEAD"),
+                    "files": {
+                        "src/app.js": {
+                            "added_lines": 1,
+                            "deleted_lines": 0,
+                            "range_count": 1,
+                            "scope": "changed_line_ranges",
+                        }
+                    },
+                },
+                "command": result.as_dict(),
+                "report": payload,
+                "status_counts": {"Killed": 1},
+                "mutation_score": 100.0,
+                "minimum_score": 85.0,
+                "maximum_survivors": 0,
+                "failures": [],
+            },
+        )
+        config = self.root / ".aqg" / "work" / "mutation" / "stryker.changed.config.mjs"
+        base_uri = (
+            (self.root / "quality" / "tools" / "js" / "config" / "stryker.config.mjs")
+            .resolve()
+            .as_uri()
+        )
+        self.assertEqual(
+            config.read_text(encoding="utf-8"),
+            f"import base from {json.dumps(base_uri)};\n"
+            'export default { ...base, mutate: ["src/app.js:2-2"], incremental: false };\n',
+        )
+        tool.assert_called_once_with(self.root, "stryker", "js")
+        run.assert_called_once_with(
+            ["/tools/stryker", "run", str(config)],
+            cwd=self.root,
+            timeout=7200,
+            env={
+                "AQG_DIFF_BASE": "",
+                "AQG_RUN_ID": "",
+                "AQG_GATE": "",
+                "AQG_PROFILE": "",
+                "AQG_ROOT": "",
+                "CI": "1",
+                "TZ": "UTC",
+            },
+        )
+
+    def test_javascript_empty_mutation_report_names_configuration_scope(self) -> None:
+        self.assertEqual(
+            _empty_js_mutation_report([]),
+            {
+                "scope": "changed",
+                "mutated_files": [],
+                "excluded_configuration_files": [],
+                "reason": "no changed JavaScript/TypeScript production files",
+            },
+        )
+        self.assertEqual(
+            _empty_js_mutation_report(["src/vite.config.js"]),
+            {
+                "scope": "changed",
+                "mutated_files": [],
+                "excluded_configuration_files": ["src/vite.config.js"],
+                "reason": (
+                    "changed JavaScript/TypeScript files are checker or installation "
+                    "configuration covered by structural and disposable-project conformance"
+                ),
+            },
+        )
+
+    def test_stryker_range_config_creates_its_own_parent(self) -> None:
+        config = _write_stryker_changed_config(
+            self.root,
+            ["src/app.js:4-4", "src/app.js:9-12"],
+        )
+        self.assertTrue(config.parent.is_dir())
+        self.assertEqual(config.name, "stryker.changed.config.mjs")
+        self.assertIn(
+            'mutate: ["src/app.js:4-4", "src/app.js:9-12"]',
+            config.read_text(encoding="utf-8"),
+        )
+
+    def test_stryker_range_config_writes_explicit_utf8(self) -> None:
+        with patch("pathlib.Path.write_text") as write:
+            config = _write_stryker_changed_config(self.root, ["src/app.js:4-4"])
+
+        content = write.call_args.args[0]
+        self.assertIn('mutate: ["src/app.js:4-4"]', content)
+        self.assertEqual(write.call_args.kwargs, {"encoding": "utf-8"})
+        self.assertEqual(config.name, "stryker.changed.config.mjs")
 
     def test_stryker_sandbox_excludes_local_tool_environments(self) -> None:
         source_root = Path(__file__).resolve().parents[1]

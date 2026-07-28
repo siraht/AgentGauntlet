@@ -1951,46 +1951,87 @@ def _js_mutation_scope(paths: list[str]) -> tuple[list[str], list[str]]:
     return candidates, configuration
 
 
-def _mutation_js(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    changed = (
+def _contiguous_ranges(lines: set[int]) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    for line in sorted(lines):
+        if ranges and line == ranges[-1][1] + 1:
+            ranges[-1] = (ranges[-1][0], line)
+        else:
+            ranges.append((line, line))
+    return ranges
+
+
+def _js_mutation_targets(
+    root: Path,
+    project: dict[str, Any],
+    changed: list[str],
+) -> tuple[list[str], dict[str, Any]]:
+    changes, comparison = _python_mutation_line_changes_for_base(
+        root,
+        _base_ref(project),
+        changed,
+    )
+    targets: list[str] = []
+    evidence: dict[str, Any] = {}
+    for path in changed:
+        detail = changes.get(path, {})
+        added = set(detail.get("added", set()))
+        deleted = set(detail.get("deleted", set()))
+        ranges = _contiguous_ranges(added)
+        fallback = bool(deleted) or not ranges
+        targets.extend([path] if fallback else [f"{path}:{start}-{end}" for start, end in ranges])
+        evidence[path] = {
+            "added_lines": len(added),
+            "deleted_lines": len(deleted),
+            "range_count": len(ranges),
+            "scope": "full_file_deletion_fallback" if fallback else "changed_line_ranges",
+        }
+    return targets, {"comparison_revision": comparison, "files": evidence}
+
+
+def _js_mutation_files(
+    root: Path,
+    project: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    candidates = (
         _changed_production_files(root, project, JS_SUFFIXES)
         if _effective_thresholds(project)["mutation"].get("changed_only", True)
         else _relative_files(root, JS_SUFFIXES, project, tests=False)
     )
-    changed, configuration = _js_mutation_scope(changed)
-    if not changed:
-        return PASS, {
-            "scope": "changed",
-            "mutated_files": [],
-            "excluded_configuration_files": configuration,
-            "reason": (
-                "changed JavaScript/TypeScript files are checker or installation configuration "
-                "covered by structural and disposable-project conformance"
-                if configuration
-                else "no changed JavaScript/TypeScript production files"
-            ),
-        }
-    stryker = _tool(root, "stryker", "js")
+    return _js_mutation_scope(candidates)
+
+
+def _empty_js_mutation_report(configuration: list[str]) -> dict[str, Any]:
+    reason = (
+        "changed JavaScript/TypeScript files are checker or installation configuration "
+        "covered by structural and disposable-project conformance"
+        if configuration
+        else "no changed JavaScript/TypeScript production files"
+    )
+    return {
+        "scope": "changed",
+        "mutated_files": [],
+        "excluded_configuration_files": configuration,
+        "reason": reason,
+    }
+
+
+def _write_stryker_changed_config(root: Path, targets: list[str]) -> Path:
     work = root / ".aqg" / "work" / "mutation"
     work.mkdir(parents=True, exist_ok=True)
     config_path = work / "stryker.changed.config.mjs"
-    mutate_json = json.dumps(changed)
     base_config = (
         Path(_control_path(root, "quality/tools/js/config/stryker.config.mjs")).resolve().as_uri()
     )
     config_path.write_text(
         f"import base from {json.dumps(base_config)};\n"
-        f"export default {{ ...base, mutate: {mutate_json}, incremental: false }};\n",
+        f"export default {{ ...base, mutate: {json.dumps(targets)}, incremental: false }};\n",
         encoding="utf-8",
     )
-    result = run_command(
-        [stryker, "run", str(config_path)],
-        cwd=root,
-        timeout=7200,
-        env=_project_test_env(CI="1", TZ="UTC"),
-    )
-    report_path = root / ".aqg" / "work" / "mutation" / "stryker.json"
-    payload = read_json(report_path, default={}) if report_path.exists() else {}
+    return config_path
+
+
+def _js_mutation_metrics(payload: Any) -> tuple[dict[str, int], int, float]:
     statuses: list[str] = []
     _collect_mutant_statuses(payload, statuses)
     counts: dict[str, int] = {}
@@ -2002,29 +2043,74 @@ def _mutation_js(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, An
     score = (
         100.0
         if denominator == 0 and statuses
-        else (killed * 100 / denominator if denominator else 0.0)
+        else killed * 100 / denominator
+        if denominator
+        else 0.0
     )
-    threshold = float(_effective_thresholds(project)["mutation"].get("minimum_score", 70))
-    maximum = int(_effective_thresholds(project)["mutation"].get("maximum_survivors", 0))
+    return counts, survived, score
+
+
+def _evaluate_js_mutation(
+    *,
+    report_exists: bool,
+    counts: dict[str, int],
+    survived: int,
+    score: float,
+    threshold: float,
+    maximum: int,
+    command_code: int,
+) -> tuple[int, list[str]]:
     failures: list[str] = []
-    if not report_path.exists() or not statuses:
-        code = INFRASTRUCTURE_ERROR
-        failures.append("Stryker did not produce a readable non-empty mutation report")
-    else:
-        if survived > maximum:
-            failures.append(f"{survived} survived/no-coverage mutants > allowed {maximum}")
-        if score < threshold:
-            failures.append(f"mutation score {score:.1f}% < {threshold:.1f}%")
-        code = (
-            QUALITY_FAILURE
-            if failures or result.code == 1
-            else PASS
-            if result.code == 0
-            else INFRASTRUCTURE_ERROR
-        )
+    if not report_exists or not counts:
+        return INFRASTRUCTURE_ERROR, [
+            "Stryker did not produce a readable non-empty mutation report"
+        ]
+    if survived > maximum:
+        failures.append(f"{survived} survived/no-coverage mutants > allowed {maximum}")
+    if score < threshold:
+        failures.append(f"mutation score {score:.1f}% < {threshold:.1f}%")
+    if failures or command_code == 1:
+        return QUALITY_FAILURE, failures
+    return (PASS, failures) if command_code == 0 else (INFRASTRUCTURE_ERROR, failures)
+
+
+def _js_mutation_limits(project: dict[str, Any]) -> tuple[float, int]:
+    mutation = _effective_thresholds(project)["mutation"]
+    return float(mutation["minimum_score"]), int(mutation["maximum_survivors"])
+
+
+def _mutation_js(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    changed, configuration = _js_mutation_files(root, project)
+    if not changed:
+        return PASS, _empty_js_mutation_report(configuration)
+    stryker = _tool(root, "stryker", "js")
+    targets, selection = _js_mutation_targets(root, project, changed)
+    config_path = _write_stryker_changed_config(root, targets)
+    result = run_command(
+        [stryker, "run", str(config_path)],
+        cwd=root,
+        timeout=7200,
+        env=_project_test_env(CI="1", TZ="UTC"),
+    )
+    report_path = root / ".aqg" / "work" / "mutation" / "stryker.json"
+    payload = read_json(report_path) if report_path.exists() else {}
+    counts, survived, score = _js_mutation_metrics(payload)
+    threshold, maximum = _js_mutation_limits(project)
+    code, failures = _evaluate_js_mutation(
+        report_exists=report_path.exists(),
+        counts=counts,
+        survived=survived,
+        score=score,
+        threshold=threshold,
+        maximum=maximum,
+        command_code=result.code,
+    )
     return code, {
         "scope": "changed",
         "mutated_files": changed,
+        "excluded_configuration_files": configuration,
+        "mutation_targets": targets,
+        "selection": selection,
         "command": result.as_dict(),
         "report": payload,
         "status_counts": counts,
