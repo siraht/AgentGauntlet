@@ -29,7 +29,7 @@
     "Owner status verifies run manifests and exact candidate fingerprints, distinguishes inherited debt from current regressions, and never promotes local evidence into external merge or release authority.",
     "A multi-model review council runs isolated role-specific reviews through explicit provider adapters, preserves dissent and unknowns, and stores prompt, model, scope, and response provenance as immutable evidence.",
     "Agent review remains advisory unless protected policy explicitly assigns it a gate; it cannot override deterministic failures, missing product intent, or required release authority.",
-    "A connected greenfield TypeScript, HTML, and CSS pilot proves installation, unit/property/acceptance/browser/accessibility/mutation evidence, review output, and release-readiness behavior.",
+    "A connected greenfield TypeScript, HTML, and CSS pilot proves installation, unit/property testing, structure, coverage, acceptance behavior, and generation of browser/accessibility wiring; live browser and mutation evidence remain separate explicit controls.",
     "The development loop gains only conservative speedups whose selection and cache provenance are recorded and whose uncertainty falls back to the complete applicable suite."
   ],
   "behavior_preserved": [
@@ -66,6 +66,6 @@
     "Required GitHub checks, bypass authority, and CODEOWNERS governance",
     "Plain-language Develop, Merge, and Release decisions and their evidence freshness",
     "Multi-model review roles, dissent, quorum, privacy boundaries, and residual unknowns",
-    "Greenfield TypeScript/web pilot behavior, accessibility, mutation, and release evidence"
+    "Greenfield TypeScript/web pilot behavior and the separate browser, accessibility, mutation, and release evidence boundaries"
   ]
 }

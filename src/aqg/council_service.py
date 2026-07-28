@@ -52,6 +52,8 @@ DEFAULT_BUNDLE_BYTES = 1_000_000
 DEFAULT_TIMEOUT_SECONDS = 180.0
 ADVISORY_BANNER = "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY"
 DATA_CLASSIFICATIONS = ("unclassified", "public", "internal", "confidential", "regulated")
+PROFILE_ORDER = ("inner", "fast", "pr", "deep", "release")
+TIER_EVIDENCE_PROFILE = {"smoke": "fast", "pr": "pr", "high": "deep"}
 
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
     "smoke": (
@@ -99,7 +101,16 @@ def _secret_gate_passed(summary: Mapping[str, Any]) -> bool:
     )
 
 
-def _matching_quality_run(root: Path, scope: Mapping[str, str]) -> tuple[Path, dict[str, Any]]:
+def _profile_satisfies(actual: object, required: str) -> bool:
+    try:
+        return PROFILE_ORDER.index(str(actual)) >= PROFILE_ORDER.index(required)
+    except ValueError:
+        return False
+
+
+def _matching_quality_run(
+    root: Path, scope: Mapping[str, str], required_profile: str
+) -> tuple[Path, dict[str, Any]]:
     runs_dir = root / ".aqg" / "runs"
     for run_dir in sorted(runs_dir.glob("*"), reverse=True):
         manifest = verify_run_manifest(run_dir)
@@ -115,11 +126,15 @@ def _matching_quality_run(root: Path, scope: Mapping[str, str]) -> tuple[Path, d
             summary.get("change_fingerprint"),
             summary.get("control_fingerprint"),
         )
-        if actual == expected and _secret_gate_passed(summary):
+        if (
+            actual == expected
+            and _secret_gate_passed(summary)
+            and _profile_satisfies(summary.get("profile"), required_profile)
+        ):
             return run_dir, summary
     raise ConfigurationError(
         "no finalized quality run matches the current revision, change fingerprint, "
-        "control fingerprint, and passing secrets gate"
+        f"control fingerprint, passing secrets gate, and {required_profile!r} evidence profile"
     )
 
 
@@ -177,7 +192,7 @@ def _prepare_plan(
     base = _base_ref(root)
     routing = _provider_routing(data_classification)
     scope = _scope(root, base)
-    run_dir, summary = _matching_quality_run(root, scope)
+    run_dir, summary = _matching_quality_run(root, scope, TIER_EVIDENCE_PROFILE[tier])
     inputs = _bundle_inputs(root, base, run_dir, summary)
     bundle = build_candidate_bundle(
         **scope,

@@ -78,7 +78,9 @@ def test_plan_has_no_provider_calls_and_bundle_cap_fails_closed(
     (run_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(service, "_base_ref", lambda _root: "origin/main")
     monkeypatch.setattr(service, "_scope", lambda _root, _base: _scope())
-    monkeypatch.setattr(service, "_matching_quality_run", lambda _root, _scope: (run_dir, {}))
+    monkeypatch.setattr(
+        service, "_matching_quality_run", lambda _root, _scope, _profile: (run_dir, {})
+    )
     monkeypatch.setattr(service, "_bundle_inputs", lambda *_args: {"diff.patch": "x" * 100})
 
     plan = service.plan_council(
@@ -103,15 +105,53 @@ def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
         "revision": "abc123",
         "change_fingerprint": "sha256:" + "1" * 64,
         "control_fingerprint": "sha256:" + "2" * 64,
+        "profile": "deep",
         "gates": [{"name": "secrets", "status": "pass", "exit_code": 0}],
     }
     write_evidence_json(run_dir / "summary.json", summary)
     write_run_manifest(run_dir, "run-1")
 
-    selected, selected_summary = service._matching_quality_run(tmp_path, _scope())
+    selected, selected_summary = service._matching_quality_run(tmp_path, _scope(), "deep")
 
     assert selected == run_dir
     assert selected_summary == summary
+
+
+def test_high_tier_does_not_bundle_a_newer_fast_run(
+    tmp_path: Path,
+) -> None:
+    for run_id, profile in (("run-1-deep", "deep"), ("run-2-fast", "fast")):
+        run_dir = tmp_path / ".aqg" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        summary = {
+            **_scope(),
+            "profile": profile,
+            "gates": [{"name": "secrets", "status": "pass", "exit_code": 0}],
+        }
+        write_evidence_json(run_dir / "summary.json", summary)
+        write_run_manifest(run_dir, run_id)
+
+    selected, selected_summary = service._matching_quality_run(tmp_path, _scope(), "deep")
+
+    assert selected.name == "run-1-deep"
+    assert selected_summary["profile"] == "deep"
+
+
+def test_high_tier_fails_closed_without_a_deep_run(tmp_path: Path) -> None:
+    run_dir = tmp_path / ".aqg" / "runs" / "run-fast"
+    run_dir.mkdir(parents=True)
+    summary = {
+        **_scope(),
+        "profile": "fast",
+        "gates": [{"name": "secrets", "status": "pass", "exit_code": 0}],
+    }
+    write_evidence_json(run_dir / "summary.json", summary)
+    write_run_manifest(run_dir, "run-fast")
+
+    with pytest.raises(ConfigurationError, match="'deep' evidence profile"):
+        service._matching_quality_run(tmp_path, _scope(), "deep")
+
+    assert service._profile_satisfies("unknown", "deep") is False
 
 
 def test_fake_run_publishes_only_verified_immutable_evidence(
