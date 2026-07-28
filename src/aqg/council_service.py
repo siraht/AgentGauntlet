@@ -79,6 +79,17 @@ TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
 }
 
 
+def _series_limitations(chunked: bool) -> list[str]:
+    if not chunked:
+        return []
+    return [
+        (
+            "Each ballot sees one bounded diff chunk plus the shared candidate context; "
+            "cross-chunk relationships remain a residual review unknown."
+        )
+    ]
+
+
 def _tier_rules(tier: str) -> tuple[list[str], int]:
     if tier not in TIER_MEMBERS:
         raise ConfigurationError(f"unknown council tier: {tier!r}")
@@ -247,6 +258,7 @@ def _plan_payload(
     routing: Mapping[str, Any],
 ) -> dict[str, Any]:
     roles, groups = _tier_rules(tier)
+    chunked = len(series["bundles"]) > 1
     members = []
     for role, model_id in TIER_MEMBERS[tier]:
         members.append({"role": role, "model_id": model_id, **provider_identity(model_id)})
@@ -266,8 +278,15 @@ def _plan_payload(
         "quality_run_id": run_dir.name,
         "scope": dict(series["scope"]),
         "bundle_sha256": series["series_sha256"],
-        "bundle_mode": "single" if len(series["bundles"]) == 1 else "chunked",
+        "bundle_mode": "chunked" if chunked else "single",
         "bundle_count": len(series["bundles"]),
+        "review_scope": "bounded_diff_chunk" if chunked else "candidate",
+        "completion_meaning": (
+            "all_required_chunk_ballots_received"
+            if chunked
+            else "all_required_candidate_ballots_received"
+        ),
+        "series_limitations": _series_limitations(chunked),
         "bundle_bytes": max(chunk["bundle_bytes"] for chunk in series["chunks"]),
         "total_bundle_bytes": sum(chunk["bundle_bytes"] for chunk in series["chunks"]),
         "max_bundle_bytes": max_bundle_bytes,
@@ -714,6 +733,11 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "incomplete_reasons": result["incomplete_reasons"],
         "bundle_mode": plan.get("bundle_mode", "single"),
         "bundle_count": plan.get("bundle_count", 1),
+        "review_scope": plan.get("review_scope", "candidate"),
+        "completion_meaning": plan.get(
+            "completion_meaning", "all_required_candidate_ballots_received"
+        ),
+        "series_limitations": plan.get("series_limitations", []),
         "members": _reported_members(ballot_paths),
         "executions": len(list((run_dir / "executions").glob("*.json"))),
         "verification": verification,

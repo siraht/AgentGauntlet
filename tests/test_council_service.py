@@ -1,3 +1,5 @@
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-015
+
 from __future__ import annotations
 
 import json
@@ -129,6 +131,9 @@ def test_plan_contract_is_exact(tmp_path: Path) -> None:
         "bundle_sha256": series["series_sha256"],
         "bundle_mode": "single",
         "bundle_count": 1,
+        "review_scope": "candidate",
+        "completion_meaning": "all_required_candidate_ballots_received",
+        "series_limitations": [],
         "bundle_bytes": series["chunks"][0]["bundle_bytes"],
         "total_bundle_bytes": series["chunks"][0]["bundle_bytes"],
         "max_bundle_bytes": 10_000,
@@ -320,6 +325,9 @@ def test_fake_run_publishes_only_verified_immutable_evidence(
         "incomplete_reasons": [],
         "bundle_mode": "single",
         "bundle_count": 1,
+        "review_scope": "candidate",
+        "completion_meaning": "all_required_candidate_ballots_received",
+        "series_limitations": [],
         "executions": 3,
     }
     expected_members = [
@@ -336,6 +344,9 @@ def test_fake_run_publishes_only_verified_immutable_evidence(
     assert sorted(members, key=lambda item: item["role"]) == sorted(
         expected_members, key=lambda item: item["role"]
     )
+    assert report["status"] == "advisory_clear"
+    assert report["scope"] == series["scope"]
+    assert len(members) == 3
     assert set(verification) == {
         "schema_version",
         "kind",
@@ -485,7 +496,7 @@ def test_oversized_run_reviews_every_chunk_and_manifests_nested_evidence(
         scope=_scope(),
         evidence_manifest_sha256="sha256:" + "3" * 64,
         inputs={"current.diff.patch": "x" * 4_000},
-        max_bundle_bytes=2_000,
+        max_bundle_bytes=3_000,
     )
     quality_run = tmp_path / ".aqg" / "runs" / "quality-current"
     quality_run.mkdir(parents=True)
@@ -493,10 +504,11 @@ def test_oversized_run_reviews_every_chunk_and_manifests_nested_evidence(
         "pr",
         quality_run,
         series,
-        2_000,
+        3_000,
         "public",
         service._provider_routing("public"),
     )
+    assert len(series["bundles"]) == 2
     monkeypatch.setattr(service, "_prepare_plan", lambda *_args: (plan, series))
 
     code, report = service.run_council(
@@ -510,6 +522,14 @@ def test_oversized_run_reviews_every_chunk_and_manifests_nested_evidence(
     assert code == PASS
     assert report["bundle_mode"] == "chunked"
     assert report["bundle_count"] == len(series["chunks"])
+    assert report["review_scope"] == "bounded_diff_chunk"
+    assert report["completion_meaning"] == "all_required_chunk_ballots_received"
+    assert report["series_limitations"] == [
+        (
+            "Each ballot sees one bounded diff chunk plus the shared candidate context; "
+            "cross-chunk relationships remain a residual review unknown."
+        )
+    ]
     assert report["executions"] == len(series["chunks"]) * 3
     run_dir = tmp_path / ".aqg" / "council" / "chunked-test"
     child_manifests = sorted((run_dir / "chunks").glob("chunk-*/manifest.json"))
@@ -579,6 +599,9 @@ def test_existing_single_bundle_run_remains_verifiable(
     assert report["run_id"] == "legacy"
     assert report["bundle_mode"] == "single"
     assert report["bundle_count"] == 1
+    assert report["review_scope"] == "candidate"
+    assert report["completion_meaning"] == "all_required_candidate_ballots_received"
+    assert report["series_limitations"] == []
     assert report["executions"] == 3
     assert report["scope"] == bundle["scope"]
     assert sorted(member["role"] for member in report["members"]) == sorted(
