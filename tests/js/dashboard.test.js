@@ -21,3 +21,23 @@ test("the dashboard exposes the unified control surfaces", () => {
   expect(script).toContain("AQG_REVIEWED_SECURITY");
   expect(script.match(/\.innerHTML\s*=/g)).toHaveLength(1);
 });
+
+test("the owner view exposes honest decisions and accessible navigation", () => {
+  // Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-001 AQG-OWNER-002
+  const html = fs.readFileSync(
+    path.join(projectRoot, "src", "aqg", "static", "index.html"),
+    "utf8",
+  );
+  const script = fs.readFileSync(
+    path.join(projectRoot, "src", "aqg", "static", "app.js"),
+    "utf8",
+  );
+
+  expect(html).toContain('class="skip-link"');
+  expect(html).toContain('role="tablist"');
+  expect(html).toContain('id="owner-decision-deck"');
+  expect(html).toContain("Agent advisory — not an approval");
+  expect(script).toContain('["develop", "merge", "release"]');
+  expect(script).toContain("No council evidence configured.");
+  expect(script).toContain("Auto refresh:");
+});

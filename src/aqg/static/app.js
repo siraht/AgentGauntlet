@@ -1,6 +1,9 @@
 let state = null;
 let config = { actions_enabled: false, portfolio: false };
 let selectedIndex = 0;
+let autoRefresh = false;
+let refreshTimer = null;
+let lastDecisionAnnouncement = "";
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) =>
@@ -51,9 +54,9 @@ function project() {
 function badge(status, label) {
   return `<span class="badge ${esc(status || "neutral")}">${esc(label || human(status || "neutral"))}</span>`;
 }
-function matrix(headers, rows, empty) {
+function matrix(headers, rows, empty, caption = "Evidence table") {
   if (!rows.length) return `<div class="empty">${esc(empty)}</div>`;
-  return `<div class="table-wrap"><table><thead><tr>${headers.map((value) => `<th>${esc(value)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><caption class="visually-hidden">${esc(caption)}</caption><thead><tr>${headers.map((value) => `<th scope="col">${esc(value)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 }
 function findingCard(item) {
   const paths = (item.paths || [])
@@ -104,6 +107,39 @@ function actionStatus() {
   );
 }
 function renderDecision(item) {
+  const owner = item.owner_status || {};
+  const decisions = owner.decisions || {};
+  const merge = decisions.merge;
+  if (merge) {
+    const lead = merge.reasons?.[0];
+    const status =
+      merge.state === "blocked"
+        ? "quality_failure"
+        : merge.state === "ready_for_authoritative_check"
+          ? "pass"
+          : "review";
+    const title =
+      merge.state === "blocked"
+        ? "Do not merge"
+        : merge.state === "ready_for_authoritative_check"
+          ? "Ready for the authoritative merge check"
+          : "Merge is not proven";
+    const detail =
+      lead?.message ||
+      "Local evidence cannot grant repository-hosted merge authority.";
+    const node = $("#decision-strip");
+    node.className = `decision-strip ${status}`;
+    setSafeHTML(
+      node,
+      `<div><p class="eyebrow">Owner decision</p><strong>${esc(title)}</strong><span>${esc(detail)}</span>${lead?.action ? `<p class="decision-action"><b>Next:</b> ${esc(lead.action)}</p>` : ""}</div><div class="decision-meta"><span>${esc(human(item.risk?.selected_risk_profile || "risk unresolved"))}</span><span>${esc(human(owner.review_freshness?.state || "review unknown"))}</span></div>`,
+    );
+    const announcement = `${title}. ${detail}`;
+    if (announcement !== lastDecisionAnnouncement) {
+      $("#decision-announcement").textContent = announcement;
+      lastDecisionAnnouncement = announcement;
+    }
+    return;
+  }
   const latest = item.latest;
   const review = item.review;
   const risk = item.risk || {};
@@ -140,6 +176,85 @@ function renderDecision(item) {
   setSafeHTML(
     node,
     `<div><p class="eyebrow">Current disposition</p><strong>${esc(title)}</strong><span>${esc(detail)}</span></div><div class="decision-meta"><span>${esc(human(risk.selected_risk_profile || "risk unresolved"))}</span><span>${esc(review?.summary?.evidence_status || "evidence unknown")}</span></div>`,
+  );
+}
+function decisionCard(name, decision = {}) {
+  const reason = decision.reasons?.[0];
+  const semantic =
+    decision.state === "allowed" ||
+    decision.state === "ready_for_authoritative_check"
+      ? "pass"
+      : decision.state === "blocked"
+        ? "quality_failure"
+        : "neutral";
+  const symbol =
+    semantic === "pass" ? "✓" : semantic === "quality_failure" ? "!" : "?";
+  return `<article class="decision-card ${semantic}"><div class="decision-card-head"><span class="decision-symbol" aria-hidden="true">${symbol}</span><div><p>${esc(name)}</p><strong>${esc(human(decision.state || "not proven"))}</strong></div></div><p>${esc(reason?.message || "No trusted decision evidence is available.")}</p><small>${reason?.action ? `<b>Next:</b> ${esc(reason.action)}` : "No next action recorded."}</small></article>`;
+}
+function renderOwnerOverview(item) {
+  const owner = item.owner_status || {};
+  const decisions = owner.decisions || {};
+  setSafeHTML(
+    $("#owner-decision-deck"),
+    ["develop", "merge", "release"]
+      .map((name) => decisionCard(name, decisions[name]))
+      .join(""),
+  );
+  setSafeHTML(
+    $("#evidence-ledger"),
+    matrix(
+      ["Profile", "Freshness", "Manifest", "Run"],
+      (owner.evidence || []).map(
+        (value) =>
+          `<tr><td><code>${esc(value.profile)}</code></td><td>${badge(value.state)}</td><td>${esc(value.manifest_verified ? "verified" : "not verified")}</td><td><code>${esc(value.run_id || "—")}</code></td></tr>`,
+      ),
+      "No required profile evidence is resolved.",
+      "Required evidence freshness",
+    ),
+  );
+  const retro = owner.retrospective || {};
+  const counts = [
+    [
+      "Inherited debt",
+      retro.inherited_debt || 0,
+      "Reported, not a current regression",
+    ],
+    [
+      "New regressions",
+      (retro.regressions || 0) + (retro.new_debt || 0),
+      "Blocks until resolved",
+    ],
+    [
+      "Missing evidence",
+      retro.missing_evidence || 0,
+      "Unknown is never a pass",
+    ],
+    [
+      "Infrastructure errors",
+      retro.infrastructure_errors || 0,
+      "Measurement unusable",
+    ],
+    [
+      "Unknown product intent",
+      retro.unknown_product_intent || 0,
+      "Requires an owner decision",
+    ],
+  ];
+  setSafeHTML(
+    $("#debt-summary"),
+    `<div class="ledger-list">${counts
+      .map(
+        ([label, count, detail]) =>
+          `<div><span>${esc(label)}</span><strong>${esc(count)}</strong><small>${esc(detail)}</small></div>`,
+      )
+      .join("")}</div>`,
+  );
+  const council = owner.council || { state: "not_configured" };
+  setSafeHTML(
+    $("#council-summary"),
+    council.state === "not_configured"
+      ? `<div class="empty"><strong>No council evidence configured.</strong><p>Deterministic checks and required human authorities are unchanged. Agent consensus is not being assumed.</p></div>`
+      : `<div class="council-result"><strong>${esc(human(council.state))}</strong><span>${esc(council.members?.length || 0)} member result(s)</span><span>${esc(council.dissent?.length || 0)} dissent item(s)</span></div>`,
   );
 }
 function renderOverview(item) {
@@ -201,6 +316,7 @@ function renderOverview(item) {
       )
       .join(""),
   );
+  renderOwnerOverview(item);
   $("#latest-badge").className = `badge ${latest?.status || "neutral"}`;
   $("#latest-badge").textContent = human(latest?.status || "No run");
   $("#risk-badge").className =
@@ -448,21 +564,55 @@ async function action(path, body = {}) {
   }
 }
 function openView(name) {
-  $$(".nav,.view").forEach((node) => node.classList.remove("active"));
+  $$(".nav").forEach((node) => {
+    node.classList.remove("active");
+    node.setAttribute("aria-selected", "false");
+    node.tabIndex = -1;
+  });
+  $$(".view").forEach((node) => {
+    node.classList.remove("active");
+    node.hidden = true;
+  });
   const nav = $(`.nav[data-view="${name}"]`);
   const view = $(`#view-${name}`);
   if (nav && view) {
     nav.classList.add("active");
+    nav.setAttribute("aria-selected", "true");
+    nav.tabIndex = 0;
     view.classList.add("active");
+    view.hidden = false;
+    document.title = `${nav.textContent.trim()} · AQG Control Surface`;
   }
 }
 $$(".nav").forEach((button) =>
   button.addEventListener("click", () => openView(button.dataset.view)),
 );
+$(".rail nav").addEventListener("keydown", (event) => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const tabs = $$(".nav");
+  const current = tabs.indexOf(document.activeElement);
+  let next =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+          tabs.length;
+  event.preventDefault();
+  tabs[next].focus();
+  openView(tabs[next].dataset.view);
+});
 $$("[data-jump]").forEach((button) =>
   button.addEventListener("click", () => openView(button.dataset.jump)),
 );
 $("#refresh").addEventListener("click", load);
+$("#auto-refresh").addEventListener("click", (event) => {
+  autoRefresh = !autoRefresh;
+  event.currentTarget.setAttribute("aria-pressed", String(autoRefresh));
+  event.currentTarget.textContent = `Auto refresh: ${autoRefresh ? "on" : "off"}`;
+  clearInterval(refreshTimer);
+  refreshTimer = autoRefresh ? setInterval(load, 10000) : null;
+});
 $("#run-profile").addEventListener("click", () =>
   action("/api/actions/check", { profile: $("#profile-select").value }),
 );
@@ -473,4 +623,3 @@ $("#regenerate-review").addEventListener("click", () =>
   action("/api/actions/review"),
 );
 load();
-setInterval(load, 10000);
