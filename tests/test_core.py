@@ -1264,7 +1264,7 @@ class SetupContractTests(RepoCase):
             )
             self.assertIn("related: false", text)
             self.assertIn(
-                'configFile: "quality/tools/js/config/vitest.config.mjs"',
+                'configFile: fileURLToPath(new URL("./vitest.config.mjs", import.meta.url))',
                 text,
             )
             self.assertIn("jest: { enableFindRelatedTests: false }", text)

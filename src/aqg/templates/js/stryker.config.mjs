@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const project = JSON.parse(
   fs.readFileSync(new URL("../../../project.json", import.meta.url), "utf8"),
@@ -14,7 +15,7 @@ export default {
   testRunner: runner,
   vitest: {
     related: false,
-    configFile: "quality/tools/js/config/vitest.config.mjs",
+    configFile: fileURLToPath(new URL("./vitest.config.mjs", import.meta.url)),
   },
   jest: { enableFindRelatedTests: false },
   mutate,
