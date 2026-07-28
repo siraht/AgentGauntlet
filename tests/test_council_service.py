@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
@@ -91,6 +92,8 @@ def test_plan_has_no_provider_calls_and_bundle_cap_fails_closed(
     assert plan["minimum_provider_groups"] == 3
     with pytest.raises(ConfigurationError, match="candidate bundle is"):
         service.plan_council(tmp_path, "pr", max_bundle_bytes=10, data_classification="public")
+    with pytest.raises(ConfigurationError, match="bundle size cap must be positive"):
+        service.plan_council(tmp_path, "pr", max_bundle_bytes=0, data_classification="public")
 
 
 def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
@@ -120,7 +123,11 @@ def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
 def test_high_tier_does_not_bundle_a_newer_fast_run(
     tmp_path: Path,
 ) -> None:
-    for run_id, profile in (("run-1-deep", "deep"), ("run-2-fast", "fast")):
+    for run_id, profile in (
+        ("run-1-deep", "deep"),
+        ("run-2-fast", "fast"),
+        ("run-3-deep", "deep"),
+    ):
         run_dir = tmp_path / ".aqg" / "runs" / run_id
         run_dir.mkdir(parents=True)
         summary = {
@@ -133,7 +140,7 @@ def test_high_tier_does_not_bundle_a_newer_fast_run(
 
     selected, selected_summary = service._matching_quality_run(tmp_path, _scope(), "deep")
 
-    assert selected.name == "run-1-deep"
+    assert selected.name == "run-3-deep"
     assert selected_summary["profile"] == "deep"
 
 
@@ -148,10 +155,51 @@ def test_high_tier_fails_closed_without_a_deep_run(tmp_path: Path) -> None:
     write_evidence_json(run_dir / "summary.json", summary)
     write_run_manifest(run_dir, "run-fast")
 
-    with pytest.raises(ConfigurationError, match="'deep' evidence profile"):
+    expected = (
+        "no finalized quality run matches the current revision, change fingerprint, "
+        "control fingerprint, passing secrets gate, and 'deep' evidence profile"
+    )
+    with pytest.raises(ConfigurationError, match=expected):
         service._matching_quality_run(tmp_path, _scope(), "deep")
 
     assert service._profile_satisfies("unknown", "deep") is False
+
+
+def test_prepare_plan_preserves_every_evidence_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scope = _scope()
+    run_dir = tmp_path / "run"
+    summary = {"profile": "deep"}
+    inputs = {"current.diff.patch": "diff"}
+    bundle = {**_bundle(), "bundle_sha256": "sha256:" + "4" * 64}
+    routing = {"external_providers_allowed": True}
+    matching = Mock(return_value=(run_dir, summary))
+    bundle_inputs = Mock(return_value=inputs)
+    build_bundle = Mock(return_value=bundle)
+    plan_payload = Mock(return_value={"kind": "plan"})
+    monkeypatch.setattr(service, "_base_ref", lambda root: "origin/main")
+    monkeypatch.setattr(service, "_provider_routing", lambda classification: routing)
+    monkeypatch.setattr(service, "_scope", lambda root, base: scope)
+    monkeypatch.setattr(service, "_matching_quality_run", matching)
+    monkeypatch.setattr(service, "_bundle_inputs", bundle_inputs)
+    monkeypatch.setattr(service, "build_candidate_bundle", build_bundle)
+    monkeypatch.setattr(service, "sha256_file", lambda path: "5" * 64)
+    monkeypatch.setattr(service, "canonical_json", lambda value: b"12345")
+    monkeypatch.setattr(service, "_plan_payload", plan_payload)
+
+    plan, selected_bundle = service._prepare_plan(tmp_path, "high", 5, "public")
+
+    assert plan == {"kind": "plan"}
+    assert selected_bundle == bundle
+    matching.assert_called_once_with(tmp_path, scope, "deep")
+    bundle_inputs.assert_called_once_with(tmp_path, "origin/main", run_dir, summary)
+    build_bundle.assert_called_once_with(
+        **scope,
+        evidence_manifest_sha256="sha256:" + "5" * 64,
+        inputs=inputs,
+    )
+    plan_payload.assert_called_once_with("high", run_dir, bundle, 5, 5, "public", routing)
 
 
 def test_fake_run_publishes_only_verified_immutable_evidence(
