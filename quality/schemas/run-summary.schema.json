@@ -26,30 +26,46 @@
     "gates"
   ],
   "properties": {
-    "schema_version": {"const": "2"},
+    "schema_version": { "const": "2" },
     "run_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$"
     },
-    "profile": {"type": "string", "minLength": 1},
-    "enforcement_stage": {"enum": ["shadow", "ratchet", "strict"]},
-    "mode": {"enum": ["shadow", "enforce"]},
+    "profile": { "type": "string", "minLength": 1 },
+    "enforcement_stage": { "enum": ["shadow", "ratchet", "strict"] },
+    "mode": { "enum": ["shadow", "enforce"] },
     "status": {
-      "enum": ["pass", "quality_failure", "configuration_error", "infrastructure_error"]
+      "enum": [
+        "pass",
+        "quality_failure",
+        "configuration_error",
+        "infrastructure_error"
+      ]
     },
-    "exit_code": {"type": "integer", "enum": [0, 1, 2, 3]},
-    "observed_exit_code": {"type": "integer", "enum": [0, 1, 2, 3]},
-    "measured_gate_exit_code": {"type": "integer", "enum": [0, 1, 2, 3]},
+    "exit_code": { "type": "integer", "enum": [0, 1, 2, 3] },
+    "observed_exit_code": { "type": "integer", "enum": [0, 1, 2, 3] },
+    "measured_gate_exit_code": { "type": "integer", "enum": [0, 1, 2, 3] },
     "command_status": {
-      "enum": ["pass", "quality_failure", "configuration_error", "infrastructure_error"]
+      "enum": [
+        "pass",
+        "quality_failure",
+        "configuration_error",
+        "infrastructure_error"
+      ]
     },
-    "started_at": {"type": "string", "format": "date-time"},
-    "duration_ms": {"type": "integer", "minimum": 0},
-    "revision": {"type": "string"},
-    "base_ref": {"type": "string"},
-    "change_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "control_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "workspace_mutated": {"type": "boolean"},
+    "started_at": { "type": "string", "format": "date-time" },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "revision": { "type": "string" },
+    "base_ref": { "type": "string" },
+    "change_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "control_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "workspace_mutated": { "type": "boolean" },
     "start_change_fingerprint": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
@@ -59,9 +75,13 @@
       "required": ["certification", "counts"],
       "properties": {
         "certification": {
-          "enum": ["observations_only", "regression_free", "not_regression_free"]
+          "enum": [
+            "observations_only",
+            "regression_free",
+            "not_regression_free"
+          ]
         },
-        "counts": {"type": "object"}
+        "counts": { "type": "object" }
       },
       "additionalProperties": false
     },
@@ -71,12 +91,17 @@
         "type": "object",
         "required": ["name", "status", "exit_code", "duration_ms"],
         "properties": {
-          "name": {"type": "string", "minLength": 1},
+          "name": { "type": "string", "minLength": 1 },
           "status": {
-            "enum": ["pass", "quality_failure", "configuration_error", "infrastructure_error"]
+            "enum": [
+              "pass",
+              "quality_failure",
+              "configuration_error",
+              "infrastructure_error"
+            ]
           },
-          "exit_code": {"type": "integer", "enum": [0, 1, 2, 3]},
-          "duration_ms": {"type": "integer", "minimum": 0}
+          "exit_code": { "type": "integer", "enum": [0, 1, 2, 3] },
+          "duration_ms": { "type": "integer", "minimum": 0 }
         },
         "additionalProperties": false
       }

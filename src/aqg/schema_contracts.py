@@ -44,7 +44,7 @@ def _valid_datetime(value: Any) -> bool:
 def _json_equal(left: Any, right: Any) -> bool:
     if isinstance(left, bool) or isinstance(right, bool):
         return type(left) is type(right) and left == right
-    return left == right
+    return bool(left == right)
 
 
 def _validate_scalar(value: Any, schema: Mapping[str, Any], path: str) -> list[str]:
