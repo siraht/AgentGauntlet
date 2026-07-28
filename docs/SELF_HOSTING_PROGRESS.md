@@ -195,6 +195,17 @@ claim ratchet or strict certification.
   selection coverage. The mutation campaign first found two volatile triage
   timestamps and 43 assertion survivors; both failures remained visible until
   the production contract and tests were corrected.
+- Deep shadow run `20260728-160101-b654b690` retained complete detailed
+  evidence in a manifest that verifies with no added, deleted, modified, or
+  unsafe paths. It reported four measured-failure categories, one missing
+  assurance category, and one mutation infrastructure error.
+- The mutation infrastructure error exposed three JavaScript isolation
+  defects in sequence: a copied virtual-environment symlink, zero tests from
+  related-test selection, and a protected Vitest config path that did not
+  cross the sandbox. After those fixes, Stryker completed all 1,107 dashboard
+  mutants. All survived, producing an honest 0% measured score. The Python
+  half separately refuses the 3,209-line checkpoint before execution because
+  it exceeds the protected 250-line mutation scope.
 
 The real council result is now stale because later commits fixed one of its
 blockers. It remains valid historical evidence and must not be presented as a

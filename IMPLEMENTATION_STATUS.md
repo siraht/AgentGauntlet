@@ -45,7 +45,7 @@ The following items named in the referenced conversation were absent or incomple
 - Nonzero mutation execution or result-export commands are infrastructure failures;
   comment-only production diffs complete without creating a mutation sandbox.
 - PEP 561 typed-package metadata.
-- 453 Python test cases, one JavaScript dashboard contract test,
+- 454 Python test cases and two JavaScript dashboard contract tests,
   and internal, installed-tool, disposable-project, browser, and control-surface
   conformance fixtures.
 - A shared owner-status projection for CLI/dashboard Develop, Merge, and Release
@@ -148,3 +148,10 @@ The latest bounded council-evidence slice completed 187 selected mutants with al
 timestamp, then measured 144/187 killed, then 188/189 killed after contract
 hardening. Those non-passing results were retained as infrastructure and quality
 failures rather than being converted to passes.
+
+The current full-checkpoint dashboard campaign now completes instead of failing
+inside Stryker setup: all 1,107 JavaScript mutants survived, for a measured 0%
+score. That is explicit dashboard behavioral-test debt, not a pass. The same
+whole checkpoint refuses 3,209 changed Python production lines against the
+protected 250-line campaign limit. Bounded Python mutation remains green; the
+full mixed-language checkpoint remains non-certifying.
