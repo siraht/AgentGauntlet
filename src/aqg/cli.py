@@ -22,6 +22,7 @@ from .checks import lint_features, scan_test_integrity, write_test_integrity_bas
 from .conformance import run_conformance
 from .constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE, __version__
 from .dashboard import serve_dashboard
+from .debt_store import propose_debt_baseline
 from .detect import detect_project
 from .doctor import diagnose
 from .errors import AQGError, ConfigurationError, InfrastructureError, QualityFailure
@@ -436,6 +437,18 @@ def _add_evidence_parsers(sub: Any) -> None:
     )
     baseline_test.add_argument(
         "--confirm", action="store_true", help="required to write the baseline"
+    )
+    baseline_debt = baseline_sub.add_parser(
+        "debt", help="propose or review the complete retrospective debt inventory"
+    )
+    baseline_debt_sub = _nested_subparsers(baseline_debt, "debt_command")
+    baseline_propose = baseline_debt_sub.add_parser(
+        "propose", help="create a non-authorizing proposal from a manifested shadow run"
+    )
+    baseline_propose.add_argument(
+        "--run-id",
+        default="latest",
+        help="completed shadow run identifier; defaults to the newest shadow run",
     )
 
     approval = sub.add_parser(
@@ -1154,6 +1167,17 @@ def _dispatch_acceptance(args: argparse.Namespace, root: Path) -> int:
 
 
 def _dispatch_baseline(args: argparse.Namespace, root: Path) -> int:
+    if args.baseline_command == "debt":
+        if args.debt_command != "propose":
+            raise ConfigurationError("unknown debt baseline command")
+        proposal = propose_debt_baseline(root, args.run_id)
+        if args.json:
+            _json_dump(proposal)
+        else:
+            print(f"Debt baseline proposal: {proposal['path']}")
+            print(f"Fingerprint: {proposal['document_fingerprint']}")
+            print("State: proposed (cannot authorize ratchet enforcement)")
+        return PASS
     report = scan_test_integrity(root, load_project(root))
     if not args.confirm:
         _json_dump(report) if args.json else print(json.dumps(report, indent=2))
