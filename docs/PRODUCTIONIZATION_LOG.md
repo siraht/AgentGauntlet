@@ -104,6 +104,7 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 | D-067 | Require council evidence strength to match the requested review tier.                                          | The first high-tier council correctly observed that its bundle contained a newer fast run even though a deep run existed. Smoke now requires fast-or-stronger evidence, PR requires PR-or-stronger, and high requires deep-or-release; a newer weaker run cannot displace an adequate manifested run.                                                                                         | The profile lattice gains non-cumulative or project-specific tiers.                                                   |
 | D-068 | Bound oversized council input by splitting only the exact diff and repeating shared context.                   | Refusing every large review prevents useful independent analysis, while truncation or partial product context creates false confidence. Content-addressed byte ranges, exact reconstruction, every-role-per-chunk execution, conservative aggregation, and nested manifests preserve an inspectable advisory result without raising the protected cap.                                        | Provider context limits or semantic change clustering support a stronger bounded strategy.                            |
 | D-069 | Treat cross-chunk comprehension as an explicit residual unknown.                                               | The live PR council correctly observed that no individual ballot sees the entire patch. Plans and reports now distinguish candidate from bounded-chunk scope and define `complete` as receipt of all required chunk ballots, never whole-patch comprehension or authority.                                                                                                                    | A calibrated reconciliation or cross-chunk synthesis design proves materially better defect detection.                |
+| D-070 | Derive write-once debt-proposal identity from immutable source evidence, never wall-clock time.                | Python 3.11 crossed a one-second boundary between duplicate proposal calls and exposed that `created_at` made the same source measurement produce a different file identity. The source-run manifest now determines the proposal ID; timestamps remain provenance fields but cannot bypass overwrite protection.                                                                              | Proposal identity moves to a signed organization-wide content-addressing scheme.                                      |
 
 ## Progress
 
@@ -294,6 +295,13 @@ Recorded from public `main` at `431bdaa` on 2026-07-25:
 - Multi-model review earns trust by finding contradictions in its own controller. The live
   chunked council exposed an active-spec mismatch and a cross-chunk visibility limit; both
   became explicit requirements and reports, while the council remained advisory and red.
+- A clock must never define write-once identity. Runtime and interpreter differences can
+  cross timestamp boundaries without changing intent; immutable input evidence is the
+  correct collision domain, while creation time remains descriptive provenance.
+- A clean post-push local diff cannot reproduce the hosted changed-code profile. Use the
+  event's exact comparison base and inspect uploaded gate evidence: that caught the deep
+  40-line cap and a conservative test-deletion signal that the clean local profile could
+  not exercise.
 - Diff-based test review must distinguish deletion from relocation. Pairing identical
   expectations as a multiset removed a real dogfood false blocker without allowing one added
   assertion to cancel multiple deletions; exact contract assertions remain preferable to
