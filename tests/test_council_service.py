@@ -122,6 +122,13 @@ def test_fake_run_publishes_only_verified_immutable_evidence(
 
     assert code == PASS
     assert report["status"] == "advisory_clear"
+    assert report["scope"] == bundle["scope"]
+    assert len(report["members"]) == 3
+    assert {member["role"] for member in report["members"]} == {
+        "requirements_behavior",
+        "test_evidence",
+        "operability_rollback",
+    }
     assert service.verify_council_run(tmp_path, "latest")["ok"] is True
     run_dir = tmp_path / ".aqg" / "council" / "council-test"
     execution = json.loads(next((run_dir / "executions").glob("*.json")).read_text())

@@ -250,11 +250,20 @@ function renderOwnerOverview(item) {
       .join("")}</div>`,
   );
   const council = owner.council || { state: "not_configured" };
+  const councilEmpty = {
+    not_configured:
+      "<strong>No council evidence configured.</strong><p>Deterministic checks and required human authorities are unchanged. Agent consensus is not being assumed.</p>",
+    stale:
+      "<strong>Council evidence is stale.</strong><p>It reviewed a different candidate or policy surface and cannot describe this change.</p>",
+    invalid:
+      "<strong>Council evidence is invalid.</strong><p>The immutable record could not be verified. Treat the review as unavailable.</p>",
+  };
+  const councilDetail = councilEmpty[council.state];
   setSafeHTML(
     $("#council-summary"),
-    council.state === "not_configured"
-      ? `<div class="empty"><strong>No council evidence configured.</strong><p>Deterministic checks and required human authorities are unchanged. Agent consensus is not being assumed.</p></div>`
-      : `<div class="council-result"><strong>${esc(human(council.state))}</strong><span>${esc(council.members?.length || 0)} member result(s)</span><span>${esc(council.dissent?.length || 0)} dissent item(s)</span></div>`,
+    councilDetail
+      ? `<div class="empty">${councilDetail}</div>`
+      : `<div class="council-result"><strong>${esc(human(council.status || council.state))}</strong><span>${esc(council.members?.length || 0)} valid ballot(s) from ${esc(council.provider_groups?.length || 0)} independent provider group(s)</span><span>${council.dissent?.present ? "Provider dissent is present" : "No provider dissent recorded"}</span><small>Agent advisory — not an approval or release authority.</small></div>`,
   );
 }
 function renderOverview(item) {

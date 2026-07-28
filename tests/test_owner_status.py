@@ -195,3 +195,71 @@ def test_missing_council_is_explicit_and_next_action_is_deterministic(
     assert first["council"]["state"] == "not_configured"
     assert first["next_action"] == second["next_action"]
     assert first["next_action"]["code"] == "evidence_deep_missing"
+
+
+def test_verified_current_council_is_visible_but_does_not_invent_authority(
+    status_inputs: dict[str, list[dict[str, Any]]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AQG-OWNER-006: current agent advice is visible without becoming approval."""
+    _write_review(tmp_path)
+    latest = tmp_path / ".aqg" / "council" / "latest.json"
+    latest.parent.mkdir(parents=True)
+    latest.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        owner_status,
+        "report_council",
+        lambda root: {
+            "run_id": "council-current",
+            "scope": {
+                "revision": "revision",
+                "base_revision": "main",
+                "change_fingerprint": "change",
+                "control_fingerprint": "control",
+            },
+            "status": "advisory_clear",
+            "members": [{"role": "test_evidence"}],
+            "provider_groups": ["one", "two", "three"],
+            "dissent": {"present": False},
+        },
+    )
+
+    payload = owner_status.build_owner_status(tmp_path)
+
+    assert payload["council"]["state"] == "current"
+    assert payload["council"]["status"] == "advisory_clear"
+    assert payload["decisions"]["merge"]["state"] == "not_proven"
+    assert _codes(payload["decisions"]["merge"]) == {"authoritative_ci_not_reported"}
+
+
+def test_council_for_another_candidate_is_stale(
+    status_inputs: dict[str, list[dict[str, Any]]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AQG-OWNER-006: council advice is exact-candidate evidence."""
+    latest = tmp_path / ".aqg" / "council" / "latest.json"
+    latest.parent.mkdir(parents=True)
+    latest.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        owner_status,
+        "report_council",
+        lambda root: {
+            "scope": {
+                "revision": "old-revision",
+                "base_revision": "main",
+                "change_fingerprint": "old-change",
+                "control_fingerprint": "control",
+            },
+            "status": "advisory_clear",
+            "members": [],
+            "provider_groups": [],
+            "dissent": {"present": False},
+        },
+    )
+
+    payload = owner_status.build_owner_status(tmp_path)
+
+    assert payload["council"]["state"] == "stale"
+    assert len(payload["council"]["reasons"]) == 2

@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .approvals import validate_required_approvals
+from .council_service import report_council
+from .errors import ConfigurationError
 from .evidence_manifest import verify_run_manifest
 from .policy import load_policy, risk_summary
 from .project import load_project
@@ -274,7 +276,35 @@ def _owner_context(root: Path) -> dict[str, Any]:
         _profile_evidence(root, context["runs"], name, context["scope"]) for name in profiles
     ]
     context["retrospective"] = _retrospective(context["runs"], context["scope"])
+    context["council"] = _council_status(root, context["scope"])
     return context
+
+
+def _council_status(root: Path, scope: Mapping[str, str]) -> dict[str, Any]:
+    latest = root / ".aqg" / "council" / "latest.json"
+    if not latest.exists():
+        return {"state": "not_configured", "members": [], "quorum": None, "dissent": []}
+    try:
+        report = report_council(root)
+    except (ConfigurationError, OSError) as exc:
+        return {"state": "invalid", "members": [], "quorum": None, "dissent": [], "error": str(exc)}
+    council_scope = _as_mapping(report.get("scope"))
+    expected = {
+        "revision": scope["revision"],
+        "base_revision": scope["base_ref"],
+        "change_fingerprint": scope["change_fingerprint"],
+        "control_fingerprint": scope["control_fingerprint"],
+    }
+    mismatches = [name for name, value in expected.items() if council_scope.get(name) != value]
+    if mismatches:
+        return {
+            **report,
+            "state": "stale",
+            "reasons": [
+                f"council {name} does not match the current candidate" for name in mismatches
+            ],
+        }
+    return {**report, "state": "current"}
 
 
 def _approvals(root: Path, selected: str, risk_errors: list[str]) -> dict[str, Any]:
@@ -490,7 +520,7 @@ def _owner_payload(
         "review_freshness": context["review_freshness"],
         "evidence": context["evidence"],
         "retrospective": context["retrospective"],
-        "council": {"state": "not_configured", "members": [], "quorum": None, "dissent": []},
+        "council": context["council"],
         "authority": {"authoritative_ci": "not_reported", "branch_protection": "not_reported"},
         "decisions": decisions,
         "next_action": _next_action(decisions),

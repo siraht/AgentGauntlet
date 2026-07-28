@@ -461,8 +461,10 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
             "council evidence is invalid: " + "; ".join(verification["errors"])
         )
     plan = read_json(run_dir / "plan.json")
+    bundle = read_json(run_dir / "candidate-bundle.json")
     result = read_json(run_dir / "result.json")
-    execution_count = len(list((run_dir / "executions").glob("*.json")))
+    ballot_paths = sorted((run_dir / "ballots").glob("*.json"))
+    ballots = [read_json(path) for path in ballot_paths]
     return {
         "schema_version": SERVICE_SCHEMA_VERSION,
         "kind": "aqg-council-report",
@@ -470,6 +472,7 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "banner": ADVISORY_BANNER,
         "run_id": selected,
         "tier": plan["tier"],
+        "scope": bundle["scope"],
         "status": result["status"],
         "summary": result["summary"],
         "complete": result["complete"],
@@ -478,6 +481,17 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "blockers": result["blockers"],
         "dissent": result["dissent"],
         "incomplete_reasons": result["incomplete_reasons"],
-        "executions": execution_count,
+        "members": [
+            {
+                "model_id": ballot["reviewer"]["model_id"],
+                "provider_group": ballot["reviewer"]["provider_group"],
+                "role": ballot["reviewer"]["role"],
+                "verdict": ballot["verdict"],
+                "confidence": ballot["confidence"],
+                "findings": len(ballot["findings"]),
+            }
+            for ballot in ballots
+        ],
+        "executions": len(list((run_dir / "executions").glob("*.json"))),
         "verification": verification,
     }
