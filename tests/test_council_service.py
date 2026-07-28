@@ -92,8 +92,9 @@ def test_plan_has_no_provider_calls_and_bundle_cap_fails_closed(
     assert plan["minimum_provider_groups"] == 3
     with pytest.raises(ConfigurationError, match="candidate bundle is"):
         service.plan_council(tmp_path, "pr", max_bundle_bytes=10, data_classification="public")
-    with pytest.raises(ConfigurationError, match="bundle size cap must be positive"):
+    with pytest.raises(ConfigurationError) as error:
         service.plan_council(tmp_path, "pr", max_bundle_bytes=0, data_classification="public")
+    assert str(error.value) == "council bundle size cap must be positive"
 
 
 def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
@@ -178,20 +179,24 @@ def test_prepare_plan_preserves_every_evidence_binding(
     bundle_inputs = Mock(return_value=inputs)
     build_bundle = Mock(return_value=bundle)
     plan_payload = Mock(return_value={"kind": "plan"})
-    monkeypatch.setattr(service, "_base_ref", lambda root: "origin/main")
+    base_ref = Mock(return_value="origin/main")
+    build_scope = Mock(return_value=scope)
+    monkeypatch.setattr(service, "_base_ref", base_ref)
     monkeypatch.setattr(service, "_provider_routing", lambda classification: routing)
-    monkeypatch.setattr(service, "_scope", lambda root, base: scope)
+    monkeypatch.setattr(service, "_scope", build_scope)
     monkeypatch.setattr(service, "_matching_quality_run", matching)
     monkeypatch.setattr(service, "_bundle_inputs", bundle_inputs)
     monkeypatch.setattr(service, "build_candidate_bundle", build_bundle)
     monkeypatch.setattr(service, "sha256_file", lambda path: "5" * 64)
-    monkeypatch.setattr(service, "canonical_json", lambda value: b"12345")
+    monkeypatch.setattr(service, "canonical_json", lambda value: b"1")
     monkeypatch.setattr(service, "_plan_payload", plan_payload)
 
-    plan, selected_bundle = service._prepare_plan(tmp_path, "high", 5, "public")
+    plan, selected_bundle = service._prepare_plan(tmp_path, "high", 1, "public")
 
     assert plan == {"kind": "plan"}
     assert selected_bundle == bundle
+    base_ref.assert_called_once_with(tmp_path)
+    build_scope.assert_called_once_with(tmp_path, "origin/main")
     matching.assert_called_once_with(tmp_path, scope, "deep")
     bundle_inputs.assert_called_once_with(tmp_path, "origin/main", run_dir, summary)
     build_bundle.assert_called_once_with(
@@ -199,7 +204,7 @@ def test_prepare_plan_preserves_every_evidence_binding(
         evidence_manifest_sha256="sha256:" + "5" * 64,
         inputs=inputs,
     )
-    plan_payload.assert_called_once_with("high", run_dir, bundle, 5, 5, "public", routing)
+    plan_payload.assert_called_once_with("high", run_dir, bundle, 1, 1, "public", routing)
 
 
 def test_fake_run_publishes_only_verified_immutable_evidence(
