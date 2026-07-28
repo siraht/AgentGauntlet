@@ -44,12 +44,12 @@ from aqg.adapters import (
     _mutmut_results_command,
     _nontrivial_changed_lines,
     _parse_mutmut_results,
+    _prettier_files,
     _python_crap,
     _python_mutation_function_selection,
     _python_mutation_platform_supported,
     _python_structure_evidence,
     _python_test_env,
-    _prettier_files,
     run_adapter,
 )
 from aqg.approvals import template, validate_approval, validate_required_approvals
