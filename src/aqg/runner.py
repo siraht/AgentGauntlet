@@ -132,6 +132,7 @@ def run_gate(
     profile_name: str | None = None,
     *,
     owned_run: bool = False,
+    provenance: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     gate = policy.get("gates", {}).get(gate_name)
     if not isinstance(gate, dict):
@@ -217,7 +218,7 @@ def run_gate(
         "started_at": utc_now(),
         "duration_ms": duration,
         "timed_out": timed_out,
-        **_provenance(root),
+        **(provenance or _provenance(root)),
         "stdout": stdout,
         "stderr": stderr,
     }
@@ -268,7 +269,13 @@ def run_profile(
         if not quiet:
             print(f"  → {gate_name}", flush=True)
         code, evidence = run_gate(
-            root, policy, str(gate_name), run_id, profile_name, owned_run=True
+            root,
+            policy,
+            str(gate_name),
+            run_id,
+            profile_name,
+            owned_run=True,
+            provenance=start_provenance,
         )
         results.append(evidence)
         if code > final:

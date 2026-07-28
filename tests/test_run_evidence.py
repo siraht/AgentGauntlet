@@ -214,7 +214,7 @@ def test_profile_snapshots_details_then_manifests_before_latest(tmp_path: Path) 
     }
     with (
         mock.patch.dict(os.environ, {"AQG_RUN_ID": "profile-run"}, clear=False),
-        mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner._provenance", return_value=provenance) as provenance_call,
         mock.patch("aqg.runner.load_project", return_value=_project()),
     ):
         code, summary = run_profile(tmp_path, _profile_policy(command), "fast", quiet=True)
@@ -223,6 +223,7 @@ def test_profile_snapshots_details_then_manifests_before_latest(tmp_path: Path) 
     assert (run_dir / "gates" / "probe.details.json").is_file()
     assert verify_run_manifest(run_dir)["ok"] is True
     assert json.loads((tmp_path / ".aqg" / "latest.json").read_text())["run_id"] == "profile-run"
+    assert provenance_call.call_count == 2
 
 
 def test_latest_is_not_updated_when_manifest_finalization_fails(tmp_path: Path) -> None:
