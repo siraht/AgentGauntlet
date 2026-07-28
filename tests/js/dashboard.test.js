@@ -37,7 +37,13 @@ test("the owner view exposes honest decisions and accessible navigation", () => 
   expect(html).toContain('role="tablist"');
   expect(html).toContain('id="owner-decision-deck"');
   expect(html).toContain("Agent advisory — not an approval");
-  expect(script).toContain('["develop", "merge", "release"]');
+  const decisionPositions = ["develop", "merge", "release"].map((decision) =>
+    script.indexOf(`"${decision}"`),
+  );
+  expect(decisionPositions.every((position) => position >= 0)).toBe(true);
+  expect(decisionPositions).toEqual(
+    [...decisionPositions].sort((a, b) => a - b),
+  );
   expect(script).toContain("No council evidence configured.");
   expect(script).toContain(
     "Agent advisory — not an approval or release authority.",
