@@ -12,7 +12,10 @@ const mutate = sourceRoots.flatMap((root) => [
 
 export default {
   testRunner: runner,
-  vitest: { related: false },
+  vitest: {
+    related: false,
+    configFile: "quality/tools/js/config/vitest.config.mjs",
+  },
   jest: { enableFindRelatedTests: false },
   mutate,
   reporters: ["clear-text", "progress", "json", "html"],

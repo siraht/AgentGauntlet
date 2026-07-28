@@ -1262,7 +1262,11 @@ class SetupContractTests(RepoCase):
                 all(json.dumps(pattern) in text for pattern in required),
                 config,
             )
-            self.assertIn("vitest: { related: false }", text)
+            self.assertIn("related: false", text)
+            self.assertIn(
+                'configFile: "quality/tools/js/config/vitest.config.mjs"',
+                text,
+            )
             self.assertIn("jest: { enableFindRelatedTests: false }", text)
 
     def test_project_test_commands_clear_the_outer_comparison_base(self) -> None:
