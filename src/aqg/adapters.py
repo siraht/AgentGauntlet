@@ -437,7 +437,14 @@ def _expand_project_command(root: Path, command: list[str]) -> list[str]:
 
 def _project_test_env(**values: str) -> dict[str, str]:
     """Keep outer AQG control variables out of project test processes."""
-    return {"AQG_DIFF_BASE": "", **values}
+    return {
+        "AQG_DIFF_BASE": "",
+        "AQG_RUN_ID": "",
+        "AQG_GATE": "",
+        "AQG_PROFILE": "",
+        "AQG_ROOT": "",
+        **values,
+    }
 
 
 def _python_test_env(root: Path, *, timezone: bool = False) -> dict[str, str]:

@@ -260,7 +260,7 @@ def _baseline_repo(tmp_path: Path) -> Path:
     )
     (root / "tests").mkdir()
     (root / "tests" / "test_app.py").write_text(
-        "# Feature-Spec: Product.Calculation\n"
+        "# Feature-Spec: Product.Calculation PRODUCT-CALC-001\n"
         "def test_calculate() -> None:\n"
         "    assert calculate(1) == 2\n",
         encoding="utf-8",
@@ -268,7 +268,8 @@ def _baseline_repo(tmp_path: Path) -> Path:
     initialize_project(root, install=False, ci=False)
     (root / "feature-spec").mkdir(exist_ok=True)
     (root / "feature-spec" / "Product.Calculation.md").write_text(
-        "# Product.Calculation\n\n## Requirements\n\n- The product MUST calculate a result.\n",
+        "# Product.Calculation\n\n## Requirements\n\n"
+        "- `PRODUCT-CALC-001` The product MUST calculate a result.\n",
         encoding="utf-8",
     )
     (root / "package.json").write_text(

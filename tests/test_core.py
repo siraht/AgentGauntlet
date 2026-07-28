@@ -1152,6 +1152,9 @@ class SetupContractTests(RepoCase):
 
         self.assertEqual(python_environment["AQG_DIFF_BASE"], "")
         self.assertEqual(javascript_environment["AQG_DIFF_BASE"], "")
+        for variable in ("AQG_RUN_ID", "AQG_GATE", "AQG_PROFILE", "AQG_ROOT"):
+            self.assertEqual(python_environment[variable], "")
+            self.assertEqual(javascript_environment[variable], "")
 
     def test_configured_nested_test_root_overrides_filename_heuristics(self) -> None:
         project = {

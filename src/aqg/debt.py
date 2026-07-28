@@ -217,8 +217,8 @@ def _worsened(current: Mapping[str, Any], prior: Mapping[str, Any]) -> bool:
     if current_value is None or prior_value is None:
         return False
     if current["direction"] == "higher_is_worse":
-        return current_value > prior_value
-    return current_value < prior_value
+        return float(current_value) > float(prior_value)
+    return float(current_value) < float(prior_value)
 
 
 def _same_identity(current: Mapping[str, Any], prior: Mapping[str, Any]) -> bool:
