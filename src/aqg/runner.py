@@ -20,6 +20,17 @@ from .constants import (
     STATUS_NAMES,
 )
 from .errors import ConfigurationError
+from .evidence import (
+    create_exclusive_run_dir,
+    require_writable_run_dir,
+    snapshot_gate_details,
+)
+from .evidence_manifest import (
+    validate_run_id,
+    write_evidence_json,
+    write_evidence_text,
+    write_run_manifest,
+)
 from .policy import safe_remove, validate_policy
 from .project import load_project
 from .util import (
@@ -62,14 +73,14 @@ def _provenance(root: Path) -> dict[str, str]:
     }
 
 
-def _run_dir(root: Path, run_id: str) -> Path:
-    path = root / ".aqg" / "runs" / run_id
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def run_gate(
-    root: Path, policy: dict[str, Any], gate_name: str, run_id: str, profile_name: str | None = None
+    root: Path,
+    policy: dict[str, Any],
+    gate_name: str,
+    run_id: str,
+    profile_name: str | None = None,
+    *,
+    owned_run: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     gate = policy.get("gates", {}).get(gate_name)
     if not isinstance(gate, dict):
@@ -77,10 +88,18 @@ def run_gate(
     command = gate.get("command")
     if not isinstance(command, str) or not command.strip():
         raise ConfigurationError(f"gate {gate_name!r} has no command")
-    for path in gate.get("clean_paths", []):
-        safe_remove(root, str(path))
+    run_id = validate_run_id(run_id)
+    if owned_run:
+        run_dir = require_writable_run_dir(root, run_id)
+    else:
+        run_dir = create_exclusive_run_dir(root, run_id)
+
+    clean_paths = [str(path) for path in gate.get("clean_paths", [])]
+    for path in clean_paths:
+        safe_remove(root, path)
     timeout = int(gate.get("timeout_seconds", 300))
     started = time.monotonic()
+    started_at = time.time()
     env = os.environ.copy()
     env.update({"AQG_RUN_ID": run_id, "AQG_GATE": gate_name, "AQG_ROOT": str(root)})
     if profile_name:
@@ -121,6 +140,20 @@ def run_gate(
         stderr = (stderr + f"\nGate timed out after {timeout}s").strip()
         timed_out = True
     duration = int((time.monotonic() - started) * 1000)
+
+    details_path, detail_error = snapshot_gate_details(
+        root,
+        run_dir=run_dir,
+        gate_name=gate_name,
+        command=command,
+        clean_paths=clean_paths,
+        started_at=started_at,
+        expected_exit=raw_code,
+    )
+    if detail_error:
+        code = INFRASTRUCTURE_ERROR
+        stderr = (stderr + "\n" + detail_error).strip() if stderr else detail_error
+
     evidence = {
         "schema_version": "2",
         "run_id": run_id,
@@ -137,12 +170,18 @@ def run_gate(
         "stdout": stdout,
         "stderr": stderr,
     }
-    gate_dir = _run_dir(root, run_id) / "gates"
-    write_json(gate_dir / f"{gate_name}.json", evidence)
-    (gate_dir / f"{gate_name}.log").write_text(
+    if details_path is not None:
+        evidence["details_path"] = str(details_path.relative_to(run_dir).as_posix())
+    if detail_error:
+        evidence["detail_error"] = detail_error
+    gate_dir = run_dir / "gates"
+    write_evidence_json(gate_dir / f"{gate_name}.json", evidence)
+    write_evidence_text(
+        gate_dir / f"{gate_name}.log",
         f"$ {command}\n\n--- stdout ---\n{stdout}\n\n--- stderr ---\n{stderr}\n",
-        encoding="utf-8",
     )
+    if not owned_run:
+        write_run_manifest(run_dir, run_id)
     return code, evidence
 
 
@@ -160,11 +199,12 @@ def run_profile(
     profile = policy.get("profiles", {}).get(profile_name)
     if not isinstance(profile, dict):
         raise ConfigurationError(f"unknown execution profile {profile_name!r}")
-    run_id = (
+    raw_run_id = (
         os.environ.get("AQG_RUN_ID")
         or f"{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
     )
-    run_dir = _run_dir(root, run_id)
+    run_id = validate_run_id(raw_run_id)
+    run_dir = create_exclusive_run_dir(root, run_id)
     started = time.monotonic()
     start_provenance = _provenance(root)
     results: list[dict[str, Any]] = []
@@ -175,7 +215,9 @@ def run_profile(
         gate_started = time.monotonic()
         if not quiet:
             print(f"  → {gate_name}", flush=True)
-        code, evidence = run_gate(root, policy, str(gate_name), run_id, profile_name)
+        code, evidence = run_gate(
+            root, policy, str(gate_name), run_id, profile_name, owned_run=True
+        )
         results.append(evidence)
         if code > final:
             final = code
@@ -210,7 +252,7 @@ def run_profile(
             "before_change_fingerprint": start_provenance["change_fingerprint"],
         }
         results.append(integrity)
-        write_json(run_dir / "gates" / "workspace_integrity.json", integrity)
+        write_evidence_json(run_dir / "gates" / "workspace_integrity.json", integrity)
         final = max(final, QUALITY_FAILURE)
         if not quiet:
             print(
@@ -238,7 +280,8 @@ def run_profile(
             for item in results
         ],
     }
-    write_json(run_dir / "summary.json", summary)
+    write_evidence_json(run_dir / "summary.json", summary)
+    write_run_manifest(run_dir, run_id)
     write_json(root / ".aqg" / "latest.json", {"run_id": run_id, "path": str(run_dir), **summary})
     if not quiet:
         print(

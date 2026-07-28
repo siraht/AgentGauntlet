@@ -62,6 +62,16 @@ def _exclusive_text(path: Path, content: str) -> None:
         raise InfrastructureError(f"cannot write evidence file {path}: {exc}") from exc
 
 
+def write_evidence_text(path: Path, content: str) -> None:
+    """Write one evidence file without permitting replacement."""
+    _exclusive_text(path, content)
+
+
+def write_evidence_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write deterministic JSON evidence without permitting replacement."""
+    _exclusive_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
 def _safe_relative_file(run_dir: Path, path: Path) -> str:
     relative = path.relative_to(run_dir).as_posix()
     if relative == MANIFEST_NAME or not _SAFE_REL_RE.fullmatch(relative) or path.is_symlink():
