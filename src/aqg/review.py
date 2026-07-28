@@ -267,8 +267,8 @@ def _match_is_inside_python_comment(root: Path, path: str, line_no: int, column:
         return False
 
 
-def _risk_factor_path_hints(changed: list[str]) -> dict[str, list[str]]:
-    rules = {
+def _risk_factor_rules() -> dict[str, re.Pattern[str]]:
+    return {
         "authentication": re.compile(
             r"(?i)(auth|login|logout|session|password|credential|oauth|sso|jwt)"
         ),
@@ -277,7 +277,7 @@ def _risk_factor_path_hints(changed: list[str]) -> dict[str, list[str]]:
             r"(?i)(privacy|pii|personal[_-]?data|tracking|analytics|consent|cookie)"
         ),
         "money": re.compile(r"(?i)(payment|billing|invoice|price|checkout|refund|credit|currency)"),
-        "migration": re.compile(r"(?i)(migration|alembic|schema|ddl|prisma|knex)"),
+        "migration": re.compile(r"(?i)(migration|alembic|ddl|prisma|knex)"),
         "external_contract": re.compile(r"(?i)(openapi|swagger|graphql|proto|api|contract|schema)"),
         "concurrency": re.compile(
             r"(?i)(lock|mutex|semaphore|queue|worker|thread|async|concurrent|race)"
@@ -287,18 +287,31 @@ def _risk_factor_path_hints(changed: list[str]) -> dict[str, list[str]]:
         ),
         "data_loss": re.compile(r"(?i)(delete|purge|drop|truncate|destroy|erase|overwrite)"),
     }
-    product_surface = [
+
+
+def _risk_product_surface(changed: list[str]) -> list[str]:
+    return [
         path
         for path in changed
         if _is_production_path(path)
         or Path(path).suffix.lower() in {".sql", ".graphql", ".proto"}
         or path.startswith(("api/", "migrations/", "schemas/"))
     ]
-    output = {
+
+
+def _matched_risk_paths(
+    rules: dict[str, re.Pattern[str]], product_surface: list[str]
+) -> dict[str, list[str]]:
+    return {
         factor: [path for path in product_surface if pattern.search(path)]
         for factor, pattern in rules.items()
         if factor != "supply_chain"
     }
+
+
+def _risk_factor_path_hints(changed: list[str]) -> dict[str, list[str]]:
+    rules = _risk_factor_rules()
+    output = _matched_risk_paths(rules, _risk_product_surface(changed))
     output["supply_chain"] = [path for path in changed if rules["supply_chain"].search(path)]
     return output
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 import math
 import unittest
+from typing import Any, cast
 
 from aqg.debt import (
     DebtError,
@@ -94,15 +95,15 @@ class NormalizeInventoryTests(unittest.TestCase):
 
     def test_rejects_malformed_items_and_inventory(self) -> None:
         with self.assertRaises(DebtError):
-            normalize_inventory("not-a-list")  # type: ignore[arg-type]
+            normalize_inventory(cast(Any, "not-a-list"))
         with self.assertRaises(DebtError):
             normalize_inventory([{"fingerprint": "x"}])
         with self.assertRaises(DebtError):
             normalize_inventory([_item("x", severity="apocalyptic")])
         with self.assertRaises(DebtError):
-            normalize_inventory([_item("x", value="high")])  # type: ignore[arg-type]
+            normalize_inventory([_item("x", value=cast(Any, "high"))])
         with self.assertRaises(DebtError):
-            normalize_inventory([_item("x", value=True)])  # type: ignore[arg-type]
+            normalize_inventory([_item("x", value=cast(Any, True))])
         with self.assertRaises(DebtError):
             normalize_inventory([_item("x", value=math.inf)])
         with self.assertRaises(DebtError):
@@ -261,7 +262,7 @@ class CompareTests(unittest.TestCase):
         with self.assertRaises(DebtError):
             compare([_item("a")], invalid)
         with self.assertRaises(DebtError):
-            compare("not-list", _baseline([_item("a")]))  # type: ignore[arg-type]
+            compare(cast(Any, "not-list"), _baseline([_item("a")]))
 
 
 if __name__ == "__main__":

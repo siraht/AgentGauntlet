@@ -654,6 +654,29 @@ def test_risk_factor_mismatch_for_public_api_paths(tmp_path: Path) -> None:
     assert "required_execution_profiles" in packet["risk"]
 
 
+def test_schema_contract_module_is_not_mistaken_for_database_migration(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    (root / "src" / "schema_contracts.py").write_text(
+        "def validate_contract(value: object) -> bool:\n    return value is not None\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_schema_contracts.py").write_text(
+        "# Feature-Spec: Product.Calculation PRODUCT-CALC-001\n"
+        "def test_schema_contract() -> None:\n"
+        "    assert validate_contract({'ok': True}) is True\n",
+        encoding="utf-8",
+    )
+    risk_path = root / "quality" / "change-risk.json"
+    risk = json.loads(risk_path.read_text(encoding="utf-8"))
+    risk["risk_factors"]["external_contract"] = True
+    risk_path.write_text(json.dumps(risk, indent=2) + "\n", encoding="utf-8")
+
+    by_code = _by_code(_packet(root))
+
+    assert "risk-factor-migration" not in by_code
+    assert "risk-factor-external_contract" not in by_code
+
+
 def test_invalid_risk_card_is_blocker(tmp_path: Path) -> None:
     root = _baseline_repo(tmp_path)
     (root / "quality" / "change-risk.json").write_text("{not-json", encoding="utf-8")
