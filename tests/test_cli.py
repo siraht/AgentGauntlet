@@ -322,6 +322,23 @@ class CliControlSurfaceTests(unittest.TestCase):
             )
         self.assertIn("qg help onboarding refresh", stderr.getvalue())
 
+    def test_council_doctor_is_routed_as_advisory_json(self) -> None:
+        report = {
+            "schema_version": 1,
+            "kind": "aqg-council-doctor",
+            "advisory_only": True,
+            "banner": "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY",
+            "status": "ready",
+            "missing_tools": [],
+            "tools": {},
+            "models": {"smoke": [], "pr": [], "high": []},
+        }
+        with patch("aqg.cli.council_doctor", return_value=report):
+            code, payload, stderr = self._json_command("council", "doctor")
+        self.assertEqual(code, PASS, stderr)
+        self.assertEqual(payload, report)
+        self.assertTrue(payload["advisory_only"])
+
 
 if __name__ == "__main__":
     unittest.main()

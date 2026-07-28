@@ -21,6 +21,15 @@ from .authoring import create_feature_spec, create_gherkin_feature, create_qa_pr
 from .checks import lint_features, scan_test_integrity, write_test_integrity_baseline
 from .conformance import run_conformance
 from .constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE, __version__
+from .council_service import (
+    DEFAULT_BUNDLE_BYTES,
+    DEFAULT_TIMEOUT_SECONDS,
+    council_doctor,
+    plan_council,
+    report_council,
+    run_council,
+    verify_council_run,
+)
 from .dashboard import serve_dashboard
 from .debt_store import propose_debt_baseline, review_debt_proposal
 from .detect import detect_project
@@ -426,6 +435,21 @@ def _add_review_parsers(sub: Any) -> None:
     review.add_argument("--no-evidence", action="store_true")
     review.add_argument("--sarif", action="store_true")
     review.add_argument("--github-summary", nargs="?", const="")
+
+    council = sub.add_parser("council", help="run advisory multi-model technical review")
+    council_sub = _nested_subparsers(council, "council_command")
+    council_sub.add_parser("doctor", help="show council tools, versions, and exact model IDs")
+    plan = council_sub.add_parser("plan", help="build an evidence-bound plan without providers")
+    plan.add_argument("--tier", choices=("smoke", "pr", "high"), default="high")
+    plan.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
+    run = council_sub.add_parser("run", help="run isolated advisory reviewers sequentially")
+    run.add_argument("--tier", choices=("smoke", "pr", "high"), default="high")
+    run.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
+    run.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
+    verify = council_sub.add_parser("verify", help="verify immutable council evidence")
+    verify.add_argument("--run-id", default="latest")
+    report = council_sub.add_parser("report", help="report verified advisory council evidence")
+    report.add_argument("--run-id", default="latest")
 
     changed = sub.add_parser("changed-files", help="print files in the current review scope")
     changed.add_argument(
@@ -1043,6 +1067,52 @@ def _dispatch_review(args: argparse.Namespace, root: Path) -> int:
     return review_exit_code(packet)
 
 
+def _print_council(payload: dict[str, Any]) -> None:
+    print(payload["banner"])
+    if payload["kind"] == "aqg-council-doctor":
+        print(f"Council tools: {payload['status']}")
+        for name, item in payload["tools"].items():
+            detail = item["version"] or item["error"]
+            print(f"  {name}: {detail}")
+        return
+    if payload["kind"] == "aqg-council-plan":
+        print(
+            f"Plan: {payload['tier']} · {len(payload['members'])} reviewer(s) · "
+            f"{payload['bundle_bytes']}/{payload['max_bundle_bytes']} bytes"
+        )
+        return
+    if payload["kind"] == "aqg-council-verification":
+        print(f"Council evidence {payload['run_id']}: {'verified' if payload['ok'] else 'invalid'}")
+        for error in payload["errors"]:
+            print(f"  {error}")
+        return
+    print(f"Council {payload['run_id']}: {payload['status']} · {payload['summary']}")
+
+
+def _dispatch_council(args: argparse.Namespace, root: Path) -> int:
+    if args.council_command == "doctor":
+        payload = council_doctor()
+        code = PASS if not payload["missing_tools"] else CONFIGURATION_ERROR
+    elif args.council_command == "plan":
+        payload = plan_council(root, args.tier, args.max_bundle_bytes)
+        code = PASS
+    elif args.council_command == "run":
+        code, payload = run_council(
+            root,
+            args.tier,
+            timeout_seconds=args.timeout_seconds,
+            max_bundle_bytes=args.max_bundle_bytes,
+        )
+    elif args.council_command == "verify":
+        payload = verify_council_run(root, args.run_id)
+        code = PASS if payload["ok"] else CONFIGURATION_ERROR
+    else:
+        payload = report_council(root, args.run_id)
+        code = PASS
+    _json_dump(payload) if args.json else _print_council(payload)
+    return code
+
+
 def _dispatch_changed_files(args: argparse.Namespace, root: Path) -> int:
     base = _comparison_base(root, args.base)
     files = git_changed_files(root, base)
@@ -1453,6 +1523,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "check": _dispatch_check,
     "check-risk": _dispatch_check_risk,
     "conformance": _dispatch_conformance,
+    "council": _dispatch_council,
     "dashboard": _dispatch_dashboard,
     "detect": _dispatch_detect,
     "doctor": _dispatch_doctor,
