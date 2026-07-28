@@ -191,3 +191,10 @@ def validate_document_path(root: Path, name: str, document: Path) -> list[str]:
     except (OSError, json.JSONDecodeError) as exc:
         raise ConfigurationError(f"cannot read JSON contract document {document}: {exc}") from exc
     return validate_named_schema(root, name, value)
+
+
+def require_document_contract(root: Path, name: str, document: Path) -> None:
+    """Fail closed when a persisted document violates its named contract."""
+    errors = validate_document_path(root, name, document)
+    if errors:
+        raise ConfigurationError(f"{name} contract violations: {'; '.join(errors)}")

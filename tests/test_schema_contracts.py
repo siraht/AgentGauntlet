@@ -15,6 +15,7 @@ from aqg.evidence_manifest import write_run_manifest
 from aqg.runner import run_profile
 from aqg.schema_contracts import (
     load_named_schema,
+    require_document_contract,
     validate_document_path,
     validate_instance,
     validate_named_schema,
@@ -200,6 +201,23 @@ def test_document_path_validation_is_reusable_by_ci_and_integrations(tmp_path: P
     malformed.write_text("{", encoding="utf-8")
     with pytest.raises(ConfigurationError, match="cannot read JSON contract"):
         validate_document_path(root, "change-risk", malformed)
+
+
+def test_required_document_contract_fails_closed_with_exact_findings(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    require_document_contract(root, "change-risk", root / "quality" / "change-risk.json")
+    invalid = tmp_path / "risk.json"
+    invalid.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(ConfigurationError) as caught:
+        require_document_contract(root, "change-risk", invalid)
+    assert str(caught.value).startswith(
+        "change-risk contract violations: "
+        "$: missing required property 'schema_version'; "
+        "$: missing required property 'summary'; "
+        "$: missing required property 'risk_profile'"
+    )
 
 
 def test_manifest_schema_rejects_post_contract_additions(tmp_path: Path) -> None:
