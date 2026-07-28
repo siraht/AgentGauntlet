@@ -183,9 +183,8 @@ def deleted_file_line_counts(
     return counts, errors
 
 
-def nontrivial_line_numbers(source: str, line_numbers: set[int]) -> set[int]:
-    """Keep lines that the function-selector mutation engine can mutate."""
-    lines = source.splitlines()
+def _import_line_numbers(source: str) -> set[int]:
+    """Return import spans, or no exclusions when syntax is unusable."""
     import_lines: set[int] = set()
     try:
         tree = ast.parse(source)
@@ -197,6 +196,13 @@ def nontrivial_line_numbers(source: str, line_numbers: set[int]) -> set[int]:
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 import_lines.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return import_lines
+
+
+def nontrivial_line_numbers(source: str, line_numbers: set[int]) -> set[int]:
+    """Keep lines that the function-selector mutation engine can mutate."""
+    lines = source.splitlines()
+    import_lines = _import_line_numbers(source)
     return {
         line_no
         for line_no in line_numbers
