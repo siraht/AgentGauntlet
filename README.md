@@ -159,7 +159,7 @@ immutable and always advisory. See
 
 ```sh
 python3 scripts/build_release.py
-sha256sum -c dist/SHA256SUMS
+(cd dist && sha256sum -c SHA256SUMS)
 python3 dist/aqg.pyz --version
 ```
 
