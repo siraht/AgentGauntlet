@@ -55,7 +55,7 @@ python3 quality/qg.py risk-card
 python3 quality/qg.py check fast
 python3 quality/qg.py check-risk --keep-going
 python3 quality/qg.py review --write --sarif
-python3 quality/qg.py council plan --tier pr
+python3 quality/qg.py council plan --tier pr --data-classification public
 python3 quality/qg.py tui
 python3 quality/qg.py dashboard --open
 ```

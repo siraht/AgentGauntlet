@@ -1,6 +1,6 @@
 # Implementation status
 
-Status date: 2026-07-27
+Status date: 2026-07-28
 Version: 2.0.0
 Recovery source SHA-256: `8b472df584dee17bc3b72e22bff2d764983cfe47d4617ee4a4dfd8cbc37a757e`
 
@@ -45,9 +45,17 @@ The following items named in the referenced conversation were absent or incomple
 - Nonzero mutation execution or result-export commands are infrastructure failures;
   comment-only production diffs complete without creating a mutation sandbox.
 - PEP 561 typed-package metadata.
-- 293 Python test cases plus 89 recorded subtests, one JavaScript dashboard contract test,
+- 453 Python test cases, one JavaScript dashboard contract test,
   and internal, installed-tool, disposable-project, browser, and control-surface
   conformance fixtures.
+- A shared owner-status projection for CLI/dashboard Develop, Merge, and Release
+  decisions, including evidence freshness and inherited-debt/regression separation.
+- A provenance-bound advisory review council for Grok 4.5, Synthetic GLM-5.2,
+  Kimi-K3, GLM-4.7-Flash, and OpenCode DeepSeek V4 Flash, with explicit data
+  classification, fail-closed routing, strict cited ballots, quorum, dissent, and
+  immutable manifests.
+- A strict connected TypeScript/web pilot covering Vite, Vitest, fast-check,
+  Playwright/axe wiring, Gherkin acceptance, coverage, and structure.
 
 ## Locally validated
 
@@ -133,3 +141,10 @@ and incremental extraction before this repository can produce a debt-free ratche
 deep run and switch to full strict enforcement. This limitation affects confidence in
 AQG’s implementation, not the availability of the CLI, installer, evidence model,
 dashboard, or supported adapters.
+
+The latest bounded council-evidence slice completed 187 selected mutants with all
+187 killed, zero survivors, zero incomplete work, 100% selection coverage, and a
+100% mutation score. The same campaign first exposed a nondeterministic clean-suite
+timestamp, then measured 144/187 killed, then 188/189 killed after contract
+hardening. Those non-passing results were retained as infrastructure and quality
+failures rather than being converted to passes.

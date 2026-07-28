@@ -166,13 +166,50 @@ The builder has not performed these human actions:
 Until those actions occur, self-hosting remains shadow-only and no report may
 claim ratchet or strict certification.
 
+## 2026-07-28 — accessible control surface and advisory council checkpoint
+
+- One shared owner-status model now drives CLI and dashboard Develop, Merge,
+  and Release decisions. It reports exact-candidate evidence freshness,
+  inherited debt, current regressions, approvals, and council advice without
+  manufacturing hosted authority.
+- The strict connected TypeScript/web fixture passed test integrity, unit and
+  property tests, structure, changed coverage, and acceptance in 5.121
+  seconds.
+- A real PR-tier council run
+  `council-20260728T150659Z-f5dc6c02` used Grok 4.5, Synthetic GLM-5.2, and
+  OpenCode DeepSeek V4 Flash. Three valid ballots from three provider groups
+  produced two blocker findings and preserved dissent in a verifying
+  immutable manifest.
+- That council correctly found missing explicit data classification/provider
+  routing. The workflow now requires a classification and permits external
+  calls only for explicitly `public` bundles. Restricted classifications fail
+  before a provider call until an approved enterprise or local route exists.
+- The latest fast checkpoint before final documentation passed its command
+  contract in shadow mode in 80.5 seconds. It reported ten unreviewed
+  structure-debt items and zero blocking regressions, missing evidence,
+  configuration errors, infrastructure errors, or unknown-intent items.
+- The current inner profile passes format, lint, and typing in approximately
+  21 seconds. It is the editing loop; fast remains a coherent checkpoint.
+- The bounded council-evidence slice passed deep structure, reached 100%
+  changed-line coverage, and completed 187/187 killed mutants with 100%
+  selection coverage. The mutation campaign first found two volatile triage
+  timestamps and 43 assertion survivors; both failures remained visible until
+  the production contract and tests were corrected.
+
+The real council result is now stale because later commits fixed one of its
+blockers. It remains valid historical evidence and must not be presented as a
+review of the current candidate.
+
 ## Next checkpoint
 
 After the final code and documentation surface settles:
 
-1. run a fresh fast shadow and issue a replacement baseline proposal;
-2. run a deep shadow checkpoint and retain every non-quality error;
-3. obtain independent review of the proposed debt inventory and policy change;
+1. run a fresh fast and deep shadow checkpoint and retain every non-quality
+   error;
+2. calibrate the advisory council on seeded defects and approved public
+   bundles;
+3. later obtain independent review of the proposed debt inventory and policy
+   change;
 4. install the reviewed baseline and promote to ratchet in one protected PR;
 5. rerun fast in enforcing mode and keep stop-hook enforcement disabled until
    repeated green timing is stable;

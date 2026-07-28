@@ -226,8 +226,9 @@ requires them.
 1. Calibrate the advisory council on a corpus of known-good and deliberately
    defective changes; measure unique finding yield, false positives,
    contradiction rate, latency, and cost by role/model.
-2. Add a privacy classifier and provider-routing policy so sensitive changes
-   can be restricted to approved local or enterprise providers.
+2. Add approved enterprise/local provider routes for `internal`,
+   `confidential`, and `regulated` bundles. Current routing already classifies
+   and rejects those scopes before any provider call.
 3. Add bounded reconciliation: reviewers see anonymized conflicting claims,
    not identities, and must cite evidence for any changed position.
 4. Generate a plain-language owner brief that explains each council finding,
