@@ -14,6 +14,10 @@
   "build_outputs": ["dist"],
   "frameworks": ["pytest"],
   "gates": {
+    "assurance": {
+      "applicable": true,
+      "reason": "Risk-selected human assurance evidence is required at PR, deep, and release boundaries."
+    },
     "acceptance": {
       "applicable": true,
       "reason": "Executable pytest acceptance tests exercise the public setup contract."

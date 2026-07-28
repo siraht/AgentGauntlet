@@ -779,13 +779,13 @@ def test_onboarding_approvals_use_selected_risk_profile(tmp_path: Path) -> None:
     assert report["risk"]["selected_risk_profile"] == "high_assurance"
     risk_item = _first(report, "risk-card-valid")
     assert "high_assurance" in risk_item["message"]
-    # high_assurance requires three approvals; standard requires one. Passing risk=None
+    # high_assurance requires four approvals; standard requires one. Passing risk=None
     # into onboarding would fall back to standard and under-count pending conditions.
     pending = _first(report, "approvals-pending")
     assert pending["status"] == "warning"
-    assert pending["message"] == ("3 required human approval condition(s) are not yet current.")
+    assert pending["message"] == ("4 required human approval condition(s) are not yet current.")
     assert isinstance(pending["detail"], list)
-    assert len(pending["detail"]) == 3
+    assert len(pending["detail"]) == 4
 
 
 def test_module_entrypoint_path_resolution_uses_resolved_root(tmp_path: Path) -> None:

@@ -32,6 +32,10 @@ KINDS = {
         "purpose": "Records that rollback or recovery was exercised rather than merely described.",
         "required_for": ["high_assurance", "critical"],
     },
+    "independent-verification": {
+        "purpose": "Records read-only verification by a reviewer independent of the builder and evidence producer.",
+        "required_for": ["high_assurance", "critical"],
+    },
     "human-code-review": {
         "purpose": "Records independent human inspection of critical implementation code and tests.",
         "required_for": ["critical"],
@@ -39,6 +43,10 @@ KINDS = {
     "release-approval": {
         "purpose": "Records the final human decision to promote a specific revision.",
         "required_for": ["critical"],
+    },
+    "policy-maintenance": {
+        "purpose": "Authorizes a scoped protected-policy maintenance request for independent code-owner review.",
+        "required_for": [],
     },
 }
 
@@ -155,7 +163,12 @@ def validate_approval(
                 "rollback-rehearsal notes must record the observed recovery result and timing"
             )
     independence = payload.get("independence")
-    if kind in {"human-code-review", "release-approval"}:
+    if kind in {
+        "independent-verification",
+        "human-code-review",
+        "release-approval",
+        "policy-maintenance",
+    }:
         if not isinstance(independence, dict):
             errors.append("independence declaration is required")
         else:

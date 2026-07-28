@@ -2016,7 +2016,40 @@ def _review(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     paths = write_review_packet(root, packet)
     code = review_exit_code(packet)
     return _write_report(
-        root, "review", code, {"applicability": "applicable", "packet": packet, "artifacts": paths}
+        root,
+        "review",
+        code,
+        {
+            "applicability": "applicable",
+            "packet": packet,
+            "artifacts": paths,
+        },
+    )
+
+
+def _assurance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    del project
+    policy = load_policy(root)
+    errors, risk = risk_summary(root, policy, "quality/change-risk.json")
+    selected = str(risk.get("selected_risk_profile") or "standard")
+    approvals = validate_required_approvals(root, selected)
+    if errors:
+        code = CONFIGURATION_ERROR
+    elif approvals["errors"]:
+        code = QUALITY_FAILURE
+    else:
+        code = PASS
+    return _write_report(
+        root,
+        "assurance",
+        code,
+        {
+            "applicability": "applicable",
+            "risk": risk,
+            "risk_errors": errors,
+            "approvals": approvals,
+            "failures": [*errors, *approvals["errors"]],
+        },
     )
 
 
@@ -2451,6 +2484,7 @@ HANDLERS: dict[str, Callable[[Path, dict[str, Any]], tuple[int, dict[str, Any]]]
     "mutation_changed": _mutation_changed,
     "mutation_acceptance": _mutation_acceptance,
     "review": _review,
+    "assurance": _assurance,
     "secrets": _secrets,
     "security_fast": _security_fast,
     "security_deep": _security_deep,

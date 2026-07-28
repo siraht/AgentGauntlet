@@ -49,7 +49,7 @@ from aqg.adapters import (
     _python_test_env,
     run_adapter,
 )
-from aqg.approvals import template, validate_approval
+from aqg.approvals import template, validate_approval, validate_required_approvals
 from aqg.checks import test_feature_traceability as feature_traceability
 from aqg.cli import build_parser
 from aqg.constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE
@@ -825,6 +825,57 @@ class ReviewAndApprovalTests(RepoCase):
         )
         errors = validate_approval(self.root, "behavior-review")
         self.assertTrue(any("stale" in error for error in errors), errors)
+
+    def test_high_assurance_requires_independent_verification_evidence(self) -> None:
+        self._initialized()
+        required = validate_required_approvals(self.root, "high_assurance")
+        self.assertEqual(
+            required["required"],
+            [
+                "behavior-review",
+                "manual-qa",
+                "rollback-rehearsal",
+                "independent-verification",
+            ],
+        )
+        payload = template(
+            self.root,
+            "independent-verification",
+            reviewer="verifier@example.test",
+        )
+        payload.update(
+            {
+                "result": "pass",
+                "scope": ["Current candidate and required deep evidence"],
+                "procedure": ["Executed verifier from a read-only isolated checkout"],
+                "evidence": ["immutable run manifest"],
+            }
+        )
+        write_json(
+            self.root / "quality" / "approvals" / "independent-verification.json",
+            payload,
+        )
+        errors = validate_approval(self.root, "independent-verification")
+        self.assertTrue(any("independence." in error for error in errors))
+        payload["independence"] = {
+            "reviewer_did_not_author_change": True,
+            "reviewer_did_not_modify_evidence": True,
+        }
+        write_json(
+            self.root / "quality" / "approvals" / "independent-verification.json",
+            payload,
+        )
+        self.assertEqual(validate_approval(self.root, "independent-verification"), [])
+
+    def test_assurance_gate_blocks_missing_risk_selected_approval_evidence(self) -> None:
+        self._initialized()
+        code, report = run_adapter(self.root, "assurance")
+        self.assertEqual(code, QUALITY_FAILURE)
+        self.assertEqual(report["approvals"]["required"], ["behavior-review"])
+        self.assertTrue(
+            any("missing" in failure for failure in report["failures"]),
+            report["failures"],
+        )
 
 
 class DashboardTests(RepoCase):
@@ -2425,8 +2476,13 @@ class SetupContractTests(RepoCase):
     def test_rendered_policy_contains_every_registered_gate(self) -> None:
         policy = tomllib.loads(render_policy("@quality"))
         self.assertEqual(set(policy["gates"]), set(GATE_NAMES))
+        self.assertNotIn("assurance", policy["profiles"]["inner"]["gates"])
+        self.assertNotIn("assurance", policy["profiles"]["fast"]["gates"])
+        self.assertIn("assurance", policy["profiles"]["pr"]["gates"])
         self.assertIn("supply_chain", policy["profiles"]["deep"]["gates"])
+        self.assertIn("assurance", policy["profiles"]["deep"]["gates"])
         self.assertIn("supply_chain", policy["profiles"]["release"]["gates"])
+        self.assertIn("assurance", policy["profiles"]["release"]["gates"])
 
     def test_complete_lock_derived_supply_chain_gate_passes(self) -> None:
         (self.root / "requirements.txt").write_text("idna==3.10\n", encoding="utf-8")
