@@ -144,6 +144,31 @@ class CliControlSurfaceTests(unittest.TestCase):
         )
         self.assertFalse((self.root / "quality" / "approvals" / "policy-maintenance.json").exists())
 
+    def test_check_risk_can_run_every_selected_profile_in_shadow_mode(self) -> None:
+        risk = {
+            "required_execution_profiles": ["fast", "deep"],
+            "selected_risk_profile": "high_assurance",
+        }
+        summaries = [
+            {"profile": "fast", "mode": "shadow"},
+            {"profile": "deep", "mode": "shadow"},
+        ]
+        with (
+            patch("aqg.cli.risk_summary", return_value=([], risk)),
+            patch(
+                "aqg.cli.run_profile",
+                side_effect=[(PASS, summaries[0]), (PASS, summaries[1])],
+            ) as run,
+        ):
+            code, payload, stderr = self._json_command("check-risk", "--shadow", "--keep-going")
+
+        self.assertEqual(code, PASS, stderr)
+        self.assertEqual(payload["runs"], summaries)
+        self.assertEqual(run.call_count, 2)
+        for call in run.call_args_list:
+            self.assertTrue(call.kwargs["shadow"])
+            self.assertTrue(call.kwargs["keep_going"])
+
     def test_debt_review_requires_explicit_human_confirmation(self) -> None:
         code, payload, _ = self._json_command(
             "baseline",

@@ -420,6 +420,11 @@ def _add_execution_parsers(sub: Any) -> None:
     check_risk.add_argument("--card", default="quality/change-risk.json")
     check_risk.add_argument("--keep-going", action="store_true")
     check_risk.add_argument("--quiet", action="store_true")
+    check_risk.add_argument(
+        "--shadow",
+        action="store_true",
+        help="run risk-selected profiles as non-blocking retrospective measurements",
+    )
 
     risk = sub.add_parser("risk-card", help="validate and resolve the change-risk card")
     risk.add_argument("--card", default="quality/change-risk.json")
@@ -879,7 +884,12 @@ def _check_risk(args: argparse.Namespace, root: Path) -> int:
     summaries: list[dict[str, Any]] = []
     for profile in risk["required_execution_profiles"]:
         code, summary = run_profile(
-            root, policy, str(profile), keep_going=args.keep_going, quiet=args.quiet or args.json
+            root,
+            policy,
+            str(profile),
+            keep_going=args.keep_going,
+            quiet=args.quiet or args.json,
+            shadow=args.shadow,
         )
         summaries.append(summary)
         final = max(final, code)
