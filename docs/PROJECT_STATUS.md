@@ -104,10 +104,11 @@ python3 quality/qg.py council verify
 python3 quality/qg.py council report
 ```
 
-The controller creates one content-addressed candidate bundle from the exact
-revision, diff, risk card, feature requirements, review packet, and manifested
-quality evidence. Each reviewer sees the same untrusted input in an isolated
-temporary directory. Candidate instructions are treated as data, shell
+The controller creates one content-addressed candidate bundle—or a manifested
+bounded series when the exact diff is too large—from the revision, diff, risk
+card, feature requirements, review packet, and quality evidence. A series
+repeats the complete shared context, splits only the diff, and requires every
+role to review every chunk. Candidate instructions are treated as data, shell
 interpolation is forbidden, tools are disabled or restricted, environment
 variables are minimized, and timeouts fail closed.
 
@@ -129,6 +130,13 @@ completeness, and dissent are deterministic. Prompt and response digests,
 validated ballots, model/provider identity, tool versions, timings, and the
 conclusion are immutable. Raw provider streams are discarded because they can
 contain hidden reasoning, provider metadata, or reflected sensitive text.
+
+Chunked review now states its limit plainly: each ballot sees one diff segment,
+so cross-chunk relationships remain a residual unknown. `complete` means all
+required chunk ballots arrived and validated, not that one model comprehended
+the whole patch. Live dogfood reviewed a two-chunk, 93,820-byte candidate
+through six isolated calls across Grok, GLM, and DeepSeek; nested evidence run
+`council-20260728T222334Z-40d69d5f` verifies without manifest errors.
 
 The result is always labeled **agent advisory — not an approval or release
 authority**. A council cannot turn a failing deterministic gate green, fill in
