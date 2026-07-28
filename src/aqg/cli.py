@@ -22,6 +22,7 @@ from .checks import lint_features, scan_test_integrity, write_test_integrity_bas
 from .conformance import run_conformance
 from .constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE, __version__
 from .council_service import (
+    DATA_CLASSIFICATIONS,
     DEFAULT_BUNDLE_BYTES,
     DEFAULT_TIMEOUT_SECONDS,
     council_doctor,
@@ -442,10 +443,22 @@ def _add_review_parsers(sub: Any) -> None:
     plan = council_sub.add_parser("plan", help="build an evidence-bound plan without providers")
     plan.add_argument("--tier", choices=("smoke", "pr", "high"), default="high")
     plan.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
+    plan.add_argument(
+        "--data-classification",
+        choices=DATA_CLASSIFICATIONS,
+        default="unclassified",
+        help="classify candidate data before any provider review",
+    )
     run = council_sub.add_parser("run", help="run isolated advisory reviewers sequentially")
     run.add_argument("--tier", choices=("smoke", "pr", "high"), default="high")
     run.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     run.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
+    run.add_argument(
+        "--data-classification",
+        choices=DATA_CLASSIFICATIONS[1:],
+        required=True,
+        help="explicit candidate-data classification; only configured routes may execute",
+    )
     verify = council_sub.add_parser("verify", help="verify immutable council evidence")
     verify.add_argument("--run-id", default="latest")
     report = council_sub.add_parser("report", help="report verified advisory council evidence")
@@ -1094,7 +1107,7 @@ def _dispatch_council(args: argparse.Namespace, root: Path) -> int:
         payload = council_doctor()
         code = PASS if not payload["missing_tools"] else CONFIGURATION_ERROR
     elif args.council_command == "plan":
-        payload = plan_council(root, args.tier, args.max_bundle_bytes)
+        payload = plan_council(root, args.tier, args.max_bundle_bytes, args.data_classification)
         code = PASS
     elif args.council_command == "run":
         code, payload = run_council(
@@ -1102,6 +1115,7 @@ def _dispatch_council(args: argparse.Namespace, root: Path) -> int:
             args.tier,
             timeout_seconds=args.timeout_seconds,
             max_bundle_bytes=args.max_bundle_bytes,
+            data_classification=args.data_classification,
         )
     elif args.council_command == "verify":
         payload = verify_council_run(root, args.run_id)

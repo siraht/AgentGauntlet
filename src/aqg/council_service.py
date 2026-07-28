@@ -51,6 +51,7 @@ SERVICE_SCHEMA_VERSION = 1
 DEFAULT_BUNDLE_BYTES = 1_000_000
 DEFAULT_TIMEOUT_SECONDS = 180.0
 ADVISORY_BANNER = "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY"
+DATA_CLASSIFICATIONS = ("unclassified", "public", "internal", "confidential", "regulated")
 
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
     "smoke": (
@@ -169,11 +170,12 @@ def _scope(root: Path, base: str) -> dict[str, str]:
 
 
 def _prepare_plan(
-    root: Path, tier: str, max_bundle_bytes: int
+    root: Path, tier: str, max_bundle_bytes: int, data_classification: str
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if max_bundle_bytes <= 0:
         raise ConfigurationError("council bundle size cap must be positive")
     base = _base_ref(root)
+    routing = _provider_routing(data_classification)
     scope = _scope(root, base)
     run_dir, summary = _matching_quality_run(root, scope)
     inputs = _bundle_inputs(root, base, run_dir, summary)
@@ -187,7 +189,36 @@ def _prepare_plan(
         raise ConfigurationError(
             f"candidate bundle is {bundle_bytes} bytes; cap is {max_bundle_bytes} bytes"
         )
-    return _plan_payload(tier, run_dir, bundle, bundle_bytes, max_bundle_bytes), bundle
+    return (
+        _plan_payload(
+            tier,
+            run_dir,
+            bundle,
+            bundle_bytes,
+            max_bundle_bytes,
+            data_classification,
+            routing,
+        ),
+        bundle,
+    )
+
+
+def _provider_routing(data_classification: str) -> dict[str, Any]:
+    if data_classification not in DATA_CLASSIFICATIONS:
+        raise ConfigurationError(
+            "unknown council data classification: "
+            f"{data_classification!r}; choose: {', '.join(DATA_CLASSIFICATIONS)}"
+        )
+    allowed = data_classification == "public"
+    return {
+        "classification": data_classification,
+        "external_providers_allowed": allowed,
+        "reason": (
+            "candidate is explicitly classified public"
+            if allowed
+            else "no approved isolated or enterprise provider route is configured"
+        ),
+    }
 
 
 def _plan_payload(
@@ -196,6 +227,8 @@ def _plan_payload(
     bundle: Mapping[str, Any],
     bundle_bytes: int,
     max_bundle_bytes: int,
+    data_classification: str,
+    routing: Mapping[str, Any],
 ) -> dict[str, Any]:
     roles, groups = _tier_rules(tier)
     members = []
@@ -208,6 +241,8 @@ def _plan_payload(
         "banner": ADVISORY_BANNER,
         "tier": tier,
         "provider_calls": False,
+        "data_classification": data_classification,
+        "provider_routing": dict(routing),
         "members": members,
         "required_roles": roles,
         "minimum_provider_groups": groups,
@@ -221,10 +256,13 @@ def _plan_payload(
 
 
 def plan_council(
-    root: Path, tier: str = "high", max_bundle_bytes: int = DEFAULT_BUNDLE_BYTES
+    root: Path,
+    tier: str = "high",
+    max_bundle_bytes: int = DEFAULT_BUNDLE_BYTES,
+    data_classification: str = "unclassified",
 ) -> dict[str, Any]:
     """Build a provider-free plan from current, finalized candidate evidence."""
-    plan, _ = _prepare_plan(Path(root), tier, max_bundle_bytes)
+    plan, _ = _prepare_plan(Path(root), tier, max_bundle_bytes, data_classification)
     return plan
 
 
@@ -377,12 +415,18 @@ def run_council(
     max_bundle_bytes: int = DEFAULT_BUNDLE_BYTES,
     executor: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     run_id: str | None = None,
+    data_classification: str,
 ) -> tuple[int, dict[str, Any]]:
     """Run council members sequentially and publish only verified immutable evidence."""
     if timeout_seconds <= 0:
         raise ConfigurationError("council member timeout must be positive")
     root = Path(root)
-    plan, bundle = _prepare_plan(root, tier, max_bundle_bytes)
+    plan, bundle = _prepare_plan(root, tier, max_bundle_bytes, data_classification)
+    if not plan["provider_routing"]["external_providers_allowed"]:
+        raise ConfigurationError(
+            f"council data is {data_classification}; "
+            "no approved external-provider route is configured"
+        )
     selected_id = validate_run_id(run_id) if run_id else _new_run_id()
     environment = minimal_environment(os.environ)
     with tempfile.TemporaryDirectory(prefix="aqg-council-") as temporary:

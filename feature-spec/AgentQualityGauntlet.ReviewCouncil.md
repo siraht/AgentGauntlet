@@ -33,6 +33,9 @@
 - `AQG-COUNCIL-009` Sensitive inputs MUST be minimized and explicitly
   classified before external-provider review; credentials, environment
   secrets, and unrelated repository content MUST NOT enter provider prompts.
+  The default external route MUST accept only an explicit `public`
+  classification until a protected enterprise or isolated-provider route is
+  configured.
 - `AQG-COUNCIL-010` Provider diversity MUST be visible. Multiple roles executed
   by the same provider or model family MUST NOT be reported as independent
   model agreement.

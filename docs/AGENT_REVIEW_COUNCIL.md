@@ -87,10 +87,10 @@ The actual installed OpenCode identifier is
 python3 quality/qg.py council doctor
 
 # No provider calls. Prove the exact evidence and bundle that would be sent.
-python3 quality/qg.py council plan --tier pr
+python3 quality/qg.py council plan --tier pr --data-classification public
 
 # Execute isolated reviewers and store immutable advisory evidence.
-python3 quality/qg.py council run --tier pr
+python3 quality/qg.py council run --tier pr --data-classification public
 
 # Recheck the manifest and every ballot/result contract.
 python3 quality/qg.py council verify
@@ -132,6 +132,11 @@ Before organization-wide use, add an explicit data-classification policy:
 - **confidential:** approved isolated/local models only;
 - **regulated or secret:** council disabled unless a specifically authorized
   environment exists.
+
+The current fail-closed routing implementation permits external review only
+when the operator explicitly supplies `--data-classification public`.
+`internal`, `confidential`, and `regulated` plans explain that no approved
+route exists, and `run` refuses all three before a provider call.
 
 ## Trust limits
 

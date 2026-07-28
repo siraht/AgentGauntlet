@@ -63,8 +63,8 @@ For an additional technical review without making provider calls blindly:
 
 ```sh
 python3 quality/qg.py council doctor
-python3 quality/qg.py council plan --tier pr
-python3 quality/qg.py council run --tier pr
+python3 quality/qg.py council plan --tier pr --data-classification public
+python3 quality/qg.py council run --tier pr --data-classification public
 ```
 
 Read the plan before `run`: it names the exact revision, comparison base,

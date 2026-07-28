@@ -18,7 +18,7 @@ tamper-evident, privacy-conscious, and unmistakably advisory.
 1. Run `python3 quality/qg.py council doctor`.
    - Expected: exact tool versions and model identifiers are shown without
      credentials.
-2. Run `python3 quality/qg.py council plan --tier pr`.
+2. Run `python3 quality/qg.py council plan --tier pr --data-classification public`.
    - Expected: no provider is called.
    - Expected: the plan names revision, comparison base, change/control
      fingerprints, quality run, bundle digest/size, roles, models, and provider
@@ -26,7 +26,7 @@ tamper-evident, privacy-conscious, and unmistakably advisory.
 3. Inspect the planned input classification before approving provider access.
    - Expected: unrelated repository content is absent and the bundle is below
      the protected size cap.
-4. Run `python3 quality/qg.py council run --tier pr`.
+4. Run `python3 quality/qg.py council run --tier pr --data-classification public`.
    - Expected: each member runs in isolation and either produces a validated
      cited ballot or a distinct configuration/infrastructure failure.
    - Expected: a timeout, malformed payload, or missing provider does not enter

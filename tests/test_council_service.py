@@ -35,7 +35,8 @@ def _prepared(tmp_path: Path, tier: str) -> tuple[dict[str, Any], dict[str, Any]
     bundle = _bundle()
     quality_run = tmp_path / ".aqg" / "runs" / "quality-current"
     quality_run.mkdir(parents=True)
-    plan = service._plan_payload(tier, quality_run, bundle, 100, 1000)
+    routing = service._provider_routing("public")
+    plan = service._plan_payload(tier, quality_run, bundle, 100, 1000, "public", routing)
     return plan, bundle
 
 
@@ -80,12 +81,14 @@ def test_plan_has_no_provider_calls_and_bundle_cap_fails_closed(
     monkeypatch.setattr(service, "_matching_quality_run", lambda _root, _scope: (run_dir, {}))
     monkeypatch.setattr(service, "_bundle_inputs", lambda *_args: {"diff.patch": "x" * 100})
 
-    plan = service.plan_council(tmp_path, "pr", max_bundle_bytes=10_000)
+    plan = service.plan_council(
+        tmp_path, "pr", max_bundle_bytes=10_000, data_classification="public"
+    )
 
     assert plan["provider_calls"] is False
     assert plan["minimum_provider_groups"] == 3
     with pytest.raises(ConfigurationError, match="candidate bundle is"):
-        service.plan_council(tmp_path, "pr", max_bundle_bytes=10)
+        service.plan_council(tmp_path, "pr", max_bundle_bytes=10, data_classification="public")
 
 
 def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
@@ -117,7 +120,11 @@ def test_fake_run_publishes_only_verified_immutable_evidence(
     plan, bundle = _prepared(tmp_path, "pr")
     monkeypatch.setattr(service, "_prepare_plan", lambda *_args: (plan, bundle))
     code, report = service.run_council(
-        tmp_path, "pr", executor=_clear_executor, run_id="council-test"
+        tmp_path,
+        "pr",
+        executor=_clear_executor,
+        run_id="council-test",
+        data_classification="public",
     )
 
     assert code == PASS
@@ -149,9 +156,26 @@ def test_smoke_is_explicitly_incomplete_by_high_assurance_rules(
     monkeypatch.setattr(service, "_prepare_plan", lambda *_args: (plan, bundle))
 
     code, report = service.run_council(
-        tmp_path, "smoke", executor=_clear_executor, run_id="smoke-test"
+        tmp_path,
+        "smoke",
+        executor=_clear_executor,
+        run_id="smoke-test",
+        data_classification="public",
     )
 
     assert code == INFRASTRUCTURE_ERROR
     assert report["status"] == "advisory_incomplete"
     assert report["incomplete_reasons"]
+
+
+def test_external_review_requires_explicit_public_classification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan, bundle = _prepared(tmp_path, "pr")
+    restricted = dict(plan)
+    restricted["data_classification"] = "confidential"
+    restricted["provider_routing"] = service._provider_routing("confidential")
+    monkeypatch.setattr(service, "_prepare_plan", lambda *_args: (restricted, bundle))
+
+    with pytest.raises(ConfigurationError, match="no approved external-provider route"):
+        service.run_council(tmp_path, "pr", data_classification="confidential")

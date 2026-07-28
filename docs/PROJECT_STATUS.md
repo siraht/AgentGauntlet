@@ -98,8 +98,8 @@ AgentGauntlet now has an opt-in multi-model technical review workflow:
 
 ```sh
 python3 quality/qg.py council doctor
-python3 quality/qg.py council plan --tier smoke
-python3 quality/qg.py council run --tier pr
+python3 quality/qg.py council plan --tier smoke --data-classification public
+python3 quality/qg.py council run --tier pr --data-classification public
 python3 quality/qg.py council verify
 python3 quality/qg.py council report
 ```
