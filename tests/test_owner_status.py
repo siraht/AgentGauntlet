@@ -93,6 +93,29 @@ def _codes(decision: dict[str, Any]) -> set[str]:
     return {str(item["code"]) for item in decision["reasons"]}
 
 
+def test_scope_honors_the_authoritative_comparison_base_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AQG-OWNER-004: every freshness fingerprint uses the caller-selected base."""
+    observed: list[str] = []
+    monkeypatch.setenv("AQG_DIFF_BASE", "HEAD")
+    monkeypatch.setattr(owner_status, "git_revision", lambda root: "revision")
+    monkeypatch.setattr(
+        owner_status,
+        "change_fingerprint",
+        lambda root, base: observed.append(base) or "change",
+    )
+    monkeypatch.setattr(owner_status, "control_fingerprint", lambda root: "control")
+
+    scope = owner_status._scope(
+        tmp_path,
+        {"enforcement": {"base_ref": "origin/main"}},
+    )
+
+    assert scope["base_ref"] == "HEAD"
+    assert observed == ["HEAD"]
+
+
 def test_current_verified_evidence_is_shared_but_merge_never_invents_authority(
     status_inputs: dict[str, list[dict[str, Any]]], tmp_path: Path
 ) -> None:

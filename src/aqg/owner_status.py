@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -56,7 +57,9 @@ def _decision(state: str, reasons: list[dict[str, str]]) -> dict[str, Any]:
 
 
 def _scope(root: Path, project: Mapping[str, Any]) -> dict[str, str]:
-    base_ref = str(project.get("enforcement", {}).get("base_ref", "HEAD"))
+    base_ref = os.environ.get("AQG_DIFF_BASE") or str(
+        project.get("enforcement", {}).get("base_ref", "HEAD")
+    )
     return {
         "revision": git_revision(root),
         "base_ref": base_ref,
