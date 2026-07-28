@@ -303,7 +303,10 @@
     },
     "performance": {
       "lighthouse_accessibility": 0.95,
-      "lighthouse_performance": 0.8
+      "lighthouse_performance": 0.8,
+      "max_score_spread": 0.1,
+      "sample_count": 3,
+      "warmup_runs": 1
     },
     "security": {
       "allow_unreviewed_ignores": false,

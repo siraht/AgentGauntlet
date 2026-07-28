@@ -158,6 +158,29 @@ def _validate_mutation_thresholds(thresholds: Any) -> list[str]:
     return errors
 
 
+def _validate_performance_thresholds(thresholds: Any) -> list[str]:
+    performance = thresholds.get("performance", {}) if isinstance(thresholds, dict) else {}
+    if not isinstance(performance, dict):
+        return []
+    errors: list[str] = []
+    count = performance.get("sample_count", 3)
+    if (
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or count < 3
+        or count > 9
+        or count % 2 == 0
+    ):
+        errors.append("thresholds.performance.sample_count must be an odd integer from 3 to 9")
+    warmups = performance.get("warmup_runs", 1)
+    if isinstance(warmups, bool) or not isinstance(warmups, int) or warmups < 0 or warmups > 3:
+        errors.append("thresholds.performance.warmup_runs must be an integer from 0 to 3")
+    spread = performance.get("max_score_spread", 0.1)
+    if isinstance(spread, bool) or not isinstance(spread, (int, float)) or not 0 <= spread <= 1:
+        errors.append("thresholds.performance.max_score_spread must be a number from 0 to 1")
+    return errors
+
+
 def _validate_thresholds(project: dict[str, Any]) -> list[str]:
     thresholds = project.get("thresholds")
     return [
@@ -165,6 +188,7 @@ def _validate_thresholds(project: dict[str, Any]) -> list[str]:
         *_validate_coverage_thresholds(thresholds),
         *_validate_structure_thresholds(thresholds),
         *_validate_mutation_thresholds(thresholds),
+        *_validate_performance_thresholds(thresholds),
     ]
 
 

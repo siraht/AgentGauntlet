@@ -308,7 +308,13 @@ def _default_thresholds() -> dict[str, Any]:
             "changed_only": True,
         },
         "security": {"audit_level": "high", "allow_unreviewed_ignores": False},
-        "performance": {"lighthouse_performance": 0.8, "lighthouse_accessibility": 0.95},
+        "performance": {
+            "lighthouse_performance": 0.8,
+            "lighthouse_accessibility": 0.95,
+            "sample_count": 3,
+            "warmup_runs": 1,
+            "max_score_spread": 0.1,
+        },
     }
 
 

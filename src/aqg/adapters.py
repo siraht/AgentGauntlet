@@ -39,6 +39,7 @@ from .constants import (
 from .errors import ConfigurationError
 from .golden import run_goldens
 from .maintenance import validate_policy_maintenance
+from .performance import aggregate_scores, sampling_policy
 from .policy import load_policy, risk_summary
 from .project import excludes, gate_applicable, load_project, source_paths
 from .python_mutation_diff import (
@@ -2336,6 +2337,43 @@ def _stop_process(process: subprocess.Popen[str] | None) -> None:
         process.kill()
 
 
+def _lighthouse_sample(
+    root: Path,
+    lighthouse: str,
+    url: str,
+    browser_path: Path,
+    report_path: Path,
+) -> tuple[dict[str, Any], dict[str, float] | None, str | None]:
+    report_path.unlink(missing_ok=True)
+    result = run_command(
+        [
+            lighthouse,
+            url,
+            "--quiet",
+            "--output=json",
+            f"--output-path={report_path}",
+            "--chrome-flags=--headless --no-sandbox",
+        ],
+        cwd=root,
+        timeout=3600,
+        env={"CHROME_PATH": str(browser_path), "CI": "1", "TZ": "UTC"},
+    )
+    if result.code != 0:
+        return result.as_dict(), None, f"Lighthouse execution exited {result.code}"
+    if not report_path.is_file():
+        return result.as_dict(), None, "Lighthouse passed without producing its JSON report"
+    try:
+        report = read_json(report_path)
+        categories = report.get("categories", {})
+        scores = {
+            name: float(categories.get(name, {}).get("score"))
+            for name in ("performance", "accessibility")
+        }
+    except (AttributeError, TypeError, ValueError):
+        return result.as_dict(), None, "Lighthouse JSON lacks numeric category scores"
+    return result.as_dict(), scores, None
+
+
 def _performance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     web = project.get("web", {})
     command = web.get("start_command")
@@ -2344,7 +2382,7 @@ def _performance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, An
         raise ConfigurationError("performance gate needs web.start_command and web.base_url")
     process, log = _start_web(root, [str(value) for value in command], url)
     try:
-        tool_dir = root / "quality" / "tools" / "js"
+        tool_dir = _trusted_control_root(root) / "quality" / "tools" / "js"
         browser_probe = run_command(
             [
                 "node",
@@ -2370,44 +2408,48 @@ def _performance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, An
                     ],
                 },
             )
-        report_path = root / ".aqg" / "work" / "performance" / "lighthouse.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_dir = root / ".aqg" / "work" / "performance"
+        report_dir.mkdir(parents=True, exist_ok=True)
         performance_thresholds = _effective_thresholds(project).get("performance", {})
+        policy = sampling_policy(performance_thresholds)
         lighthouse = _tool(root, "lighthouse", "js")
-        result = run_command(
-            [
+        commands: list[dict[str, Any]] = []
+        report_paths: list[str] = []
+        samples: list[dict[str, float]] = []
+        failures: list[str] = []
+        total = policy["warmup_runs"] + policy["sample_count"]
+        for index in range(total):
+            kind = "warmup" if index < policy["warmup_runs"] else "sample"
+            ordinal = index + 1 if kind == "warmup" else index - policy["warmup_runs"] + 1
+            report_path = report_dir / f"lighthouse-{kind}-{ordinal}.json"
+            command_result, scores, error = _lighthouse_sample(
+                root,
                 lighthouse,
                 url,
-                "--quiet",
-                "--output=json",
-                f"--output-path={report_path}",
-                "--chrome-flags=--headless --no-sandbox",
-            ],
-            cwd=root,
-            timeout=3600,
-            env={"CHROME_PATH": str(browser_path), "CI": "1", "TZ": "UTC"},
+                browser_path,
+                report_path,
+            )
+            commands.append(command_result)
+            if report_path.is_file():
+                report_paths.append(str(report_path))
+            if error:
+                failures.append(f"{kind} {ordinal}: {error}")
+                break
+            if kind == "sample" and scores is not None:
+                samples.append(scores)
+        minimums = {
+            "performance": float(performance_thresholds.get("lighthouse_performance", 0.8)),
+            "accessibility": float(performance_thresholds.get("lighthouse_accessibility", 0.95)),
+        }
+        code, aggregation = aggregate_scores(
+            samples,
+            minimums,
+            expected_count=policy["sample_count"],
+            max_score_spread=policy["max_score_spread"],
         )
-        metrics: dict[str, float] = {}
-        failures: list[str] = []
-        if result.code == 0 and report_path.is_file():
-            report = read_json(report_path)
-            categories = report.get("categories", {})
-            for name, threshold_name, default in (
-                ("performance", "lighthouse_performance", 0.8),
-                ("accessibility", "lighthouse_accessibility", 0.95),
-            ):
-                score = float(categories.get(name, {}).get("score", 0.0))
-                minimum = float(performance_thresholds.get(threshold_name, default))
-                metrics[name] = score
-                if score < minimum:
-                    failures.append(f"{name} score {score:.2f} < {minimum:.2f}")
-            code = QUALITY_FAILURE if failures else PASS
-        elif result.code == 0:
+        if failures:
             code = INFRASTRUCTURE_ERROR
-            failures.append("Lighthouse passed without producing its JSON report")
-        else:
-            code = QUALITY_FAILURE if result.code == 1 else INFRASTRUCTURE_ERROR
-            failures.append("Lighthouse execution failed")
+        failures.extend(aggregation["failures"])
     finally:
         _stop_process(process)
     return _write_report(
@@ -2418,9 +2460,12 @@ def _performance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, An
             "applicability": "applicable",
             "base_url": url,
             "server_log": str(log),
-            "command": result.as_dict(),
-            "report": str(report_path),
-            "metrics": metrics,
+            "commands": commands,
+            "reports": report_paths,
+            "sampling_policy": policy,
+            "samples": samples,
+            "metrics": aggregation["metrics"],
+            "unstable": aggregation["unstable"],
             "failures": failures,
         },
     )
