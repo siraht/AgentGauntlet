@@ -178,6 +178,7 @@ def build_retrospective(
     thresholds: Mapping[str, Any],
     traceability: Mapping[str, Any] | None = None,
     baseline: Mapping[str, Any] | None = None,
+    baseline_error: str | None = None,
 ) -> dict[str, Any]:
     """Build deterministic observations and, with review, a ratchet decision."""
     if not isinstance(gate_results, Sequence) or isinstance(gate_results, (str, bytes)):
@@ -188,6 +189,18 @@ def build_retrospective(
     details = copy.deepcopy(dict(gate_details))
     inventory = debt_inventory(details, copy.deepcopy(dict(thresholds)))
     gates = _gate_taxonomy(results, details)
+    if baseline_error:
+        gates["configuration_errors"] = _dedupe(
+            [
+                *gates["configuration_errors"],
+                _item(
+                    "debt_baseline",
+                    "configuration_errors",
+                    2,
+                    baseline_error,
+                ),
+            ]
+        )
     unknown = _unknown_intent(copy.deepcopy(traceability))
     comparison, reviewed = _comparison(inventory, copy.deepcopy(baseline))
     blocking = _blocking_failures(gates["measured_failures"], details)

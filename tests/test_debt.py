@@ -58,6 +58,8 @@ def _baseline(
             "run_id": "20260727-audit",
             "profile": "shadow",
             "measured_at": "2026-07-27T11:59:00Z",
+            "change_fingerprint": "sha256:change",
+            "manifest_fingerprint": "sha256:manifest",
         },
         "inventory": inventory,
     }

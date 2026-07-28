@@ -5,6 +5,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -12,7 +13,7 @@ from .approvals import approval_path, validate_approval
 from .constants import PASS, QUALITY_FAILURE
 from .errors import ConfigurationError
 from .evidence_manifest import validate_run_id, write_evidence_json
-from .policy import load_policy, protected_patterns
+from .policy import load_policy, policy_override_enabled, protected_patterns
 from .project import load_project
 from .util import (
     change_fingerprint,
@@ -140,6 +141,29 @@ def load_maintenance_request(root: Path, request_id: str) -> dict[str, Any]:
     payload["authorized_changes"] = _validate_requested_changes(raw, policy)
     payload["request_id"] = request_id
     return payload
+
+
+def require_local_maintenance_change(root: Path, path: str, operation: str) -> dict[str, Any]:
+    """Require the advisory local override and an exact scoped request."""
+    policy = load_policy(root)
+    if not policy_override_enabled(policy):
+        raise ConfigurationError(
+            "protected write requires AQG_POLICY_MAINTENANCE=1 and a scoped request"
+        )
+    request_env = str(
+        policy.get("policy", {}).get(
+            "maintenance_request_env",
+            "AQG_MAINTENANCE_REQUEST",
+        )
+    )
+    request_id = os.environ.get(request_env, "")
+    if not request_id:
+        raise ConfigurationError(f"protected write requires {request_env}")
+    request = load_maintenance_request(root, request_id)
+    expected = _change(path, operation)
+    if expected not in request["authorized_changes"]:
+        raise ConfigurationError(f"{operation}:{path} is outside maintenance request {request_id}")
+    return request
 
 
 def _status_changes(root: Path, base: str) -> list[dict[str, str]]:

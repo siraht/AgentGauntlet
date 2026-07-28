@@ -19,6 +19,7 @@ from .constants import (
     QUALITY_FAILURE,
     STATUS_NAMES,
 )
+from .debt_store import load_current_debt_baseline
 from .errors import ConfigurationError
 from .evidence import (
     create_exclusive_run_dir,
@@ -94,6 +95,7 @@ def _retrospective_inputs(
     dict[str, Any],
     dict[str, Any] | None,
     dict[str, Any] | None,
+    str | None,
 ]:
     details: dict[str, Any] = {}
     for path in sorted((run_dir / "gates").glob("*.details.json")):
@@ -107,8 +109,14 @@ def _retrospective_inputs(
     traceability = details.get("test_integrity", {}).get("traceability")
     enforcement = project.get("enforcement", {})
     baseline_path = root / str(enforcement.get("debt_baseline", "quality/baselines/debt.json"))
-    baseline = read_json(baseline_path) if baseline_path.is_file() else None
-    return details, thresholds, traceability, baseline
+    baseline: dict[str, Any] | None = None
+    baseline_error: str | None = None
+    if baseline_path.is_file():
+        try:
+            baseline = load_current_debt_baseline(root, baseline_path)
+        except ConfigurationError as exc:
+            baseline_error = str(exc)
+    return details, thresholds, traceability, baseline, baseline_error
 
 
 def _ratchet_quality(report: dict[str, Any]) -> bool:
@@ -319,7 +327,7 @@ def run_profile(
             )
 
     project = load_project(root)
-    details, thresholds, traceability, baseline = _retrospective_inputs(
+    details, thresholds, traceability, baseline, baseline_error = _retrospective_inputs(
         root, run_dir, project, profile_name
     )
     retrospective = build_retrospective(
@@ -328,8 +336,11 @@ def run_profile(
         thresholds,
         traceability=traceability,
         baseline=baseline,
+        baseline_error=baseline_error,
     )
     write_evidence_json(run_dir / "retrospective.json", retrospective)
+    if baseline_error:
+        final = max(final, CONFIGURATION_ERROR)
     if baseline is not None and _ratchet_quality(retrospective):
         final = max(final, QUALITY_FAILURE)
     command_exit = PASS if shadow and final == QUALITY_FAILURE else final

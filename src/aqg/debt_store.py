@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
 
-from .debt import document_fingerprint, validate_baseline
+from .debt import DebtError, document_fingerprint, validate_baseline
 from .errors import ConfigurationError, InfrastructureError
 from .evidence_manifest import (
     validate_run_id,
     verify_run_manifest,
     write_evidence_json,
 )
-from .util import change_fingerprint, control_fingerprint, read_json, sha256_file, utc_now
+from .maintenance import require_local_maintenance_change
+from .util import (
+    change_fingerprint,
+    control_fingerprint,
+    git_output,
+    read_json,
+    sha256_file,
+    utc_now,
+)
 
 
 def _object(path: Path, label: str) -> dict[str, Any]:
@@ -68,6 +77,10 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
         raise ConfigurationError(
             f"controls changed after shadow run {resolved}; run a new shadow audit"
         )
+    baseline_controls = control_fingerprint(
+        root,
+        exclude_patterns=["quality/baselines/debt.json"],
+    )
     measured_change = summary.get("change_fingerprint")
     base_ref = summary.get("base_ref")
     if not isinstance(base_ref, str) or measured_change != change_fingerprint(root, base_ref):
@@ -93,12 +106,14 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
             "state": "proposed",
             "source_revision": revision,
             "policy_fingerprint": f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}",
-            "control_fingerprint": str(measured_controls),
+            "control_fingerprint": baseline_controls,
             "created_at": utc_now(),
             "measurement": {
                 "run_id": resolved,
                 "profile": profile,
                 "measured_at": measured_at,
+                "change_fingerprint": str(measured_change),
+                "manifest_fingerprint": f"sha256:{sha256_file(run_dir / 'manifest.json')}",
             },
             "inventory": inventory,
         }
@@ -116,3 +131,109 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "baseline": proposed,
         "manifest_verification": verification,
     }
+
+
+def review_debt_proposal(
+    root: Path,
+    proposal_id: str,
+    *,
+    reviewer: str,
+) -> dict[str, Any]:
+    """Install a human-reviewed proposal under scoped local maintenance.
+
+    Repository code-owner enforcement remains the external identity and merge
+    authority; this command only records the declared reviewer and exact bytes.
+    """
+    proposal_id = validate_run_id(proposal_id)
+    if not reviewer.strip():
+        raise ConfigurationError("reviewer must identify the human debt reviewer")
+    proposal_path = root / ".aqg" / "proposals" / "debt" / f"{proposal_id}.json"
+    proposal = validate_baseline(_object(proposal_path, "debt proposal"))
+    if proposal["state"] != "proposed":
+        raise ConfigurationError("only a proposed debt baseline can be reviewed")
+    run_id = proposal["measurement"]["run_id"]
+    run_dir = root / ".aqg" / "runs" / run_id
+    verification = verify_run_manifest(run_dir)
+    if not verification["ok"]:
+        raise InfrastructureError(
+            f"proposal source run {run_id} failed manifest verification: "
+            + "; ".join(verification["errors"])
+        )
+    summary = _object(run_dir / "summary.json", "run summary")
+    retrospective = _object(run_dir / "retrospective.json", "retrospective evidence")
+    expected_manifest = f"sha256:{sha256_file(run_dir / 'manifest.json')}"
+    expected_policy = f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}"
+    expected_controls = control_fingerprint(root, exclude_patterns=["quality/baselines/debt.json"])
+    if (
+        summary.get("mode") != "shadow"
+        or summary.get("revision") != proposal["source_revision"]
+        or summary.get("change_fingerprint") != proposal["measurement"]["change_fingerprint"]
+        or expected_manifest != proposal["measurement"]["manifest_fingerprint"]
+        or retrospective.get("inventory") != proposal["inventory"]
+        or expected_policy != proposal["policy_fingerprint"]
+        or expected_controls != proposal["control_fingerprint"]
+    ):
+        raise ConfigurationError(
+            "debt proposal no longer matches its immutable shadow evidence and current controls"
+        )
+    target = root / "quality" / "baselines" / "debt.json"
+    if target.exists():
+        raise ConfigurationError(
+            "reviewed debt baseline already exists; replacement is not implicit"
+        )
+    request = require_local_maintenance_change(
+        root,
+        "quality/baselines/debt.json",
+        "add",
+    )
+    reviewed = copy.deepcopy(proposal)
+    reviewed.update(
+        {
+            "state": "reviewed",
+            "reviewer": reviewer.strip(),
+            "reviewed_at": utc_now(),
+        }
+    )
+    reviewed = validate_baseline(reviewed)
+    write_evidence_json(target, reviewed)
+    return {
+        "schema_version": 1,
+        "path": str(target),
+        "document_fingerprint": document_fingerprint(reviewed),
+        "maintenance_request": request["request_id"],
+        "baseline": reviewed,
+    }
+
+
+def load_current_debt_baseline(root: Path, path: Path) -> dict[str, Any]:
+    """Load reviewed baseline authority and reject stale policy or controls."""
+    try:
+        baseline = validate_baseline(_object(path, "reviewed debt baseline"))
+    except (DebtError, InfrastructureError) as exc:
+        raise ConfigurationError(f"invalid reviewed debt baseline: {exc}") from exc
+    if baseline["state"] != "reviewed":
+        raise ConfigurationError("debt baseline is not reviewed and cannot authorize a ratchet")
+    expected_policy = f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}"
+    if baseline["policy_fingerprint"] != expected_policy:
+        raise ConfigurationError("debt baseline policy fingerprint is stale")
+    expected_controls = control_fingerprint(
+        root,
+        exclude_patterns=[path.relative_to(root).as_posix()],
+    )
+    if baseline["control_fingerprint"] != expected_controls:
+        raise ConfigurationError("debt baseline control fingerprint is stale")
+    code, _, stderr = git_output(
+        root,
+        [
+            "merge-base",
+            "--is-ancestor",
+            baseline["source_revision"],
+            "HEAD",
+        ],
+    )
+    if code != 0:
+        raise ConfigurationError(
+            "debt baseline source revision is not an ancestor of the candidate"
+            + (f": {stderr.strip()}" if stderr.strip() else "")
+        )
+    return baseline

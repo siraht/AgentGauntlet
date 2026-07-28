@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -12,13 +13,25 @@ import pytest
 from aqg.cli import main
 from aqg.constants import PASS
 from aqg.debt import DebtError, compare, validate_baseline
-from aqg.debt_store import propose_debt_baseline
+from aqg.debt_store import (
+    load_current_debt_baseline,
+    propose_debt_baseline,
+    review_debt_proposal,
+)
 from aqg.errors import ConfigurationError, InfrastructureError
 from aqg.evidence_manifest import write_evidence_json, write_run_manifest
-from aqg.util import change_fingerprint, control_fingerprint
+from aqg.maintenance import create_maintenance_request
+from aqg.scaffold import initialize_project
+from aqg.util import change_fingerprint, control_fingerprint, git_revision
 
 
-def _run(root: Path, run_id: str, *, mode: str = "shadow") -> Path:
+def _run(
+    root: Path,
+    run_id: str,
+    *,
+    mode: str = "shadow",
+    revision: str = "a" * 40,
+) -> Path:
     run_dir = root / ".aqg" / "runs" / run_id
     write_evidence_json(
         run_dir / "summary.json",
@@ -27,7 +40,7 @@ def _run(root: Path, run_id: str, *, mode: str = "shadow") -> Path:
             "run_id": run_id,
             "profile": "fast",
             "mode": mode,
-            "revision": "a" * 40,
+            "revision": revision,
             "base_ref": "HEAD",
             "change_fingerprint": change_fingerprint(root, "HEAD"),
             "control_fingerprint": control_fingerprint(root),
@@ -136,3 +149,52 @@ def test_cli_writes_non_authorizing_proposal_as_json(
     payload = json.loads(capsys.readouterr().out)
     assert payload["baseline"]["state"] == "proposed"
     assert payload["baseline"]["measurement"]["run_id"] == "cli-shadow"
+
+
+def _git(root: Path, *arguments: str) -> None:
+    completed = subprocess.run(
+        ["git", *arguments],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_reviewed_baseline_install_and_freshness_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "debt@example.invalid")
+    _git(tmp_path, "config", "user.name", "Debt Reviewer")
+    (tmp_path / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "app.py")
+    _git(tmp_path, "commit", "-qm", "seed")
+    initialize_project(tmp_path, owner="@quality", install=False, ci=False, mode="adopt")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "install AQG")
+
+    _run(tmp_path, "review-shadow", revision=git_revision(tmp_path))
+    proposal = propose_debt_baseline(tmp_path, "review-shadow")
+    request = create_maintenance_request(
+        tmp_path,
+        [{"path": "quality/baselines/debt.json", "operation": "add"}],
+        reason="Install the reviewed inherited-debt inventory",
+        requester="builder@example.test",
+    )
+    monkeypatch.setenv("AQG_POLICY_MAINTENANCE", "1")
+    monkeypatch.setenv("AQG_MAINTENANCE_REQUEST", request["request_id"])
+    reviewed = review_debt_proposal(
+        tmp_path,
+        proposal["proposal_id"],
+        reviewer="owner@example.test",
+    )
+    baseline_path = Path(reviewed["path"])
+    assert reviewed["baseline"]["state"] == "reviewed"
+    assert load_current_debt_baseline(tmp_path, baseline_path)["reviewer"] == ("owner@example.test")
+
+    policy = tmp_path / "quality" / "policy.toml"
+    policy.write_text(policy.read_text() + "\n# stale control\n", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="policy fingerprint is stale"):
+        load_current_debt_baseline(tmp_path, baseline_path)

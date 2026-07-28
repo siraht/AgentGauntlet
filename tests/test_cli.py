@@ -143,6 +143,19 @@ class CliControlSurfaceTests(unittest.TestCase):
         )
         self.assertFalse((self.root / "quality" / "approvals" / "policy-maintenance.json").exists())
 
+    def test_debt_review_requires_explicit_human_confirmation(self) -> None:
+        code, payload, _ = self._json_command(
+            "baseline",
+            "debt",
+            "review",
+            "--proposal",
+            "debt-example",
+            "--reviewer",
+            "owner@example.test",
+        )
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertIn("--confirm-reviewed", payload["error"]["message"])
+
     def test_global_flags_work_after_the_subcommand(self) -> None:
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout):

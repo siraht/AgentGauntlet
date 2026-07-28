@@ -165,6 +165,12 @@ def _measurement(value: Any) -> dict[str, str]:
         "run_id": _require_text(value.get("run_id"), "measurement.run_id"),
         "profile": _require_text(value.get("profile"), "measurement.profile"),
         "measured_at": _timestamp(value.get("measured_at"), "measurement.measured_at"),
+        "change_fingerprint": _require_text(
+            value.get("change_fingerprint"), "measurement.change_fingerprint"
+        ),
+        "manifest_fingerprint": _require_text(
+            value.get("manifest_fingerprint"), "measurement.manifest_fingerprint"
+        ),
     }
 
 

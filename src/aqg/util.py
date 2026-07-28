@@ -455,7 +455,7 @@ def change_fingerprint(
     return "sha256:" + digest.hexdigest()
 
 
-def control_fingerprint(root: Path) -> str:
+def control_fingerprint(root: Path, *, exclude_patterns: Iterable[str] = ()) -> str:
     """Hash files that define AQG policy, commands, toolchains, and governance."""
     candidates: list[Path] = []
     explicit = [
@@ -473,7 +473,14 @@ def control_fingerprint(root: Path) -> str:
             if not path.is_file():
                 continue
             rel = path.relative_to(root).as_posix()
-            if matches_any(rel, ["quality/approvals/**", "quality/guidance/**"]):
+            if matches_any(
+                rel,
+                [
+                    "quality/approvals/**",
+                    "quality/guidance/**",
+                    *exclude_patterns,
+                ],
+            ):
                 continue
             candidates.append(path)
     return "sha256:" + sha256_paths(root, candidates)

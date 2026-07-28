@@ -22,7 +22,7 @@ from .checks import lint_features, scan_test_integrity, write_test_integrity_bas
 from .conformance import run_conformance
 from .constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE, __version__
 from .dashboard import serve_dashboard
-from .debt_store import propose_debt_baseline
+from .debt_store import propose_debt_baseline, review_debt_proposal
 from .detect import detect_project
 from .doctor import diagnose
 from .errors import AQGError, ConfigurationError, InfrastructureError, QualityFailure
@@ -473,6 +473,16 @@ def _add_evidence_parsers(sub: Any) -> None:
         "--run-id",
         default="latest",
         help="completed shadow run identifier; defaults to the newest shadow run",
+    )
+    baseline_review = baseline_debt_sub.add_parser(
+        "review", help="install a proposal after explicit human debt review"
+    )
+    baseline_review.add_argument("--proposal", required=True)
+    baseline_review.add_argument("--reviewer", required=True)
+    baseline_review.add_argument(
+        "--confirm-reviewed",
+        action="store_true",
+        help="assert the named human reviewed every proposed debt item",
     )
 
     maintenance = sub.add_parser(
@@ -1209,15 +1219,30 @@ def _dispatch_acceptance(args: argparse.Namespace, root: Path) -> int:
 
 def _dispatch_baseline(args: argparse.Namespace, root: Path) -> int:
     if args.baseline_command == "debt":
-        if args.debt_command != "propose":
-            raise ConfigurationError("unknown debt baseline command")
-        proposal = propose_debt_baseline(root, args.run_id)
-        if args.json:
-            _json_dump(proposal)
+        if args.debt_command == "propose":
+            report = propose_debt_baseline(root, args.run_id)
+        elif args.debt_command == "review":
+            if not args.confirm_reviewed:
+                raise ConfigurationError(
+                    "baseline review requires --confirm-reviewed after human item-by-item review"
+                )
+            report = review_debt_proposal(
+                root,
+                args.proposal,
+                reviewer=args.reviewer,
+            )
         else:
-            print(f"Debt baseline proposal: {proposal['path']}")
-            print(f"Fingerprint: {proposal['document_fingerprint']}")
+            raise ConfigurationError("unknown debt baseline command")
+        if args.json:
+            _json_dump(report)
+        elif args.debt_command == "propose":
+            print(f"Debt baseline proposal: {report['path']}")
+            print(f"Fingerprint: {report['document_fingerprint']}")
             print("State: proposed (cannot authorize ratchet enforcement)")
+        else:
+            print(f"Reviewed debt baseline: {report['path']}")
+            print(f"Fingerprint: {report['document_fingerprint']}")
+            print("External code-owner approval remains required before merge.")
         return PASS
     report = scan_test_integrity(root, load_project(root))
     if not args.confirm:

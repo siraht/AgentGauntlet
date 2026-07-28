@@ -11,7 +11,7 @@ from unittest import mock
 
 import pytest
 
-from aqg.constants import INFRASTRUCTURE_ERROR, PASS
+from aqg.constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS
 from aqg.errors import ConfigurationError, InfrastructureError
 from aqg.evidence import (
     create_exclusive_run_dir,
@@ -293,3 +293,41 @@ def test_shadow_run_preserves_quality_observation_but_returns_non_blocking(tmp_p
     assert report["certification"] == "observations_only"
     assert report["counts"]["measured_failures"] == 1
     assert report["counts"]["blocking_failures"] == 1
+
+
+def test_stale_debt_baseline_is_a_manifested_configuration_failure(tmp_path: Path) -> None:
+    command = _writer_script(tmp_path)
+    baseline = tmp_path / "quality" / "baselines" / "debt.json"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("{}\n", encoding="utf-8")
+    project = _project()
+    project["enforcement"]["debt_baseline"] = "quality/baselines/debt.json"
+    provenance = {
+        "revision": "candidate",
+        "base_ref": "main",
+        "change_fingerprint": "sha256:change",
+        "control_fingerprint": "sha256:control",
+    }
+    with (
+        mock.patch.dict(os.environ, {"AQG_RUN_ID": "stale-baseline"}, clear=False),
+        mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=project),
+        mock.patch(
+            "aqg.runner.load_current_debt_baseline",
+            side_effect=ConfigurationError("debt baseline policy fingerprint is stale"),
+        ),
+    ):
+        code, summary = run_profile(
+            tmp_path,
+            _profile_policy(command),
+            "fast",
+            quiet=True,
+            shadow=True,
+        )
+    run_dir = tmp_path / ".aqg" / "runs" / "stale-baseline"
+    report = json.loads((run_dir / "retrospective.json").read_text())
+    assert code == CONFIGURATION_ERROR
+    assert summary["status"] == "configuration_error"
+    assert report["counts"]["configuration_errors"] == 1
+    assert report["configuration_errors"][0]["gate"] == "debt_baseline"
+    assert verify_run_manifest(run_dir)["ok"] is True
