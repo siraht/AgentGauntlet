@@ -180,3 +180,14 @@ def load_named_schema(root: Path, name: str) -> dict[str, Any]:
 
 def validate_named_schema(root: Path, name: str, value: Any) -> list[str]:
     return validate_instance(value, load_named_schema(root, name))
+
+
+def validate_document_path(root: Path, name: str, document: Path) -> list[str]:
+    """Validate a JSON document file against one published AQG contract."""
+    try:
+        value = json.loads(document.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ConfigurationError(f"JSON contract document does not exist: {document}") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigurationError(f"cannot read JSON contract document {document}: {exc}") from exc
+    return validate_named_schema(root, name, value)

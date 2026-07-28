@@ -13,7 +13,12 @@ import pytest
 from aqg.errors import ConfigurationError
 from aqg.evidence_manifest import write_run_manifest
 from aqg.runner import run_profile
-from aqg.schema_contracts import load_named_schema, validate_instance, validate_named_schema
+from aqg.schema_contracts import (
+    load_named_schema,
+    validate_document_path,
+    validate_instance,
+    validate_named_schema,
+)
 
 
 def _project() -> dict:
@@ -183,6 +188,18 @@ def test_risk_and_debt_documents_conform_to_public_contracts() -> None:
         "reviewed_at": "2026-07-28T00:02:00Z",
     }
     assert validate_named_schema(root, "debt-baseline", baseline) == []
+
+
+def test_document_path_validation_is_reusable_by_ci_and_integrations(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    risk = root / "quality" / "change-risk.json"
+    assert validate_document_path(root, "change-risk", risk) == []
+    with pytest.raises(ConfigurationError, match="does not exist"):
+        validate_document_path(root, "change-risk", tmp_path / "missing.json")
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="cannot read JSON contract"):
+        validate_document_path(root, "change-risk", malformed)
 
 
 def test_manifest_schema_rejects_post_contract_additions(tmp_path: Path) -> None:
