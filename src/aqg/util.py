@@ -255,15 +255,23 @@ def matches_any(path: str, patterns: Iterable[str]) -> bool:
 
 def iter_files(root: Path, suffixes: Iterable[str], excludes: Iterable[str]) -> list[Path]:
     suffix_set = {suffix.lower() for suffix in suffixes}
+    exclude_patterns = tuple(excludes)
     files: list[Path] = []
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(root).as_posix()
-        if matches_any(rel, excludes):
-            continue
-        if path.suffix.lower() in suffix_set:
-            files.append(path)
+    for current, directories, filenames in os.walk(root):
+        current_path = Path(current)
+        directories[:] = sorted(
+            name
+            for name in directories
+            if not matches_any(
+                (current_path / name).relative_to(root).as_posix(),
+                exclude_patterns,
+            )
+        )
+        for name in sorted(filenames):
+            path = current_path / name
+            rel = path.relative_to(root).as_posix()
+            if not matches_any(rel, exclude_patterns) and path.suffix.lower() in suffix_set:
+                files.append(path)
     return sorted(files)
 
 
@@ -455,34 +463,65 @@ def change_fingerprint(
     return "sha256:" + digest.hexdigest()
 
 
+def _control_files(
+    root: Path,
+    quality: Path,
+    ignored_patterns: Iterable[str],
+) -> list[Path]:
+    ignored_names = {
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "node_modules",
+        "venv",
+    }
+    patterns = tuple(ignored_patterns)
+    files: list[Path] = []
+    for current, directories, filenames in os.walk(quality):
+        current_path = Path(current)
+        directories[:] = sorted(
+            name
+            for name in directories
+            if name not in ignored_names
+            and not matches_any((current_path / name).relative_to(root).as_posix(), patterns)
+        )
+        files.extend(
+            path
+            for name in sorted(filenames)
+            if not matches_any(
+                (path := current_path / name).relative_to(root).as_posix(),
+                patterns,
+            )
+        )
+    return files
+
+
 def control_fingerprint(root: Path, *, exclude_patterns: Iterable[str] = ()) -> str:
     """Hash files that define AQG policy, commands, toolchains, and governance."""
-    candidates: list[Path] = []
-    explicit = [
-        root / "QUALITY.md",
-        root / "AGENTS.md",
-        root / "CLAUDE.md",
-        root / "KEYSTONE.md",
-        root / ".github" / "CODEOWNERS",
-        root / ".github" / "workflows" / "quality-gauntlet.yml",
+    candidates = [
+        path
+        for path in (
+            root / "QUALITY.md",
+            root / "AGENTS.md",
+            root / "CLAUDE.md",
+            root / "KEYSTONE.md",
+            root / ".github" / "CODEOWNERS",
+            root / ".github" / "workflows" / "quality-gauntlet.yml",
+        )
+        if path.is_file()
     ]
-    candidates.extend(path for path in explicit if path.is_file())
     quality = root / "quality"
     if quality.exists():
-        for path in quality.rglob("*"):
-            if not path.is_file():
-                continue
-            rel = path.relative_to(root).as_posix()
-            if matches_any(
-                rel,
-                [
-                    "quality/approvals/**",
-                    "quality/guidance/**",
-                    *exclude_patterns,
-                ],
-            ):
-                continue
-            candidates.append(path)
+        candidates.extend(
+            _control_files(
+                root,
+                quality,
+                ["quality/approvals/**", "quality/guidance/**", *exclude_patterns],
+            )
+        )
     return "sha256:" + sha256_paths(root, candidates)
 
 

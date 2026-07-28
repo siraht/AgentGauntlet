@@ -84,9 +84,11 @@ from aqg.schema_contracts import validate_named_schema
 from aqg.util import (
     CommandResult,
     change_fingerprint,
+    control_fingerprint,
     detect_base_ref,
     git_changed_files,
     git_diff,
+    iter_files,
     read_json,
     write_json,
 )
@@ -707,6 +709,77 @@ class FingerprintTests(RepoCase):
             git_changed_files(self.root, "origin/missing")
         with self.assertRaisesRegex(ConfigurationError, "comparison base"):
             git_diff(self.root, "origin/missing")
+
+    def test_control_fingerprint_ignores_installed_tool_trees(self) -> None:
+        policy = self.root / "quality" / "policy.toml"
+        configuration = self.root / "quality" / "config" / "tool.toml"
+        dependency = self.root / "quality" / "tools" / "js" / "node_modules" / "tool.js"
+        policy.parent.mkdir(parents=True)
+        configuration.parent.mkdir(parents=True)
+        dependency.parent.mkdir(parents=True)
+        policy.write_text("version = 1\n", encoding="utf-8")
+        configuration.write_text("enabled = true\n", encoding="utf-8")
+        dependency.write_text("export const version = 1;\n", encoding="utf-8")
+
+        baseline = control_fingerprint(self.root)
+        dependency.write_text("export const version = 2;\n", encoding="utf-8")
+        self.assertEqual(control_fingerprint(self.root), baseline)
+
+        configuration.write_text("enabled = false\n", encoding="utf-8")
+        self.assertNotEqual(control_fingerprint(self.root), baseline)
+        configuration.write_text("enabled = true\n", encoding="utf-8")
+
+        policy.write_text("version = 2\n", encoding="utf-8")
+        self.assertNotEqual(control_fingerprint(self.root), baseline)
+
+    def test_every_explicit_governance_input_changes_control_fingerprint(self) -> None:
+        paths = [
+            "QUALITY.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "KEYSTONE.md",
+            ".github/CODEOWNERS",
+            ".github/workflows/quality-gauntlet.yml",
+        ]
+        for relative in paths:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("original\n", encoding="utf-8")
+        baseline = control_fingerprint(self.root)
+
+        for relative in paths:
+            with self.subTest(path=relative):
+                path = self.root / relative
+                path.write_text("changed\n", encoding="utf-8")
+                self.assertNotEqual(control_fingerprint(self.root), baseline)
+                path.write_text("original\n", encoding="utf-8")
+
+    def test_guidance_and_approval_records_do_not_change_control_fingerprint(self) -> None:
+        excluded = [
+            self.root / "quality" / "guidance" / "testing.md",
+            self.root / "quality" / "approvals" / "behavior-review.json",
+        ]
+        for path in excluded:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("first\n", encoding="utf-8")
+        baseline = control_fingerprint(self.root)
+
+        for path in excluded:
+            path.write_text("second\n", encoding="utf-8")
+        self.assertEqual(control_fingerprint(self.root), baseline)
+
+    def test_file_iteration_prunes_excluded_control_trees(self) -> None:
+        source = self.root / "src" / "app.py"
+        excluded = self.root / "quality" / "tools" / "python" / "installed.py"
+        source.parent.mkdir(parents=True)
+        excluded.parent.mkdir(parents=True)
+        source.write_text("VALUE = 1\n", encoding="utf-8")
+        excluded.write_text("VALUE = 2\n", encoding="utf-8")
+
+        self.assertEqual(
+            iter_files(self.root, {".py"}, {"quality/tools/**"}),
+            [source],
+        )
 
 
 class ReviewAndApprovalTests(RepoCase):
