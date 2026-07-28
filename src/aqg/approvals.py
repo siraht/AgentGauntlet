@@ -83,7 +83,7 @@ def template(root: Path, kind: str, *, reviewer: str | None = None) -> dict[str,
     info = KINDS.get(kind)
     if info is None:
         raise ConfigurationError(f"unknown approval kind {kind!r}; choose: {', '.join(KINDS)}")
-    payload = {
+    payload: dict[str, Any] = {
         "schema_version": 1,
         "kind": kind,
         "purpose": info["purpose"],

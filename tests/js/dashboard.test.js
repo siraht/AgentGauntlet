@@ -39,7 +39,9 @@ test("the owner view exposes honest decisions and accessible navigation", () => 
   expect(html).toContain("Agent advisory — not an approval");
   expect(script).toContain('["develop", "merge", "release"]');
   expect(script).toContain("No council evidence configured.");
-  expect(script).toContain("Agent advisory — not an approval or release authority.");
+  expect(script).toContain(
+    "Agent advisory — not an approval or release authority.",
+  );
   expect(script).toContain("Council evidence is stale.");
   expect(script).toContain("Auto refresh:");
 });
