@@ -17,6 +17,7 @@ import pytest
 from aqg import hooks
 from aqg.constants import CONFIGURATION_ERROR, PASS
 from aqg.dashboard import DashboardServer
+from aqg.maintenance import create_maintenance_request
 from aqg.scaffold import initialize_project
 
 
@@ -84,7 +85,7 @@ class HookTests(ControlGuardCase):
         self.assertEqual(shell, CONFIGURATION_ERROR)
         self.assertIn("may modify protected policy path", shell_error)
 
-    def test_pretool_fails_invalid_json_and_honors_explicit_maintenance(self) -> None:
+    def test_pretool_fails_invalid_json_and_honors_scoped_maintenance(self) -> None:
         stderr = io.StringIO()
         with (
             mock.patch("sys.stdin", io.StringIO("{")),
@@ -93,11 +94,41 @@ class HookTests(ControlGuardCase):
             self.assertEqual(hooks.hook_pretool(self.root), CONFIGURATION_ERROR)
         self.assertIn("invalid JSON", stderr.getvalue())
 
-        with (
-            mock.patch("sys.stdin", io.StringIO(json.dumps({"tool_name": "write"}))),
-            mock.patch("aqg.hooks.policy_override_enabled", return_value=True),
-        ):
-            self.assertEqual(hooks.hook_pretool(self.root), PASS)
+        with mock.patch.dict("os.environ", {"AQG_POLICY_MAINTENANCE": "1"}, clear=False):
+            code, error = self._pretool(
+                {"tool_name": "write", "tool_input": {"file_path": "quality/policy.toml"}}
+            )
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertIn("scoped request", error)
+
+        request = create_maintenance_request(
+            self.root,
+            [{"path": "quality/policy.toml", "operation": "modify"}],
+            reason="Exercise the legitimate protected edit workflow",
+            requester="test-owner",
+        )
+        environment = {
+            "AQG_POLICY_MAINTENANCE": "1",
+            "AQG_MAINTENANCE_REQUEST": request["request_id"],
+        }
+        with mock.patch.dict("os.environ", environment, clear=False):
+            allowed, allowed_error = self._pretool(
+                {"tool_name": "write", "tool_input": {"file_path": "quality/policy.toml"}}
+            )
+            outside, outside_error = self._pretool(
+                {"tool_name": "write", "tool_input": {"file_path": "QUALITY.md"}}
+            )
+            shell, shell_error = self._pretool(
+                {
+                    "tool_name": "shell",
+                    "tool_input": {"command": "printf changed > quality/policy.toml"},
+                }
+            )
+        self.assertEqual((allowed, allowed_error), (PASS, ""))
+        self.assertEqual(outside, CONFIGURATION_ERROR)
+        self.assertIn("outside the scoped", outside_error)
+        self.assertEqual(shell, CONFIGURATION_ERROR)
+        self.assertIn("structured file-edit", shell_error)
 
     def test_stop_hook_is_recursive_safe_and_fail_closed(self) -> None:
         disabled = {"hooks": {"enforce_on_stop": False}}
@@ -132,6 +163,10 @@ class HookTests(ControlGuardCase):
         self.assertIn(
             "quality/policy.toml",
             hooks._direct_write_paths("apply_patch", {"patch": patch}),
+        )
+        self.assertEqual(
+            hooks._patch_changes(patch),
+            [{"path": "quality/policy.toml", "operation": "modify"}],
         )
         self.assertEqual(
             hooks._command_policy_writes(

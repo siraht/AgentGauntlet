@@ -124,6 +124,25 @@ class CliControlSurfaceTests(unittest.TestCase):
                 self.assertIn("refuses active", payload["error"]["message"])
                 self.assertIn(variable, payload["error"]["message"])
 
+    def test_maintenance_request_cli_is_scoped_and_non_authorizing(self) -> None:
+        code, payload, stderr = self._json_command(
+            "maintenance",
+            "request",
+            "--change",
+            "modify:quality/policy.toml",
+            "--reason",
+            "Prepare a code-owner-reviewed policy update",
+            "--requester",
+            "builder@example.test",
+        )
+        self.assertEqual(code, PASS, stderr)
+        self.assertEqual(payload["request"]["authority"], "none")
+        self.assertEqual(
+            payload["request"]["authorized_changes"],
+            [{"operation": "modify", "path": "quality/policy.toml"}],
+        )
+        self.assertFalse((self.root / "quality" / "approvals" / "policy-maintenance.json").exists())
+
     def test_global_flags_work_after_the_subcommand(self) -> None:
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout):

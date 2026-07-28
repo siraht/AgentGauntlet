@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from .constants import CONFIGURATION_ERROR, PASS
+from .errors import ConfigurationError
+from .maintenance import load_maintenance_request
 from .policy import human_review_patterns, load_policy, policy_override_enabled, protected_patterns
 from .runner import run_profile
 from .util import matches_any
@@ -39,6 +41,18 @@ def _patch_paths(patch: str) -> list[str]:
             if path != "/dev/null":
                 paths.append(path)
     return paths
+
+
+def _patch_changes(patch: str) -> list[dict[str, str]]:
+    operations = {"Add": "add", "Update": "modify", "Delete": "delete"}
+    changes: list[dict[str, str]] = []
+    for line in patch.splitlines():
+        match = re.match(r"\*\*\* (Add|Update|Delete) File:\s*(.+)", line)
+        if match:
+            changes.append(
+                {"path": match.group(2).strip(), "operation": operations[match.group(1)]}
+            )
+    return changes
 
 
 def _direct_write_paths(tool_name: str, tool_input: Any) -> list[str]:
@@ -76,6 +90,28 @@ def _direct_write_paths(tool_name: str, tool_input: Any) -> list[str]:
     return paths
 
 
+def _direct_write_changes(root: Path, tool_name: str, tool_input: Any) -> list[dict[str, str]]:
+    if isinstance(tool_input, dict):
+        for key in ("patch", "diff"):
+            if isinstance(tool_input.get(key), str):
+                changes = _patch_changes(tool_input[key])
+                if changes:
+                    return changes
+    canonical = tool_name.lower()
+    if any(token in canonical for token in ("delete", "remove")):
+        operation = "delete"
+    else:
+        operation = "modify"
+    changes = []
+    for path in _direct_write_paths(tool_name, tool_input):
+        normalized = _normalize(root, path)
+        inferred = operation
+        if operation == "modify" and not (root / normalized).exists():
+            inferred = "add"
+        changes.append({"path": normalized, "operation": inferred})
+    return changes
+
+
 def _normalize(root: Path, value: str) -> str:
     path = Path(value)
     if not path.is_absolute():
@@ -108,8 +144,30 @@ def hook_pretool(root: Path) -> int:
     except json.JSONDecodeError as exc:
         print(f"AQG hook received invalid JSON: {exc}", file=sys.stderr)
         return CONFIGURATION_ERROR
-    if policy_override_enabled(policy):
-        return PASS
+    maintenance_enabled = policy_override_enabled(policy)
+    authorized: set[tuple[str, str]] = set()
+    if maintenance_enabled:
+        request_env = str(
+            policy.get("policy", {}).get(
+                "maintenance_request_env",
+                "AQG_MAINTENANCE_REQUEST",
+            )
+        )
+        request_id = os.environ.get(request_env, "")
+        if not request_id:
+            print(
+                f"AQG policy maintenance requires a scoped request in {request_env}.",
+                file=sys.stderr,
+            )
+            return CONFIGURATION_ERROR
+        try:
+            request = load_maintenance_request(root, request_id)
+        except ConfigurationError as exc:
+            print(f"AQG policy maintenance request is invalid: {exc}", file=sys.stderr)
+            return CONFIGURATION_ERROR
+        authorized = {
+            (str(item["path"]), str(item["operation"])) for item in request["authorized_changes"]
+        }
     tool_name = str(payload.get("tool_name") or payload.get("tool") or payload.get("name") or "")
     tool_input = payload.get("tool_input") or payload.get("input") or payload.get("arguments") or {}
     protected = protected_patterns(policy)
@@ -121,10 +179,15 @@ def hook_pretool(root: Path) -> int:
     golden_env = str(policy.get("policy", {}).get("golden_update_env", "AQG_ALLOW_GOLDEN_UPDATE"))
     allow_golden = os.environ.get(golden_env) == "1"
     violations: list[str] = []
-    for value in _direct_write_paths(tool_name, tool_input):
-        normalized = _normalize(root, value)
+    for change in _direct_write_changes(root, tool_name, tool_input):
+        normalized = _normalize(root, change["path"])
         if matches_any(normalized, protected):
-            violations.append(f"write to protected policy path {normalized}")
+            identity = (normalized, change["operation"])
+            if not maintenance_enabled or identity not in authorized:
+                violations.append(
+                    f"{change['operation']} to protected policy path {normalized} "
+                    "is outside the scoped maintenance request"
+                )
         elif matches_any(normalized, expected_output_patterns) and not allow_golden:
             violations.append(f"write to expected-output artifact {normalized}")
     command = str(tool_input.get("command", "")) if isinstance(tool_input, dict) else ""
@@ -133,7 +196,10 @@ def hook_pretool(root: Path) -> int:
             if re.search(str(expression), command, re.IGNORECASE | re.MULTILINE):
                 violations.append(f"command matches blocked policy {expression}")
         for path in _command_policy_writes(command, protected):
-            violations.append(f"command may modify protected policy path {path}")
+            violations.append(
+                f"command may modify protected policy path {path}; "
+                "scoped maintenance requires a structured file-edit tool"
+            )
         if not allow_golden:
             for path in _command_policy_writes(command, expected_output_patterns):
                 violations.append(f"command may modify expected-output artifact {path}")

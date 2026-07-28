@@ -25,6 +25,7 @@ default_execution_profile = "fast"
 [policy]
 owner = "{owner}"
 policy_maintenance_env = "AQG_POLICY_MAINTENANCE"
+maintenance_request_env = "AQG_MAINTENANCE_REQUEST"
 golden_update_env = "AQG_ALLOW_GOLDEN_UPDATE"
 
 protected_paths = [

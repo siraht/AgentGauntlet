@@ -11,7 +11,14 @@ import pytest
 from aqg.adapters import run_adapter
 from aqg.approvals import template
 from aqg.constants import PASS, QUALITY_FAILURE
-from aqg.maintenance import protected_changes, validate_policy_maintenance
+from aqg.errors import ConfigurationError
+from aqg.maintenance import (
+    create_maintenance_request,
+    load_maintenance_request,
+    parse_change_spec,
+    protected_changes,
+    validate_policy_maintenance,
+)
 from aqg.policy import load_policy
 from aqg.scaffold import initialize_project
 from aqg.util import write_json
@@ -107,3 +114,25 @@ def test_approval_cannot_authorize_a_different_operation_or_path(project: Path) 
     report = validate_policy_maintenance(project, policy, "HEAD")
     assert report["exit_code"] == QUALITY_FAILURE
     assert any("exactly match" in error for error in report["errors"])
+
+
+def test_local_request_is_scoped_and_explicitly_non_authorizing(project: Path) -> None:
+    change = parse_change_spec("modify:quality/policy.toml")
+    report = create_maintenance_request(
+        project,
+        [change],
+        reason="Prepare a reviewed policy adjustment",
+        requester="builder@example.test",
+    )
+    request = load_maintenance_request(project, report["request_id"])
+    assert request["authorized_changes"] == [change]
+    assert request["authority"] == "none"
+    assert request["state"] == "proposed"
+    assert not (project / "quality" / "approvals" / "policy-maintenance.json").exists()
+
+    with pytest.raises(ConfigurationError, match="not a protected"):
+        create_maintenance_request(
+            project,
+            [{"path": "app.py", "operation": "modify"}],
+            reason="invalid broad request",
+        )

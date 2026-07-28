@@ -29,6 +29,7 @@ from .errors import AQGError, ConfigurationError, InfrastructureError, QualityFa
 from .golden import run_goldens
 from .guidance import guides, read_guide, search_guides
 from .hooks import hook_pretool, hook_stop
+from .maintenance import create_maintenance_request, parse_change_spec
 from .policy import load_policy, policy_override_enabled, risk_summary
 from .portfolio import add_project, load_portfolio, project_roots, remove_project, scan_portfolio
 from .project import load_project
@@ -474,6 +475,22 @@ def _add_evidence_parsers(sub: Any) -> None:
         help="completed shadow run identifier; defaults to the newest shadow run",
     )
 
+    maintenance = sub.add_parser(
+        "maintenance", help="declare a scoped local policy-maintenance edit request"
+    )
+    maintenance_sub = _nested_subparsers(maintenance, "maintenance_command")
+    maintenance_request = maintenance_sub.add_parser(
+        "request", help="create a non-authorizing path-and-operation edit request"
+    )
+    maintenance_request.add_argument(
+        "--change",
+        action="append",
+        required=True,
+        help="repeatable OPERATION:PATH declaration",
+    )
+    maintenance_request.add_argument("--reason", required=True)
+    maintenance_request.add_argument("--requester")
+
     approval = sub.add_parser(
         "approval", help="create templates or validate human approval records"
     )
@@ -759,7 +776,8 @@ def capabilities_payload() -> dict[str, Any]:
         "environment": {
             "AQG_DIFF_BASE": "override the comparison Git ref",
             "AQG_RUN_ID": "supply a caller-owned gate run identifier",
-            "AQG_POLICY_MAINTENANCE": "authorize explicitly reviewed policy maintenance",
+            "AQG_POLICY_MAINTENANCE": "enable scoped local policy editing only",
+            "AQG_MAINTENANCE_REQUEST": "select a non-authorizing scoped local edit request",
             "AQG_ALLOW_GOLDEN_UPDATE": "authorize explicitly reviewed golden updates",
         },
         "output": {
@@ -1216,6 +1234,25 @@ def _dispatch_baseline(args: argparse.Namespace, root: Path) -> int:
     return PASS
 
 
+def _dispatch_maintenance(args: argparse.Namespace, root: Path) -> int:
+    if args.maintenance_command != "request":
+        raise ConfigurationError("unknown policy-maintenance command")
+    changes = [parse_change_spec(value) for value in args.change]
+    report = create_maintenance_request(
+        root,
+        changes,
+        reason=args.reason,
+        requester=args.requester,
+    )
+    if args.json:
+        _json_dump(report)
+    else:
+        print(f"Maintenance request: {report['path']}")
+        print(f"Use AQG_MAINTENANCE_REQUEST={report['request_id']} for scoped local edits.")
+        print("Authority: none; current independent approval is still required.")
+    return PASS
+
+
 def _approval_report(args: argparse.Namespace, root: Path) -> dict[str, Any]:
     if args.risk_profile:
         return validate_required_approvals(root, args.risk_profile)
@@ -1371,6 +1408,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "help": _dispatch_help,
     "hook-pretool": _dispatch_hook_pretool,
     "hook-stop": _dispatch_hook_stop,
+    "maintenance": _dispatch_maintenance,
     "new": _dispatch_new,
     "onboarding": _dispatch_onboarding,
     "portfolio": _dispatch_portfolio,
