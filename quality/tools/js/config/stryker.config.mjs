@@ -12,6 +12,8 @@ const mutate = sourceRoots.flatMap((root) => [
 
 export default {
   testRunner: runner,
+  vitest: { related: false },
+  jest: { enableFindRelatedTests: false },
   mutate,
   reporters: ["clear-text", "progress", "json", "html"],
   jsonReporter: { fileName: ".aqg/work/mutation/stryker.json" },

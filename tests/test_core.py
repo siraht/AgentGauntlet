@@ -1262,6 +1262,8 @@ class SetupContractTests(RepoCase):
                 all(json.dumps(pattern) in text for pattern in required),
                 config,
             )
+            self.assertIn("vitest: { related: false }", text)
+            self.assertIn("jest: { enableFindRelatedTests: false }", text)
 
     def test_project_test_commands_clear_the_outer_comparison_base(self) -> None:
         python_environment = _python_test_env(self.root, timezone=True)
