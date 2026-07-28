@@ -905,10 +905,13 @@ class ReviewAndApprovalTests(RepoCase):
 
 class DashboardTests(RepoCase):
     def test_dashboard_status_is_read_only_and_uses_same_project_state(self) -> None:
+        # AQG-OWNER-001: dashboard carries the same owner-status projection as CLI.
         (self.root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
         initialize_project(self.root, install=False, ci=False)
         payload = project_status(self.root)
         self.assertEqual(payload["project"]["name"], self.root.name)
+        self.assertEqual(payload["owner_status"]["schema_version"], 1)
+        self.assertIn("release", payload["owner_status"]["decisions"])
         server = DashboardServer(
             ("127.0.0.1", 0), [self.root], allow_actions=False, token="", verbose=False
         )

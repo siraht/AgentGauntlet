@@ -30,6 +30,7 @@ from .golden import run_goldens
 from .guidance import guides, read_guide, search_guides
 from .hooks import hook_pretool, hook_stop
 from .maintenance import create_maintenance_request, parse_change_spec
+from .owner_status import build_owner_status
 from .policy import load_policy, policy_override_enabled, risk_summary
 from .portfolio import add_project, load_portfolio, project_roots, remove_project, scan_portfolio
 from .project import load_project
@@ -673,21 +674,21 @@ def _initialize(args: argparse.Namespace, *, setup: bool) -> int:
 
 
 def _status_payload(root: Path) -> dict[str, Any]:
-    policy = load_policy(root)
-    errors, risk = risk_summary(root, policy, "quality/change-risk.json")
-    runs = list_runs(root, 20)
+    owner_status = build_owner_status(root)
     return {
         "schema_version": 1,
-        "generated_at": utc_now(),
-        "project": load_project(root),
-        "risk": risk,
-        "risk_errors": errors,
-        "latest": runs[0] if runs else None,
-        "runs": runs,
+        "generated_at": owner_status["generated_at"],
+        "project": owner_status["project"],
+        "risk": owner_status["risk"],
+        "risk_errors": owner_status["risk_errors"],
+        "latest": owner_status["latest"],
+        "runs": owner_status["runs"][:20],
+        "owner_status": owner_status,
     }
 
 
 def _triage_payload(root: Path) -> dict[str, Any]:
+    owner_status = build_owner_status(root)
     policy = load_policy(root)
     risk_errors, risk = risk_summary(root, policy, "quality/change-risk.json")
     onboarding = current_onboarding(root)
@@ -713,6 +714,7 @@ def _triage_payload(root: Path) -> dict[str, Any]:
             "errors": risk_errors,
         },
         "latest": runs[0] if runs else None,
+        "owner_status": owner_status,
         "commands": [
             "qg onboarding next",
             "qg doctor",

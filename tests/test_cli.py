@@ -276,6 +276,7 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("`qg review --write --sarif`", human.getvalue())
 
     def test_triage_collapses_orientation_into_one_stable_payload(self) -> None:
+        # AQG-OWNER-001: CLI triage projects the shared owner-status model.
         first_code, first, _ = self._json_command("triage")
         second_code, second, _ = self._json_command("triage")
         self.assertEqual(first_code, second_code)
@@ -287,6 +288,18 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("selected", first["risk"])
         self.assertIn("qg doctor", first["commands"])
         self.assertIn("qg check-risk --keep-going", first["commands"])
+        self.assertEqual(first["owner_status"]["schema_version"], 1)
+        self.assertIn("merge", first["owner_status"]["decisions"])
+
+    def test_status_exposes_the_shared_owner_decision_without_changing_legacy_fields(self) -> None:
+        """AQG-OWNER-001/002: status retains its legacy data and adds owner decisions."""
+        code, payload, stderr = self._json_command("status")
+        self.assertEqual(code, PASS, stderr)
+        self.assertEqual(payload["project"]["name"], self.root.name)
+        self.assertEqual(payload["owner_status"]["schema_version"], 1)
+        self.assertIn(
+            payload["owner_status"]["decisions"]["develop"]["state"], {"allowed", "blocked"}
+        )
 
     def test_help_accepts_conventional_and_nested_command_ordering(self) -> None:
         human = io.StringIO()

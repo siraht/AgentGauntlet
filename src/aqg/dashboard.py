@@ -14,53 +14,42 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from .approvals import validate_required_approvals
-from .constants import CONFIGURATION_ERROR, PASS
+from .constants import PASS
 from .errors import ConfigurationError
+from .owner_status import build_owner_status
 from .policy import load_policy, risk_summary
 from .project import load_project
 from .review import analyze_review, write_review_packet
-from .runner import list_runs, run_profile
-from .scaffold import current_onboarding
-from .util import read_json, utc_now
+from .runner import run_profile
+from .util import read_json
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 
 
 def project_status(root: Path) -> dict[str, Any]:
-    project = load_project(root)
-    policy = load_policy(root)
-    runs = list_runs(root, 25)
-    latest = runs[0] if runs else None
-    review_path = root / ".aqg" / "review" / "review.json"
-    review = read_json(review_path, default=None) if review_path.exists() else None
-    risk_errors, risk = risk_summary(root, policy, "quality/change-risk.json")
-    selected = str(risk.get("selected_risk_profile") or "standard")
-    approvals = (
-        validate_required_approvals(root, selected)
-        if not risk_errors
-        else {
-            "required": [],
-            "results": {},
-            "errors": risk_errors,
-            "exit_code": CONFIGURATION_ERROR,
-        }
-    )
-    onboarding = current_onboarding(root)
-    return {
-        "generated_at": utc_now(),
-        "root": str(root),
-        "project": project,
-        "profiles": policy.get("profiles", {}),
-        "risk_profiles": policy.get("risk_profiles", {}),
-        "risk": risk,
-        "risk_errors": risk_errors,
-        "approvals": approvals,
-        "onboarding": onboarding,
-        "latest": latest,
-        "runs": runs,
-        "review": review,
+    owner_status = build_owner_status(root)
+    payload = {
+        **{
+            key: owner_status[key]
+            for key in (
+                "generated_at",
+                "root",
+                "project",
+                "profiles",
+                "risk_profiles",
+                "risk",
+                "risk_errors",
+                "approvals",
+                "onboarding",
+                "latest",
+                "runs",
+                "review",
+            )
+        },
+        "owner_status": owner_status,
     }
+    payload["runs"] = owner_status["runs"][:25]
+    return payload
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
