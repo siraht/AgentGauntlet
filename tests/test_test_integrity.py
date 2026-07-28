@@ -51,3 +51,16 @@ def test_distinct_skipped_tests_do_not_collapse(tmp_path: Path) -> None:
     assert fingerprints[0] != fingerprints[1]
     assert "first behavior" in fingerprints[0]
     assert "second behavior" in fingerprints[1]
+
+
+def test_python_marker_text_in_strings_and_comments_is_ignored(tmp_path: Path) -> None:
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_docs.py").write_text(
+        "EXAMPLE = '@pytest.mark.skip and pytest.skip('\n"
+        "# @pytest.mark.skip\n"
+        "def test_documentation():\n"
+        "    assert 'pytest.skip(' == 'pytest.skip('\n",
+        encoding="utf-8",
+    )
+    assert _fingerprints(tmp_path) == []

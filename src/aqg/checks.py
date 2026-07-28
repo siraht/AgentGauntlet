@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import re
+import tokenize
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -95,6 +97,32 @@ def _test_anchor(content: str, position: int) -> str:
     return min(after, key=lambda candidate: candidate[0])[1] if after else "module"
 
 
+def _inspection_content(path: Path, content: str, *, keep_comments: bool = False) -> str:
+    if path.suffix != ".py":
+        return content
+    tokens: list[tokenize.TokenInfo] = []
+    try:
+        generated = tokenize.generate_tokens(io.StringIO(content).readline)
+        for token in generated:
+            if token.type == tokenize.STRING or (
+                token.type == tokenize.COMMENT and not keep_comments
+            ):
+                replacement = "".join(
+                    "\n" if character == "\n" else " " for character in token.string
+                )
+                token = tokenize.TokenInfo(
+                    token.type,
+                    replacement,
+                    token.start,
+                    token.end,
+                    token.line,
+                )
+            tokens.append(token)
+        return tokenize.untokenize(tokens)
+    except (tokenize.TokenError, IndentationError):
+        return content
+
+
 def scan_test_integrity(root: Path, project: dict[str, Any]) -> dict[str, Any]:
     files = _test_files(root, project)
     findings: list[Finding] = []
@@ -142,12 +170,13 @@ def scan_test_integrity(root: Path, project: dict[str, Any]) -> dict[str, Any]:
     for path in files:
         rel = path.relative_to(root).as_posix()
         content = path.read_text(encoding="utf-8", errors="replace")
-        file_tests = sum(len(pattern.findall(content)) for pattern in test_patterns)
+        inspected = _inspection_content(path, content)
+        file_tests = sum(len(pattern.findall(inspected)) for pattern in test_patterns)
         tests += file_tests
         for pattern, code, message in [*focused_patterns, *skip_patterns]:
-            for match in pattern.finditer(content):
-                line = content.count("\n", 0, match.start()) + 1
-                anchor = _test_anchor(content, match.start())
+            for match in pattern.finditer(inspected):
+                line = inspected.count("\n", 0, match.start()) + 1
+                anchor = _test_anchor(inspected, match.start())
                 fingerprint = f"{code}:{rel}:{anchor}:{match.group(0)}"
                 findings.append(
                     Finding(
@@ -650,14 +679,18 @@ def test_feature_traceability(root: Path, project: dict[str, Any]) -> dict[str, 
     requirement_pattern = re.compile(r"^\s*-\s+`([A-Z][A-Z0-9_-]+)`\s+", re.MULTILINE)
     bullet_pattern = re.compile(r"^\s*-\s+.+\bMUST\b", re.MULTILINE)
     annotation_pattern = re.compile(
-        r"Feature-Spec:\s*([A-Za-z0-9_.-]+)([^\r\n]*)",
+        r"(?:#|//|/\*|\*)\s*Feature-Spec:\s*([A-Za-z0-9_.-]+)([^\r\n]*)",
     )
     identifier_pattern = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+){2,}\b")
     annotations: dict[str, set[str]] = {}
     annotation_locations: dict[tuple[str, str], str] = {}
     for path in _test_files(root, project):
         relative = path.relative_to(root).as_posix()
-        content = path.read_text(encoding="utf-8", errors="ignore")
+        content = _inspection_content(
+            path,
+            path.read_text(encoding="utf-8", errors="ignore"),
+            keep_comments=True,
+        )
         for match in annotation_pattern.finditer(content):
             name = match.group(1)
             for identifier in identifier_pattern.findall(match.group(2)):
