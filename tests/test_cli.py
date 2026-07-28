@@ -11,7 +11,7 @@ from argparse import _SubParsersAction
 from pathlib import Path
 from unittest.mock import patch
 
-from aqg.cli import COMMAND_HANDLERS, build_parser, main
+from aqg.cli import COMMAND_HANDLERS, _triage_payload, build_parser, main
 from aqg.constants import CONFIGURATION_ERROR, PASS, QUALITY_FAILURE
 from aqg.scaffold import initialize_project
 
@@ -290,7 +290,24 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("qg check-risk --keep-going", first["commands"])
         self.assertEqual(first["owner_status"]["schema_version"], 1)
         self.assertNotIn("generated_at", first["owner_status"])
+        self.assertNotIn("generated_at", first["owner_status"]["onboarding"]["current"])
         self.assertIn("merge", first["owner_status"]["decisions"])
+        self.assertEqual(set(first["project"]), {"name", "stacks", "enforcement"})
+        self.assertEqual(set(first["readiness"]), {"summary", "stale", "next_action"})
+        self.assertEqual(
+            set(first["risk"]),
+            {"selected", "minimum", "required_execution_profiles", "errors"},
+        )
+        self.assertIn("latest", first)
+
+    def test_triage_requests_only_the_latest_run(self) -> None:
+        runs = [{"run_id": "first"}, {"run_id": "second"}]
+
+        with patch("aqg.cli.list_runs", return_value=runs) as list_runs:
+            payload = _triage_payload(self.root)
+
+        list_runs.assert_called_once_with(self.root, 1)
+        self.assertEqual(payload["latest"], runs[0])
 
     def test_status_exposes_the_shared_owner_decision_without_changing_legacy_fields(self) -> None:
         """AQG-OWNER-001/002: status retains its legacy data and adds owner decisions."""

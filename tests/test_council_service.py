@@ -189,3 +189,60 @@ def test_service_evidence_reports_missing_files_as_errors(tmp_path: Path) -> Non
 
     assert errors
     assert "missing JSON file" in errors[0]
+
+
+@pytest.mark.parametrize("leaked_key", ["stdout", "stderr"])
+def test_execution_evidence_rejects_raw_provider_output(tmp_path: Path, leaked_key: str) -> None:
+    executions = tmp_path / "executions"
+    executions.mkdir()
+    (executions / "member.json").write_text(
+        json.dumps({leaked_key: "provider output"}) + "\n", encoding="utf-8"
+    )
+
+    assert service._execution_evidence_errors(tmp_path) == [
+        "provider output was persisted instead of digest-only execution evidence"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("document", "field", "value", "message"),
+    [
+        ("plan", "kind", "wrong", "plan is not an advisory council plan"),
+        ("plan", "advisory_only", False, "plan is not an advisory council plan"),
+        (
+            "plan",
+            "bundle_sha256",
+            "wrong",
+            "plan does not identify the manifested candidate bundle",
+        ),
+        ("result", "advisory_only", False, "result is missing its advisory-only marker"),
+        ("toolchain", "kind", "wrong", "toolchain provenance is missing or malformed"),
+        (
+            "toolchain",
+            "advisory_only",
+            False,
+            "toolchain provenance is missing or malformed",
+        ),
+    ],
+)
+def test_service_metadata_rejects_each_broken_contract(
+    document: str, field: str, value: object, message: str
+) -> None:
+    documents: dict[str, dict[str, object]] = {
+        "plan": {
+            "kind": "aqg-council-plan",
+            "advisory_only": True,
+            "bundle_sha256": "sha256:bundle",
+        },
+        "bundle": {"bundle_sha256": "sha256:bundle"},
+        "result": {"advisory_only": True},
+        "toolchain": {"kind": "aqg-council-doctor", "advisory_only": True},
+    }
+    documents[document][field] = value
+
+    assert service._service_metadata_errors(
+        documents["plan"],
+        documents["bundle"],
+        documents["result"],
+        documents["toolchain"],
+    ) == [message]
