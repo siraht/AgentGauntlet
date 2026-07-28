@@ -1,6 +1,7 @@
 # Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-001 AQG-OWNER-002
 # Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-003 AQG-OWNER-004
 # Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-005 AQG-OWNER-006 AQG-OWNER-007
+# Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-008 AQG-OWNER-009
 """Owner readiness projection contracts."""
 
 from __future__ import annotations

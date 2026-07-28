@@ -1,3 +1,9 @@
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-001 AQG-COUNCIL-002
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-003 AQG-COUNCIL-004
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-005 AQG-COUNCIL-006
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-007 AQG-COUNCIL-008
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-009 AQG-COUNCIL-010
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-011 AQG-COUNCIL-012
 """Contracts for the dependency-free, advisory-only review council core."""
 
 from __future__ import annotations

@@ -133,6 +133,8 @@ def test_fake_run_publishes_only_verified_immutable_evidence(
     run_dir = tmp_path / ".aqg" / "council" / "council-test"
     execution = json.loads(next((run_dir / "executions").glob("*.json")).read_text())
     assert "stdout" not in execution and "stderr" not in execution
+    toolchain = json.loads((run_dir / "toolchain.json").read_text())
+    assert toolchain["kind"] == "aqg-council-doctor"
     assert (run_dir / "manifest.json").is_file()
     assert json.loads((run_dir.parent / "latest.json").read_text())["run_id"] == "council-test"
 

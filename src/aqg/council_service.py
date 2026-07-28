@@ -334,6 +334,7 @@ def _write_council_run(
     ballots: Sequence[Mapping[str, Any]],
     executions: Sequence[Mapping[str, Any]],
     result: Mapping[str, Any],
+    toolchain: Mapping[str, Any],
 ) -> Path:
     run_dir = root / ".aqg" / "council" / validate_run_id(run_id)
     try:
@@ -344,6 +345,7 @@ def _write_council_run(
         raise InfrastructureError(f"cannot create council evidence: {exc}") from exc
     write_evidence_json(run_dir / "plan.json", dict(plan))
     write_evidence_json(run_dir / "candidate-bundle.json", validate_candidate_bundle(bundle))
+    write_evidence_json(run_dir / "toolchain.json", dict(toolchain))
     for index, execution in enumerate(executions):
         write_evidence_json(run_dir / "executions" / f"{index:03d}.json", dict(execution))
     for index, ballot in enumerate(sorted(ballots, key=lambda item: item["ballot_sha256"])):
@@ -391,7 +393,10 @@ def run_council(
     result = aggregate_ballots(
         bundle, ballots, required_roles=roles, minimum_provider_groups=minimum_groups
     )
-    run_dir = _write_council_run(root, selected_id, plan, bundle, ballots, executions, result)
+    toolchain = council_doctor()
+    run_dir = _write_council_run(
+        root, selected_id, plan, bundle, ballots, executions, result, toolchain
+    )
     verification = verify_council_run(root, selected_id)
     if not verification["ok"]:
         raise InfrastructureError(
@@ -415,6 +420,7 @@ def _service_evidence_errors(run_dir: Path) -> list[str]:
         plan = read_json(run_dir / "plan.json")
         bundle = read_json(run_dir / "candidate-bundle.json")
         result = read_json(run_dir / "result.json")
+        toolchain = read_json(run_dir / "toolchain.json")
         executions = sorted((run_dir / "executions").glob("*.json"))
         if plan.get("kind") != "aqg-council-plan" or plan.get("advisory_only") is not True:
             errors.append("plan is not an advisory council plan")
@@ -424,6 +430,11 @@ def _service_evidence_errors(run_dir: Path) -> list[str]:
             errors.append("provider output was persisted instead of digest-only execution evidence")
         if result.get("advisory_only") is not True:
             errors.append("result is missing its advisory-only marker")
+        if (
+            toolchain.get("kind") != "aqg-council-doctor"
+            or toolchain.get("advisory_only") is not True
+        ):
+            errors.append("toolchain provenance is missing or malformed")
     except (ConfigurationError, OSError) as exc:
         errors.append(str(exc))
     return errors

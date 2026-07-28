@@ -15,7 +15,9 @@
   than become agreement.
 - `AQG-COUNCIL-004` Initial member reviews MUST be independent. Reconciliation
   MAY expose anonymized disagreements in a later round but MUST preserve every
-  original response and dissent.
+  original validated ballot and dissent. Raw provider streams MAY be discarded
+  after their digest and validated content have been recorded, because they can
+  contain hidden reasoning, provider metadata, or reflected sensitive text.
 - `AQG-COUNCIL-005` A council conclusion MUST follow deterministic quorum and
   severity rules. Majority vote MUST NOT erase a blocker, deterministic gate
   failure, missing product intent, or material unresolved dissent.
