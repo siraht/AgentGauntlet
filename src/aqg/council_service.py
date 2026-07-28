@@ -17,13 +17,18 @@ from .constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS, QUALITY_
 from .council import (
     ROLES,
     aggregate_ballots,
-    build_candidate_bundle,
-    canonical_json,
     provider_identity,
     validate_ballot,
     validate_candidate_bundle,
     validate_council_result,
     verify_council_evidence,
+    write_council_evidence,
+)
+from .council_chunks import (
+    aggregate_series,
+    build_bundle_series,
+    series_evidence,
+    verify_series,
 )
 from .council_providers import collect_ballot, minimal_environment
 from .errors import ConfigurationError, InfrastructureError
@@ -191,34 +196,27 @@ def _scope(root: Path, base: str) -> dict[str, str]:
 def _prepare_plan(
     root: Path, tier: str, max_bundle_bytes: int, data_classification: str
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if max_bundle_bytes <= 0:
-        raise ConfigurationError("council bundle size cap must be positive")
     base = _base_ref(root)
     routing = _provider_routing(data_classification)
     scope = _scope(root, base)
     run_dir, summary = _matching_quality_run(root, scope, TIER_EVIDENCE_PROFILE[tier])
     inputs = _bundle_inputs(root, base, run_dir, summary)
-    bundle = build_candidate_bundle(
-        **scope,
+    series = build_bundle_series(
+        scope=scope,
         evidence_manifest_sha256="sha256:" + sha256_file(run_dir / "manifest.json"),
         inputs=inputs,
+        max_bundle_bytes=max_bundle_bytes,
     )
-    bundle_bytes = len(canonical_json(bundle))
-    if bundle_bytes > max_bundle_bytes:
-        raise ConfigurationError(
-            f"candidate bundle is {bundle_bytes} bytes; cap is {max_bundle_bytes} bytes"
-        )
     return (
         _plan_payload(
             tier,
             run_dir,
-            bundle,
-            bundle_bytes,
+            series,
             max_bundle_bytes,
             data_classification,
             routing,
         ),
-        bundle,
+        series,
     )
 
 
@@ -243,8 +241,7 @@ def _provider_routing(data_classification: str) -> dict[str, Any]:
 def _plan_payload(
     tier: str,
     run_dir: Path,
-    bundle: Mapping[str, Any],
-    bundle_bytes: int,
+    series: Mapping[str, Any],
     max_bundle_bytes: int,
     data_classification: str,
     routing: Mapping[str, Any],
@@ -267,9 +264,12 @@ def _plan_payload(
         "minimum_provider_groups": groups,
         "expected_standard": "high_assurance_incomplete" if tier == "smoke" else "complete",
         "quality_run_id": run_dir.name,
-        "scope": dict(bundle["scope"]),
-        "bundle_sha256": bundle["bundle_sha256"],
-        "bundle_bytes": bundle_bytes,
+        "scope": dict(series["scope"]),
+        "bundle_sha256": series["series_sha256"],
+        "bundle_mode": "single" if len(series["bundles"]) == 1 else "chunked",
+        "bundle_count": len(series["bundles"]),
+        "bundle_bytes": max(chunk["bundle_bytes"] for chunk in series["chunks"]),
+        "total_bundle_bytes": sum(chunk["bundle_bytes"] for chunk in series["chunks"]),
         "max_bundle_bytes": max_bundle_bytes,
     }
 
@@ -395,7 +395,7 @@ def _write_council_run(
 ) -> Path:
     run_dir = root / ".aqg" / "council" / validate_run_id(run_id)
     try:
-        run_dir.mkdir(parents=True, exist_ok=False)
+        run_dir.mkdir(parents=True)
     except FileExistsError as exc:
         raise ConfigurationError(f"council evidence already exists: {run_dir}") from exc
     except OSError as exc:
@@ -410,6 +410,40 @@ def _write_council_run(
             run_dir / "ballots" / f"{index:03d}.json", validate_ballot(ballot, bundle=bundle)
         )
     write_evidence_json(run_dir / "result.json", validate_council_result(result, bundle=bundle))
+    write_run_manifest(run_dir, run_id)
+    return run_dir
+
+
+def _write_series_run(
+    root: Path,
+    run_id: str,
+    plan: Mapping[str, Any],
+    series: Mapping[str, Any],
+    ballots: Sequence[Sequence[Mapping[str, Any]]],
+    executions: Sequence[Sequence[Mapping[str, Any]]],
+    results: Sequence[Mapping[str, Any]],
+    result: Mapping[str, Any],
+) -> Path:
+    run_dir = root / ".aqg" / "council" / validate_run_id(run_id)
+    try:
+        run_dir.mkdir(parents=True)
+    except FileExistsError as exc:
+        raise ConfigurationError(f"council evidence already exists: {run_dir}") from exc
+    except OSError as exc:
+        raise InfrastructureError(f"cannot create council evidence: {exc}") from exc
+    write_evidence_json(run_dir / "plan.json", dict(plan))
+    write_evidence_json(run_dir / "bundle-series.json", series_evidence(series))
+    write_evidence_json(run_dir / "toolchain.json", council_doctor())
+    for index, bundle in enumerate(series["bundles"]):
+        write_council_evidence(
+            run_dir / "chunks", f"chunk-{index:04d}", bundle, ballots[index], results[index]
+        )
+        for member, execution in enumerate(executions[index]):
+            write_evidence_json(
+                run_dir / "executions" / f"chunk-{index:04d}-{member:03d}.json",
+                dict(execution),
+            )
+    write_evidence_json(run_dir / "result.json", dict(result))
     write_run_manifest(run_dir, run_id)
     return run_dir
 
@@ -440,23 +474,58 @@ def run_council(
     if timeout_seconds <= 0:
         raise ConfigurationError("council member timeout must be positive")
     root = Path(root)
-    plan, bundle = _prepare_plan(root, tier, max_bundle_bytes, data_classification)
+    plan, series = _prepare_plan(root, tier, max_bundle_bytes, data_classification)
     _require_provider_route(plan, data_classification)
     selected_id = validate_run_id(run_id) if run_id else _new_run_id()
     environment = minimal_environment(os.environ)
-    with tempfile.TemporaryDirectory(prefix="aqg-council-") as temporary:
-        ballots, executions = _run_members(
-            tier, bundle, Path(temporary), environment, timeout_seconds, executor, selected_id
-        )
     roles, minimum_groups = _tier_rules(tier)
-    result = aggregate_ballots(
-        bundle, ballots, required_roles=roles, minimum_provider_groups=minimum_groups
+    ballots, executions, results = _run_series(
+        tier, series, environment, timeout_seconds, executor, selected_id, roles, minimum_groups
     )
-    run_dir = _write_council_run(
-        root, selected_id, plan, bundle, ballots, executions, result, council_doctor()
+    result = aggregate_series(series, results)
+    run_dir = _write_series_run(
+        root, selected_id, plan, series, ballots, executions, results, result
     )
     _verify_and_publish(root, run_dir, selected_id, result)
-    return _result_exit_code(result, executions), report_council(root, selected_id)
+    flattened = [item for chunk in executions for item in chunk]
+    return _result_exit_code(result, flattened), report_council(root, selected_id)
+
+
+def _run_series(
+    tier: str,
+    series: Mapping[str, Any],
+    environment: Mapping[str, str],
+    timeout_seconds: float,
+    executor: Callable[..., subprocess.CompletedProcess[str]],
+    review_id: str,
+    roles: Sequence[str],
+    minimum_groups: int,
+) -> tuple[list[list[dict[str, Any]]], list[list[dict[str, Any]]], list[dict[str, Any]]]:
+    ballots, executions, results = [], [], []
+    with tempfile.TemporaryDirectory() as temporary:
+        for index, bundle in enumerate(series["bundles"]):
+            cwd = Path(temporary) / f"chunk-{index:04d}"
+            cwd.mkdir()
+            chunk_ballots, chunk_executions = _run_members(
+                tier,
+                bundle,
+                cwd,
+                environment,
+                timeout_seconds,
+                executor,
+                f"{review_id}-chunk-{index:04d}",
+            )
+            ballots.append(chunk_ballots)
+            executions.append(chunk_executions)
+            results.append(
+                aggregate_ballots(
+                    bundle,
+                    chunk_ballots,
+                    required_roles=roles,
+                    minimum_provider_groups=minimum_groups,
+                )
+            )
+    return ballots, executions, results
 
 
 def _require_provider_route(plan: Mapping[str, Any], data_classification: str) -> None:
@@ -484,16 +553,21 @@ def _resolve_run_id(root: Path, run_id: str) -> str:
 
 
 def _load_service_evidence(run_dir: Path) -> tuple[dict[str, Any], ...]:
+    bundle_name = (
+        "bundle-series.json"
+        if (run_dir / "bundle-series.json").is_file()
+        else "candidate-bundle.json"
+    )
     return (
         read_json(run_dir / "plan.json"),
-        read_json(run_dir / "candidate-bundle.json"),
+        read_json(run_dir / bundle_name),
         read_json(run_dir / "result.json"),
         read_json(run_dir / "toolchain.json"),
     )
 
 
 def _execution_evidence_errors(run_dir: Path) -> list[str]:
-    executions = sorted((run_dir / "executions").glob("*.json"))
+    executions = sorted(run_dir.rglob("executions/*.json"))
     leaked = any("stdout" in read_json(path) or "stderr" in read_json(path) for path in executions)
     return (
         ["provider output was persisted instead of digest-only execution evidence"]
@@ -514,7 +588,7 @@ def _service_metadata_errors(
             "plan is not an advisory council plan",
         ),
         (
-            plan.get("bundle_sha256") == bundle.get("bundle_sha256"),
+            plan.get("bundle_sha256") in {bundle.get("bundle_sha256"), bundle.get("series_sha256")},
             "plan does not identify the manifested candidate bundle",
         ),
         (result.get("advisory_only") is True, "result is missing its advisory-only marker"),
@@ -542,10 +616,14 @@ def verify_council_run(root: Path, run_id: str = "latest") -> dict[str, Any]:
     root = Path(root)
     selected = _resolve_run_id(root, run_id)
     run_dir = root / ".aqg" / "council" / selected
-    core = verify_council_evidence(run_dir)
-    errors = list(core["errors"])
-    if core["ok"]:
-        errors.extend(_service_evidence_errors(run_dir))
+    core = (
+        _verify_series_evidence(run_dir)
+        if (run_dir / "bundle-series.json").is_file()
+        else verify_council_evidence(run_dir)
+    )
+    core_errors = list(core["errors"])
+    service_errors = [] if core_errors else _service_evidence_errors(run_dir)
+    errors = core_errors + service_errors
     return {
         "schema_version": SERVICE_SCHEMA_VERSION,
         "kind": "aqg-council-verification",
@@ -556,6 +634,49 @@ def verify_council_run(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "errors": errors,
         "manifest": core["manifest"],
     }
+
+
+def _read_chunk_evidence(
+    paths: Sequence[Path],
+) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    verified = [verify_council_evidence(path) for path in paths]
+    errors = [error for item in verified for error in item["errors"]]
+    if errors:
+        return errors, [], []
+    bundles = [read_json(path / "candidate-bundle.json") for path in paths]
+    results = [read_json(path / "result.json") for path in paths]
+    return [], bundles, results
+
+
+def _verify_series_evidence(run_dir: Path) -> dict[str, Any]:
+    manifest = verify_run_manifest(run_dir)
+    manifest_errors = list(manifest["errors"])
+    if manifest_errors:
+        return {"errors": manifest_errors, "manifest": manifest}
+    series = read_json(run_dir / "bundle-series.json")
+    paths = sorted((run_dir / "chunks").glob("chunk-*"))
+    errors, bundles, results = _read_chunk_evidence(paths)
+    if errors:
+        return {"errors": errors, "manifest": manifest}
+    errors.extend(verify_series(series, bundles))
+    if read_json(run_dir / "result.json") != aggregate_series(series, results):
+        errors.append("series result does not match its bounded chunk results")
+    return {"errors": errors, "manifest": manifest}
+
+
+def _reported_members(paths: Sequence[Path]) -> list[dict[str, Any]]:
+    ballots = [read_json(path) for path in paths]
+    return [
+        {
+            "model_id": ballot["reviewer"]["model_id"],
+            "provider_group": ballot["reviewer"]["provider_group"],
+            "role": ballot["reviewer"]["role"],
+            "verdict": ballot["verdict"],
+            "confidence": ballot["confidence"],
+            "findings": len(ballot["findings"]),
+        }
+        for ballot in ballots
+    ]
 
 
 def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
@@ -569,10 +690,12 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
             "council evidence is invalid: " + "; ".join(verification["errors"])
         )
     plan = read_json(run_dir / "plan.json")
-    bundle = read_json(run_dir / "candidate-bundle.json")
+    series_mode = (run_dir / "bundle-series.json").is_file()
+    bundle = read_json(run_dir / ("bundle-series.json" if series_mode else "candidate-bundle.json"))
     result = read_json(run_dir / "result.json")
-    ballot_paths = sorted((run_dir / "ballots").glob("*.json"))
-    ballots = [read_json(path) for path in ballot_paths]
+    ballot_paths = sorted(
+        run_dir.rglob("ballots/*.json") if series_mode else (run_dir / "ballots").glob("*.json")
+    )
     return {
         "schema_version": SERVICE_SCHEMA_VERSION,
         "kind": "aqg-council-report",
@@ -589,17 +712,9 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "blockers": result["blockers"],
         "dissent": result["dissent"],
         "incomplete_reasons": result["incomplete_reasons"],
-        "members": [
-            {
-                "model_id": ballot["reviewer"]["model_id"],
-                "provider_group": ballot["reviewer"]["provider_group"],
-                "role": ballot["reviewer"]["role"],
-                "verdict": ballot["verdict"],
-                "confidence": ballot["confidence"],
-                "findings": len(ballot["findings"]),
-            }
-            for ballot in ballots
-        ],
+        "bundle_mode": plan.get("bundle_mode", "single"),
+        "bundle_count": plan.get("bundle_count", 1),
+        "members": _reported_members(ballot_paths),
         "executions": len(list((run_dir / "executions").glob("*.json"))),
         "verification": verification,
     }
