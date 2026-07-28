@@ -28,6 +28,23 @@ A change to this plane requires an explicit policy-maintenance task, conformance
 
 `AQG_POLICY_MAINTENANCE` and `AQG_ALLOW_GOLDEN_UPDATE` MUST be unset during authoritative checks. They are narrow maintenance controls, not a way to obtain passing evidence, and `doctor`/`check` reject them when enabled.
 
+A legitimate local policy-maintenance operation MUST first be declared with an
+exact add/modify/delete/rename path:
+
+```sh
+python3 quality/qg.py maintenance request \
+  --change modify:quality/project.json \
+  --reason "Describe the independently reviewed policy change"
+```
+
+The request is fingerprinted to the current candidate and controls and carries
+no approval authority. With `AQG_POLICY_MAINTENANCE=1`, local hooks MAY permit
+only the exact declared operations; shell writes and undeclared protected
+paths remain blocked. PR, deep, and release evidence MUST derive the actual
+protected diff and require a current independent approval for the same
+operation and path. The builder MUST NOT create or approve that independent
+record.
+
 ## Human-review plane
 
 Changes under these paths are allowed proposals but MUST be surfaced separately for human review:
@@ -83,6 +100,13 @@ An agent MAY change tests, but it MUST NOT weaken expected behavior merely to ma
 ## Metrics
 
 New and changed code MUST meet the configured structural and coverage targets. Existing debt follows a no-regression ratchet. Metric exceptions MUST be narrow, justified, owned, and expiring.
+
+Existing repositories MUST begin in `shadow`, create a complete manifested
+debt proposal, obtain human review of that inventory, and install the reviewed
+baseline through protected policy maintenance before `ratchet` can enforce.
+Matching inherited debt remains visible but non-blocking. New, worsened,
+malformed, or unclassified debt MUST block. Promotion is monotonic from
+`shadow` to `ratchet` to `strict`; a proposal MUST NOT silently alter the stage.
 
 ## Behavioral contracts
 
