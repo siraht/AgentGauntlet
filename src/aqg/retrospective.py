@@ -41,6 +41,7 @@ def _item(gate: str, category: str, code: int, message: str) -> dict[str, Any]:
     return {
         "fingerprint": f"gate:{gate}:{category}:{code}",
         "category": category,
+        "exit_code": code,
         "path": gate,
         "severity": "error",
         "gate": gate,
@@ -241,3 +242,40 @@ def build_retrospective(
     }
     report["counts"] = {name: len(report[name]) for name in (*TAXONOMY, "unreviewed_debt")}
     return report
+
+
+def ratchet_exit_code(report: Mapping[str, Any]) -> int:
+    """Return the enforcing result for a report backed by reviewed authority."""
+    if report.get("certification") == "observations_only":
+        raise DebtError("ratchet exit requires a reviewed baseline")
+    infrastructure = _sequence(report.get("infrastructure_errors"))
+    if infrastructure:
+        return 3
+    configuration = _sequence(report.get("configuration_errors"))
+    if configuration:
+        return 2
+    missing = _sequence(report.get("missing_evidence"))
+    if missing:
+        return max(
+            1,
+            max(
+                (
+                    int(item.get("exit_code", 1))
+                    for item in missing
+                    if isinstance(item, Mapping)
+                ),
+                default=1,
+            ),
+        )
+    if any(
+        _sequence(report.get(name))
+        for name in (
+            "blocking_failures",
+            "regressions",
+            "new_debt",
+            "invalid_debt",
+            "unknown_product_intent",
+        )
+    ):
+        return 1
+    return 0

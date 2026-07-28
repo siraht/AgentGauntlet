@@ -34,7 +34,7 @@ from .evidence_manifest import (
 )
 from .policy import safe_remove, validate_policy
 from .project import load_project
-from .retrospective import build_retrospective
+from .retrospective import build_retrospective, ratchet_exit_code
 from .util import (
     change_fingerprint,
     control_fingerprint,
@@ -117,19 +117,6 @@ def _retrospective_inputs(
         except ConfigurationError as exc:
             baseline_error = str(exc)
     return details, thresholds, traceability, baseline, baseline_error
-
-
-def _ratchet_quality(report: dict[str, Any]) -> bool:
-    return report["certification"] == "not_regression_free" and any(
-        report[name]
-        for name in (
-            "blocking_failures",
-            "regressions",
-            "new_debt",
-            "invalid_debt",
-            "unknown_product_intent",
-        )
-    )
 
 
 def run_gate(
@@ -326,6 +313,7 @@ def run_profile(
                 "  ✗ workspace_integrity [quality_failure] · a checker modified the review surface"
             )
 
+    measured_gate_exit = final
     project = load_project(root)
     details, thresholds, traceability, baseline, baseline_error = _retrospective_inputs(
         root, run_dir, project, profile_name
@@ -341,8 +329,8 @@ def run_profile(
     write_evidence_json(run_dir / "retrospective.json", retrospective)
     if baseline_error:
         final = max(final, CONFIGURATION_ERROR)
-    if baseline is not None and _ratchet_quality(retrospective):
-        final = max(final, QUALITY_FAILURE)
+    elif baseline is not None:
+        final = ratchet_exit_code(retrospective)
     command_exit = PASS if shadow and final == QUALITY_FAILURE else final
     summary = {
         "schema_version": "2",
@@ -352,6 +340,7 @@ def run_profile(
         "status": STATUS_NAMES[final],
         "exit_code": command_exit,
         "observed_exit_code": final,
+        "measured_gate_exit_code": measured_gate_exit,
         "command_status": STATUS_NAMES[command_exit],
         "started_at": utc_now(),
         "duration_ms": int((time.monotonic() - started) * 1000),

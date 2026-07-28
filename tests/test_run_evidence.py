@@ -331,3 +331,108 @@ def test_stale_debt_baseline_is_a_manifested_configuration_failure(tmp_path: Pat
     assert report["counts"]["configuration_errors"] == 1
     assert report["configuration_errors"][0]["gate"] == "debt_baseline"
     assert verify_run_manifest(run_dir)["ok"] is True
+
+
+def _structure_failure_script(root: Path, lines: int) -> str:
+    script = root / f"structure_{lines}.py"
+    script.write_text(
+        "import json,pathlib,sys\n"
+        "p=pathlib.Path('.aqg/work/structure/report.json')\n"
+        "p.parent.mkdir(parents=True,exist_ok=True)\n"
+        "payload={'schema_version':2,'gate':'structure','status':'quality_failure',"
+        "'exit_code':1,'python':{'functions':[{'path':'src/legacy.py',"
+        f"'name':'legacy','line':1,'end_line':{lines},'lines':{lines},"
+        "'complexity':1,'nesting':0,'enforced':False}],'failures':['legacy debt']}}\n"
+        "p.write_text(json.dumps(payload),encoding='utf-8')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    return f"python3 {script.name} adapter structure"
+
+
+def _reviewed_structure_baseline(lines: int) -> dict:
+    return {
+        "schema_version": 1,
+        "state": "reviewed",
+        "source_revision": "candidate",
+        "policy_fingerprint": "sha256:policy",
+        "control_fingerprint": "sha256:control",
+        "created_at": "2026-07-28T00:00:00Z",
+        "measurement": {
+            "run_id": "baseline-shadow",
+            "profile": "fast",
+            "measured_at": "2026-07-28T00:00:00Z",
+            "change_fingerprint": "sha256:change",
+            "manifest_fingerprint": "sha256:manifest",
+        },
+        "inventory": [
+            {
+                "fingerprint": "structure:lines:src/legacy.py:legacy",
+                "category": "structure",
+                "path": "src/legacy.py",
+                "location": "line:1",
+                "severity": "medium",
+                "value": lines,
+                "direction": "higher_is_worse",
+            }
+        ],
+        "reviewer": "owner@example.test",
+        "reviewed_at": "2026-07-28T00:01:00Z",
+    }
+
+
+def test_reviewed_ratchet_reports_inherited_debt_but_rejects_worsening(
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "quality" / "baselines" / "debt.json"
+    baseline_path.parent.mkdir(parents=True)
+    baseline_path.write_text("{}\n", encoding="utf-8")
+    project = _project()
+    project["enforcement"]["debt_baseline"] = "quality/baselines/debt.json"
+    provenance = {
+        "revision": "candidate",
+        "base_ref": "main",
+        "change_fingerprint": "sha256:change",
+        "control_fingerprint": "sha256:control",
+    }
+    baseline = _reviewed_structure_baseline(80)
+    with (
+        mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=project),
+        mock.patch("aqg.runner.load_current_debt_baseline", return_value=baseline),
+        mock.patch.dict(os.environ, {"AQG_RUN_ID": "inherited-debt"}, clear=False),
+    ):
+        inherited_code, inherited_summary = run_profile(
+            tmp_path,
+            _profile_policy(_structure_failure_script(tmp_path, 80), gate="structure"),
+            "fast",
+            quiet=True,
+        )
+    inherited = json.loads(
+        (tmp_path / ".aqg" / "runs" / "inherited-debt" / "retrospective.json").read_text()
+    )
+    assert inherited_code == PASS
+    assert inherited_summary["measured_gate_exit_code"] == 1
+    assert inherited_summary["status"] == "pass"
+    assert inherited["counts"]["inherited_debt"] == 1
+    assert inherited["counts"]["regressions"] == 0
+
+    with (
+        mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=project),
+        mock.patch("aqg.runner.load_current_debt_baseline", return_value=baseline),
+        mock.patch.dict(os.environ, {"AQG_RUN_ID": "worsened-debt"}, clear=False),
+    ):
+        regression_code, regression_summary = run_profile(
+            tmp_path,
+            _profile_policy(_structure_failure_script(tmp_path, 81), gate="structure"),
+            "fast",
+            quiet=True,
+        )
+    regression = json.loads(
+        (tmp_path / ".aqg" / "runs" / "worsened-debt" / "retrospective.json").read_text()
+    )
+    assert regression_code == 1
+    assert regression_summary["status"] == "quality_failure"
+    assert regression["counts"]["regressions"] == 1
+    assert verify_run_manifest(tmp_path / ".aqg" / "runs" / "worsened-debt")["ok"] is True

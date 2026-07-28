@@ -7,7 +7,7 @@ import copy
 import unittest
 
 from aqg.debt import DebtError
-from aqg.retrospective import TAXONOMY, build_retrospective
+from aqg.retrospective import TAXONOMY, build_retrospective, ratchet_exit_code
 
 THRESHOLDS = {
     "structure": {
@@ -388,6 +388,7 @@ class RetrospectiveTaxonomyTests(unittest.TestCase):
             baseline=baseline,
         )
         self.assertEqual(report["certification"], "regression_free")
+        self.assertEqual(ratchet_exit_code(report), 0)
         self.assertEqual(report["counts"]["inherited_debt"], len(inventory))
         self.assertEqual(report["counts"]["new_debt"], 0)
         self.assertEqual(report["counts"]["regressions"], 0)
