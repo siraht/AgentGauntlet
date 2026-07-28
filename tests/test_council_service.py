@@ -129,6 +129,21 @@ def test_deep_security_gate_satisfies_council_secret_prerequisite() -> None:
     assert service._is_secret_gate("other") is False
 
 
+@pytest.mark.parametrize(
+    "summary",
+    [
+        {},
+        {"gates": "malformed"},
+        {"gates": ["malformed"]},
+        {"gates": [{"name": "other", "status": "pass", "exit_code": 0}]},
+        {"gates": [{"name": "security_fast", "status": "fail", "exit_code": 0}]},
+        {"gates": [{"name": "security_fast", "status": "pass", "exit_code": 1}]},
+    ],
+)
+def test_council_secret_prerequisite_fails_closed(summary: dict[str, Any]) -> None:
+    assert service._secret_gate_passed(summary) is False
+
+
 def test_high_tier_does_not_bundle_a_newer_fast_run(
     tmp_path: Path,
 ) -> None:

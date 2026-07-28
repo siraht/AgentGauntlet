@@ -93,7 +93,7 @@ def _is_secret_gate(name: object) -> bool:
 
 
 def _secret_gate_passed(summary: Mapping[str, Any]) -> bool:
-    gates = summary.get("gates", [])
+    gates = summary.get("gates")
     if not isinstance(gates, list):
         return False
     return any(
