@@ -2,16 +2,10 @@
   "detected": {
     "build_command": null,
     "css": true,
-    "css_paths": [
-      "src"
-    ],
-    "frameworks": [
-      "pytest"
-    ],
+    "css_paths": ["src"],
+    "frameworks": ["pytest"],
     "html": true,
-    "html_paths": [
-      "src"
-    ],
+    "html_paths": ["src"],
     "javascript": true,
     "js_test_runner": null,
     "name": "AgentGauntlet",
@@ -23,11 +17,7 @@
     "python": true,
     "python_manager": "uv",
     "python_test_runner": "pytest",
-    "source_paths": [
-      "agent_ergonomics_audit",
-      "scripts",
-      "src"
-    ],
+    "source_paths": ["agent_ergonomics_audit", "scripts", "src"],
     "start_command": null,
     "test_files": [
       "agent_ergonomics_audit/audit/regression_tests/test_R_001_json_errors.py",
@@ -70,12 +60,7 @@
       "tests/test_test_integrity.py",
       "tests/test_trusted_grader.py"
     ],
-    "test_paths": [
-      "agent_ergonomics_audit",
-      "quality",
-      "src",
-      "tests"
-    ],
+    "test_paths": ["agent_ergonomics_audit", "quality", "src", "tests"],
     "typescript": false
   },
   "gaps": [
@@ -191,9 +176,7 @@
       "src",
       "tests"
     ],
-    "gherkin_features": [
-      "features/AgentQualityGauntlet.Setup.feature"
-    ],
+    "gherkin_features": ["features/AgentQualityGauntlet.Setup.feature"],
     "golden_configured": false,
     "js_lock": true,
     "keystone_placeholder": false,
@@ -210,9 +193,7 @@
       "python": true,
       "typescript": false
     },
-    "todo_specs": [
-      "feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"
-    ]
+    "todo_specs": ["feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"]
   },
   "state_fingerprint": "3c13311ca645f05866d31113d6135efeaf9037fb01276ee18c3e3ead1e07b7de",
   "summary": {
