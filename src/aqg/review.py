@@ -15,6 +15,7 @@ from typing import Any
 from .approvals import validate_required_approvals
 from .checks import test_feature_traceability
 from .constants import PASS, QUALITY_FAILURE
+from .evidence_manifest import verify_run_manifest
 from .policy import human_review_patterns, protected_patterns, risk_summary
 from .project import load_project
 from .runner import list_runs
@@ -825,6 +826,7 @@ def _findings_traceability(root: Path, project: dict[str, Any]) -> list[dict[str
 
 
 def _matching_current_run(
+    root: Path,
     runs: list[dict[str, Any]],
     profile: str,
     revision: str,
@@ -839,11 +841,16 @@ def _matching_current_run(
             and run.get("change_fingerprint") == change_fp
             and run.get("control_fingerprint") == control_fp
         ):
-            return run
+            run_id = run.get("run_id")
+            if not isinstance(run_id, str):
+                continue
+            if verify_run_manifest(root / ".aqg" / "runs" / run_id)["ok"]:
+                return run
     return None
 
 
 def _build_evidence_matrix(
+    root: Path,
     runs: list[dict[str, Any]],
     risk_payload: dict[str, Any] | None,
     revision: str,
@@ -855,7 +862,7 @@ def _build_evidence_matrix(
     )
     matrix: list[dict[str, Any]] = []
     for profile in required_profiles:
-        matching = _matching_current_run(runs, profile, revision, change_fp, control_fp)
+        matching = _matching_current_run(root, runs, profile, revision, change_fp, control_fp)
         matrix.append(
             {
                 "profile": profile,
@@ -1014,7 +1021,9 @@ def analyze_review(
     revision = git_revision(root)
     change_fp = change_fingerprint(root, base)
     control_fp = control_fingerprint(root)
-    evidence_matrix = _build_evidence_matrix(runs, risk_payload, revision, change_fp, control_fp)
+    evidence_matrix = _build_evidence_matrix(
+        root, runs, risk_payload, revision, change_fp, control_fp
+    )
     findings.extend(
         _findings_evidence_requirements(evidence_matrix, risk_payload, require_evidence, runs)
     )

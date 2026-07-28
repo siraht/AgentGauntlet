@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from aqg.evidence_manifest import write_run_manifest
 from aqg.policy import load_policy
 from aqg.reporting import review_to_sarif
 from aqg.review import (
@@ -1294,8 +1295,8 @@ def test_return_none_swallow_is_flagged(tmp_path: Path) -> None:
     assert swallowed["paths"] == ["src/app.py:4"]
 
 
-def test_current_passing_run_clears_missing_profile_evidence(tmp_path: Path) -> None:
-    """Fingerprint-matched current passes populate the evidence matrix and drop missing-current blockers."""
+def test_current_manifested_passing_run_clears_missing_profile_evidence(tmp_path: Path) -> None:
+    """AQG-OWNER-003: only a manifested fingerprint-matched pass is current."""
     from aqg.util import change_fingerprint, control_fingerprint, git_revision
 
     root = _baseline_repo(tmp_path)
@@ -1328,6 +1329,11 @@ def test_current_passing_run_clears_missing_profile_evidence(tmp_path: Path) -> 
         + "\n",
         encoding="utf-8",
     )
+    without_manifest = analyze_review(root, policy, base="HEAD", require_evidence=True)
+    assert without_manifest["evidence"] == [
+        {"profile": profile, "status": "missing_or_stale", "run_id": None}
+    ]
+    write_run_manifest(run_dir, run_id)
     packet = analyze_review(root, policy, base="HEAD", require_evidence=True)
     assert packet["evidence"] == [{"profile": profile, "status": "current_pass", "run_id": run_id}]
     assert f"missing-current-{profile}-evidence" not in _by_code(packet)
@@ -1335,6 +1341,16 @@ def test_current_passing_run_clears_missing_profile_evidence(tmp_path: Path) -> 
     # Approval is still required and independent of synthetic gate evidence.
     assert packet["summary"]["approval_status"] == "missing_or_stale"
     assert "missing-or-stale-human-approval" in _by_code(packet)
+
+    # A matching summary stops being current as soon as its manifested bytes change.
+    (run_dir / "summary.json").write_text(
+        (run_dir / "summary.json").read_text(encoding="utf-8") + " ",
+        encoding="utf-8",
+    )
+    tampered = analyze_review(root, policy, base="HEAD", require_evidence=True)
+    assert tampered["evidence"] == [
+        {"profile": profile, "status": "missing_or_stale", "run_id": None}
+    ]
 
 
 def test_mixed_diff_pins_public_copy_for_every_known_finding(tmp_path: Path) -> None:
