@@ -55,6 +55,7 @@ python3 quality/qg.py risk-card
 python3 quality/qg.py check fast
 python3 quality/qg.py check-risk --keep-going
 python3 quality/qg.py review --write --sarif
+python3 quality/qg.py council plan --tier pr
 python3 quality/qg.py tui
 python3 quality/qg.py dashboard --open
 ```
@@ -148,6 +149,12 @@ It writes:
 
 AQG routes decisions; it does not let a builder auto-approve policies, goldens, waivers, or release evidence.
 
+For additional independent technical perspectives, `qg council` creates an
+exact-candidate bundle and orchestrates isolated Grok/OpenCode reviewers. Its
+validated ballots, dissent, quorum, tool provenance, and conclusion are
+immutable and always advisory. See
+[docs/AGENT_REVIEW_COUNCIL.md](docs/AGENT_REVIEW_COUNCIL.md).
+
 ## Build a portable release
 
 ```sh
@@ -181,6 +188,8 @@ scripts/build_release.py         deterministic portable builder
 ARCHITECTURE.md                  planes, trust boundaries, and data flow
 IMPLEMENTATION_STATUS.md         recovered/validated/missing status
 docs/CONTROL_SURFACE.md          CLI, TUI, and dashboard workflows
+docs/PROJECT_STATUS.md           plain-language current capabilities and limits
+docs/AGENT_REVIEW_COUNCIL.md     multi-model advisory review workflow
 docs/RELEASE_VERIFICATION.md     checksum, provenance, and SBOM verification
 docs/RESEARCH_REPORT_2026.md     research-to-control synthesis
 BLUEPRINT.md                     full design and adoption model

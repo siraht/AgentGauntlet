@@ -29,6 +29,7 @@ python3 quality/qg.py check inner
 python3 quality/qg.py check fast
 python3 quality/qg.py check-risk --keep-going
 python3 quality/qg.py review --write --sarif
+python3 quality/qg.py council plan --tier pr
 ```
 
 Use `inner` while editing and `fast` at coherent local checkpoints.
@@ -154,6 +155,8 @@ The server binds to `127.0.0.1` by default. Read-only mode exposes current state
 
 The dashboard shows:
 
+- separate Develop, Merge, and Release decisions from one owner-status model;
+- exact-candidate advisory council quorum, dissent, and completeness;
 - current risk and required execution;
 - latest and historical runs;
 - gate evidence and artifacts;

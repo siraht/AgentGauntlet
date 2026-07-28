@@ -59,6 +59,19 @@ python3 quality/qg.py dashboard --open
 
 The dashboard is read-only unless explicitly started with `--allow-actions`.
 
+For an additional technical review without making provider calls blindly:
+
+```sh
+python3 quality/qg.py council doctor
+python3 quality/qg.py council plan --tier pr
+python3 quality/qg.py council run --tier pr
+```
+
+Read the plan before `run`: it names the exact revision, comparison base,
+bundle size, models, roles, and current quality evidence. A council report is
+advice, not permission. Ask it to explain consensus, unique findings, dissent,
+unknowns, and the smallest safe next action in plain language.
+
 ## Review before merge
 
 Read `.aqg/review/review.md` and ask:
@@ -71,6 +84,8 @@ Read `.aqg/review/review.md` and ask:
 6. Were tests, expectations, mocks, goldens, thresholds, or suppressions weakened?
 7. Which feature specs, Gherkin, QA, schema, migration, auth, dependency, policy, waiver, or approval files changed?
 8. What detects failure and what exact rollback is available?
+9. Did independent model reviewers agree, dissent, abstain, or fail, and does
+   each claim cite the exact candidate evidence?
 
 A green summary is insufficient if any required answer is unknown.
 
