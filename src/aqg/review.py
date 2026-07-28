@@ -305,7 +305,6 @@ def _matched_risk_paths(
     return {
         factor: [path for path in product_surface if pattern.search(path)]
         for factor, pattern in rules.items()
-        if factor != "supply_chain"
     }
 
 
