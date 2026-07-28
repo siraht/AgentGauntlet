@@ -30,7 +30,6 @@ from aqg.council import (
     write_council_evidence,
 )
 from aqg.council_providers import (
-    ATTACHED_PROMPT_MESSAGE,
     PROMPT_FILENAME,
     build_file_provider_spec,
     build_provider_spec,
@@ -200,13 +199,12 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
         build_file_provider_spec("synthetic/hf:zai-org/GLM-5.2")
     )
     assert grok_file["command"][:3] == ["grok", "--prompt-file", PROMPT_FILENAME]
-    assert synthetic_file["command"][:5] == [
+    assert synthetic_file["command"][:3] == [
         "opencode",
         "run",
-        ATTACHED_PROMPT_MESSAGE,
-        "--file",
-        PROMPT_FILENAME,
+        "--pure",
     ]
+    assert "--file" not in synthetic_file["command"]
 
 
 def test_aqg_council_004_minimal_environment_scrubs_unapproved_secrets() -> None:
@@ -240,8 +238,10 @@ def test_aqg_council_005_valid_output_creates_ballot_and_malformed_schema_fails(
     payload = _payload(bundle)
     captured: list[list[str]] = []
 
-    def executor(arguments: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+    def executor(arguments: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured.append(arguments)
+        if arguments[0] == "grok":
+            assert kwargs["input"] is None
         return _completed(json.dumps({"result": payload}))
 
     ballot, execution = collect_ballot(

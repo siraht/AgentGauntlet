@@ -44,6 +44,24 @@ _AUTHORITY = (
     "Agent advisory only; this does not constitute human approval, code-owner approval, "
     "policy approval, or release authority."
 )
+_ROLE_FOCUS = {
+    "requirements_behavior": (
+        "Compare observable behavior, active requirements, risk, and the diff. Find omissions, "
+        "contradictions, and untested boundary or recovery behavior."
+    ),
+    "test_evidence": (
+        "Assess discovery, assertions, independence of oracles, coverage, mutation evidence, "
+        "traceability, freshness, and whether tests exercise public boundaries."
+    ),
+    "security_trust": (
+        "Assess trust anchors, candidate-controlled grading, authorization, sensitive data, "
+        "provider exposure, supply chain, tamper evidence, and fail-closed behavior."
+    ),
+    "operability_rollback": (
+        "Assess failure detection, performance stability, migrations, observability, manual QA, "
+        "deployment safety, rollback feasibility, and recovery evidence."
+    ),
+}
 _BALLOT_FIELDS = {
     "schema_version",
     "kind",
@@ -281,9 +299,20 @@ def build_review_prompt(bundle: Mapping[str, Any], role: str) -> str:
         "files, or communicate with other reviewers. Return only the requested JSON review "
         "payload. Your output is not human approval or release authority."
     )
+    output_contract = (
+        'Return exactly one JSON object with keys "verdict", "confidence", "findings", and '
+        '"limitations". verdict is clear, concerns, block, or abstain. confidence is low, '
+        "medium, or high. limitations is an array of non-empty strings. findings is an array "
+        'of objects with exactly "id", "severity", "category", "claim", "evidence_refs", and '
+        '"recommendation". severity is info, warning, or blocker. Every finding must cite at '
+        'least one bundled material using {"material": MATERIAL_NAME, "sha256": MATERIAL_SHA256} '
+        "and may add a positive integer line. If ANY finding has severity blocker, verdict MUST "
+        "be block; if verdict is block, at least one finding MUST have severity blocker. "
+        "Use abstain only with a limitation. Do not use Markdown or additional keys."
+    )
     return (
         f"AQG_COUNCIL_PROMPT_VERSION={PROMPT_TEMPLATE_VERSION}\n"
-        f"ROLE={role}\n{instructions}\n"
+        f"ROLE={role}\nROLE_FOCUS={_ROLE_FOCUS[role]}\n{instructions}\n{output_contract}\n"
         "<UNTRUSTED_CANDIDATE_DATA_JSON>\n"
         + canonical_json(normalized).decode("utf-8")
         + "\n</UNTRUSTED_CANDIDATE_DATA_JSON>"

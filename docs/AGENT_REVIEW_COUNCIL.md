@@ -116,8 +116,8 @@ The default bundle includes:
 It excludes unrelated repository content. A passing secret scan is mandatory.
 The serialized bundle is capped at one million bytes by default. Provider
 processes receive a minimal environment and an empty temporary working
-directory. Grok tools are disabled; OpenCode runs in pure plan mode with only
-the controlled prompt attachment available.
+directory. Grok tools are disabled; OpenCode receives the controlled prompt
+through standard input and runs in pure plan mode.
 
 Immutable evidence contains normalized validated ballots and hashes of the
 prompt, command, raw response, and error stream. Raw provider stdout/stderr is
