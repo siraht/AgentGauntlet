@@ -263,15 +263,7 @@ def _prepare_browser(project: Path) -> list[str]:
     return ["acceptance"]
 
 
-def _prepare_typescript_web(project: Path) -> list[str]:
-    """Write a small, real web application used by the opt-in connected pilot.
-
-    The fixture is deliberately generated rather than copied from this repository:
-    matrix cases must prove that setup discovers an ordinary project, not rely on
-    AQG's own source tree.  Installing the pinned npm dependencies is left to the
-    normal matrix preparation path, so focused unit tests can inspect this contract
-    without downloading packages or a browser.
-    """
+def _write_typescript_web_app(project: Path) -> None:
     _write(
         project / "src" / "counter.ts",
         "export type Counter = { value: number };\n\n"
@@ -298,6 +290,16 @@ def _prepare_typescript_web(project: Path) -> list[str]:
         "}\n\n"
         "if (typeof document !== 'undefined') mountCounter(document);\n",
     )
+    _write(
+        project / "index.html",
+        '<!doctype html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Counter pilot</title></head>\n'
+        '  <body><main><h1>Counter pilot</h1><output id="count" role="status" aria-live="polite" value="0">0</output><button id="increment" type="button" aria-label="Increment count">Increment</button></main><script type="module" src="/src/main.ts"></script></body>\n'
+        "</html>\n",
+    )
+    _write(project / "src" / "styles.css", "button:focus-visible { outline: 3px solid #005fcc; }\n")
+
+
+def _write_typescript_web_unit_tests(project: Path) -> None:
     _write(
         project / "tests" / "counter.test.ts",
         "import { describe, expect, it } from 'vitest';\n"
@@ -342,6 +344,9 @@ def _prepare_typescript_web(project: Path) -> list[str]:
         "  });\n"
         "});\n",
     )
+
+
+def _write_typescript_web_browser_test(project: Path) -> None:
     _write(
         project / "e2e" / "counter.spec.mjs",
         "import { createRequire } from 'node:module';\n\n"
@@ -357,13 +362,9 @@ def _prepare_typescript_web(project: Path) -> list[str]:
         "  expect(results.violations.filter(({ impact }) => impact === 'serious' || impact === 'critical')).toEqual([]);\n"
         "});\n",
     )
-    _write(
-        project / "index.html",
-        '<!doctype html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Counter pilot</title></head>\n'
-        '  <body><main><h1>Counter pilot</h1><output id="count" role="status" aria-live="polite" value="0">0</output><button id="increment" type="button" aria-label="Increment count">Increment</button></main><script type="module" src="/src/main.ts"></script></body>\n'
-        "</html>\n",
-    )
-    _write(project / "src" / "styles.css", "button:focus-visible { outline: 3px solid #005fcc; }\n")
+
+
+def _write_typescript_web_contract(project: Path) -> None:
     _write(
         project / "tsconfig.json",
         json.dumps(
@@ -407,7 +408,10 @@ def _prepare_typescript_web(project: Path) -> list[str]:
         "2. Verify focus remains visible and the status changes from 0 to 1.\n"
         "3. Record browser, OS, revision, result, and any rollback required.\n",
     )
-    package = {
+
+
+def _typescript_web_package() -> dict[str, Any]:
+    return {
         "name": "aqg-typescript-web-pilot",
         "private": True,
         "type": "module",
@@ -420,7 +424,15 @@ def _prepare_typescript_web(project: Path) -> list[str]:
             "vitest": "4.1.10",
         },
     }
-    _write(project / "package.json", json.dumps(package, indent=2) + "\n")
+
+
+def _prepare_typescript_web(project: Path) -> list[str]:
+    """Write a small, real web application used by the opt-in connected pilot."""
+    _write_typescript_web_app(project)
+    _write_typescript_web_unit_tests(project)
+    _write_typescript_web_browser_test(project)
+    _write_typescript_web_contract(project)
+    _write(project / "package.json", json.dumps(_typescript_web_package(), indent=2) + "\n")
     return ["test_integrity", "unit", "structure", "coverage", "acceptance"]
 
 
