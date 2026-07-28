@@ -5,7 +5,9 @@ This repository uses the Agent Quality Gauntlet.
 Before changing code:
 
 1. Read `QUALITY.md`, `KEYSTONE.md`, and the applicable files in `feature-spec/`.
-2. Run `python3 quality/qg.py doctor` and the existing fast profile.
+2. Run `python3 quality/qg.py doctor` and the existing fast profile. In
+   `shadow`, use `python3 quality/qg.py audit shadow --profile fast`; in
+   `ratchet` or `strict`, use `python3 quality/qg.py check fast`.
 3. Create or update the plain-language change-risk card.
    Store it at `quality/change-risk.json` unless repository policy specifies another path, then run `python3 quality/qg.py risk-card`.
 4. Resolve the effective active feature requirements and relevant TODO intent.
@@ -14,7 +16,9 @@ Before changing code:
 During ordinary work:
 
 - Do not edit the protected policy plane listed in `QUALITY.md`.
-- Keep implementation slices small and run `python3 quality/qg.py check fast` frequently.
+- Keep implementation slices small. In `shadow`, run
+  `python3 quality/qg.py audit shadow --profile fast` frequently; in
+  `ratchet` or `strict`, run `python3 quality/qg.py check fast`.
 - Write meaningful unit, property, contract, acceptance, and QA evidence required by the risk profile.
 - Do not weaken tests, lower thresholds, add skips, approve goldens, or create waivers merely to obtain a green result.
 - Treat missing/stale evidence and tool crashes as errors, not passes.
@@ -23,7 +27,9 @@ During ordinary work:
 
 Before completion:
 
-1. Run `python3 quality/qg.py check-risk`; do not manually downgrade the profile selected by the card.
+1. Run `python3 quality/qg.py check-risk --shadow --keep-going` in `shadow`, or
+   `python3 quality/qg.py check-risk --keep-going` in `ratchet`/`strict`; do
+   not manually downgrade the profile selected by the card.
 2. Run mutation for changed logic when configured.
 3. Invoke the read-only quality verifier for High assurance or Critical work.
 4. List changed human-review-plane files.
@@ -34,4 +40,10 @@ Use the repository skill `quality-gauntlet` for the full workflow.
 
 ## Agent Quality Gauntlet
 
-This repository uses the Agent Quality Gauntlet. Before changing code, read `QUALITY.md`, `KEYSTONE.md`, the applicable files under `feature-spec/`, and `quality/change-risk.json`. Run `python3 quality/qg.py status`, then `python3 quality/qg.py check-risk --keep-going` before declaring completion. Never modify policy-plane files, approve golden changes, suppress a checker, weaken a test, or update mutation baselines unless the user explicitly assigns a policy-maintenance task.
+This repository uses the Agent Quality Gauntlet. Before changing code, read
+`QUALITY.md`, `KEYSTONE.md`, the applicable files under `feature-spec/`, and
+`quality/change-risk.json`. Run `python3 quality/qg.py status`, then the
+stage-appropriate `check-risk` command above before declaring completion.
+Never modify policy-plane files, approve golden changes, suppress a checker,
+weaken a test, or update mutation baselines unless the user explicitly assigns
+a policy-maintenance task.

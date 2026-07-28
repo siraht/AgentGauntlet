@@ -73,7 +73,9 @@ Before implementation, the agent MUST:
 Before declaring completion, the agent MUST:
 
 1. run `python3 quality/qg.py doctor`;
-2. run `python3 quality/qg.py check-risk`;
+2. run `python3 quality/qg.py check-risk --shadow --keep-going` while the
+   repository is in `shadow`, or `python3 quality/qg.py check-risk
+--keep-going` in `ratchet`/`strict`;
 3. resolve or explicitly report every failure, survivor, skip, waiver, and infrastructure error;
 4. invoke an independent read-only verifier for High assurance and Critical work;
 5. identify all human-review-plane changes;
@@ -104,6 +106,12 @@ New and changed code MUST meet the configured structural and coverage targets. E
 Existing repositories MUST begin in `shadow`, create a complete manifested
 debt proposal, obtain human review of that inventory, and install the reviewed
 baseline through protected policy maintenance before `ratchet` can enforce.
+While in `shadow`, ordinary development MUST use `audit shadow --profile fast`
+for its inner checkpoint and `check-risk --shadow --keep-going` for
+risk-selected checkpoint evidence. These commands preserve observed failures
+while making only inherited measured debt non-blocking; they do not suppress
+missing evidence, infrastructure errors, configuration errors, or unknown
+product intent.
 Matching inherited debt remains visible but non-blocking. New, worsened,
 malformed, or unclassified debt MUST block. Promotion is monotonic from
 `shadow` to `ratchet` to `strict`; a proposal MUST NOT silently alter the stage.

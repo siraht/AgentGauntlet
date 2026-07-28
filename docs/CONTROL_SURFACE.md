@@ -26,15 +26,18 @@ qg conformance --tools
 python3 quality/qg.py status
 python3 quality/qg.py risk-card
 python3 quality/qg.py check inner
-python3 quality/qg.py check fast
-python3 quality/qg.py check-risk --keep-going
+python3 quality/qg.py audit shadow --profile fast
+python3 quality/qg.py check-risk --shadow --keep-going
 python3 quality/qg.py review --write --sarif
 python3 quality/qg.py council plan --tier pr
 ```
 
-Use `inner` while editing and `fast` at coherent local checkpoints.
+Use `inner` while editing and the shadow fast audit at coherent local
+checkpoints until a reviewed baseline exists. In `ratchet` or `strict`, replace
+the shadow commands with `check fast` and `check-risk --keep-going`.
 `check-risk` computes the required PR/deep/release profile from the protected
-risk rules and current change-risk card.
+risk rules and current change-risk card; `--shadow` preserves those same
+measurements without allowing inherited measured debt alone to block.
 
 ## Retrospective adoption flow
 

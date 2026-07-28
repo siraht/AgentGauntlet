@@ -47,18 +47,22 @@ short form; `python3 quality/qg.py` is the portable fallback:
 ```sh
 ./aqg status
 ./aqg doctor
-./aqg check fast
+./aqg audit shadow --profile fast
 
 python3 quality/qg.py status
 python3 quality/qg.py doctor
 python3 quality/qg.py risk-card
-python3 quality/qg.py check fast
-python3 quality/qg.py check-risk --keep-going
+python3 quality/qg.py audit shadow --profile fast
+python3 quality/qg.py check-risk --shadow --keep-going
 python3 quality/qg.py review --write --sarif
 python3 quality/qg.py council plan --tier pr --data-classification public
 python3 quality/qg.py tui
 python3 quality/qg.py dashboard --open
 ```
+
+Those commands show the safe workflow for an existing repository in `shadow`.
+After a reviewed baseline promotes the repository to `ratchet`, replace the
+two shadow commands with `check fast` and `check-risk --keep-going`.
 
 The CLI, TUI, dashboard, Markdown review packet, SARIF, JSON evidence, and SQLite run history use the same project and policy model.
 

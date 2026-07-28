@@ -212,10 +212,15 @@ For ordinary development:
 
 ```sh
 ./aqg check inner
-./aqg check fast
+./aqg audit shadow --profile fast
+./aqg check-risk --shadow --keep-going
 ./aqg review --write --sarif
 ./aqg status
 ```
+
+The two shadow commands are correct for this repository today. After a reviewed
+baseline and promotion to `ratchet`, use `check fast` and
+`check-risk --keep-going` instead.
 
 Use deep checks at PR or meaningful checkpoint boundaries. Use release and
 human-assurance controls only for an actual release or risk profile that

@@ -51,6 +51,12 @@ python3 quality/qg.py status
 python3 quality/qg.py review --write
 ```
 
+For an existing repository still in `shadow`, the fast command is
+`python3 quality/qg.py audit shadow --profile fast`, and the final
+risk-selected checkpoint is
+`python3 quality/qg.py check-risk --shadow --keep-going`. After a reviewed
+baseline promotes it to `ratchet`, use the enforcing `check` commands above.
+
 You can open:
 
 ```sh
