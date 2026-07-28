@@ -1,6 +1,6 @@
 {
   "schema_version": "1",
-  "summary": "Productionize and self-host Agent Quality Gauntlet v2 with retrospective shadow auditing, reviewed debt baselines, no-regression enforcement, immutable verification, and staged assurance.",
+  "summary": "Complete the self-hosted Agent Quality Gauntlet v2 with an honest owner status, a provenance-bound multi-model review council, a faster guarded inner loop, and a greenfield TypeScript/web proof.",
   "risk_profile": "high_assurance",
   "production_scope": true,
   "reversible": true,
@@ -25,6 +25,13 @@
     "Authoritative CI grades candidates with a base-controlled or immutable grader rather than trusting candidate-controlled checking code.",
     "Policy maintenance uses scoped fingerprinted approval records, and high-assurance work requires independent verification, behavior approval, manual QA, and rollback evidence.",
     "All required test roots, requirement identifiers, semantic acceptance mutations, and stable repeated performance measurements are governed by executable contracts."
+    ,
+    "CLI, dashboard, TUI, reports, and CI summaries derive Develop, Merge, and Release guidance from one fail-closed owner-status model.",
+    "Owner status verifies run manifests and exact candidate fingerprints, distinguishes inherited debt from current regressions, and never promotes local evidence into external merge or release authority.",
+    "A multi-model review council runs isolated role-specific reviews through explicit provider adapters, preserves dissent and unknowns, and stores prompt, model, scope, and response provenance as immutable evidence.",
+    "Agent review remains advisory unless protected policy explicitly assigns it a gate; it cannot override deterministic failures, missing product intent, or required release authority.",
+    "A connected greenfield TypeScript, HTML, and CSS pilot proves installation, unit/property/acceptance/browser/accessibility/mutation evidence, review output, and release-readiness behavior.",
+    "The development loop gains only conservative speedups whose selection and cache provenance are recorded and whose uncertainty falls back to the complete applicable suite."
   ],
   "behavior_preserved": [
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",
@@ -33,6 +40,10 @@
     "Policy, expected-output, waiver, and approval changes remain protected and reviewable.",
     "The source runtime remains dependency-free on Python 3.11 or newer.",
     "Recovered baseline history and published main remain recoverable throughout the work."
+    ,
+    "The stop hook remains disabled until the fast profile is green, stable, and acceptably quick.",
+    "The existing 104-item inherited fast-baseline proposal remains unapproved and non-authoritative.",
+    "Agent review does not impersonate a human, code owner, hosted branch-protection rule, or release authority."
   ],
   "risk_factors": {
     "data_loss": false,
@@ -47,7 +58,7 @@
     "supply_chain": true,
     "safety": false
   },
-  "failure_detection": "Fast and deep AQG profiles, changed-code mutation, expanded source tests, real-project fixture conformance, browser smoke tests, deterministic double builds, SBOM validation, clean-clone dogfooding, GitHub required checks, and independent verification.",
+  "failure_detection": "Focused owner-status and council contract tests, malformed and stale evidence cases, provider timeout and schema-failure cases, fast and deep AQG profiles, changed-code mutation, a connected TypeScript/web pilot, browser accessibility smoke tests, deterministic builds, clean-clone dogfooding, GitHub required checks, and independent verification.",
   "rollback": "Revert granular commits or the productionization pull request; restore the prior main ruleset export; delete an unpublished draft release or supersede a published beta with the prior checksummed artifacts.",
   "human_review": [
     "Public CLI, setup, review, and dashboard behavior",
@@ -55,5 +66,9 @@
     "Cross-stack conformance applicability and expected failures",
     "Release contents, SBOMs, signatures, provenance, and rollback",
     "Required GitHub checks, bypass authority, and CODEOWNERS governance"
+    ,
+    "Plain-language Develop, Merge, and Release decisions and their evidence freshness",
+    "Multi-model review roles, dissent, quorum, privacy boundaries, and residual unknowns",
+    "Greenfield TypeScript/web pilot behavior, accessibility, mutation, and release evidence"
   ]
 }
