@@ -37,8 +37,9 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         self.assertEqual(project["enforcement"]["base_ref"], "origin/main")
         self.assertEqual(
             project["python"]["test_paths"],
-            ["tests", "agent_ergonomics_audit/audit/regression_tests"],
+            ["tests", "quality/tests", "agent_ergonomics_audit/audit/regression_tests"],
         )
+        self.assertEqual(project["paths"]["tests"], project["python"]["test_paths"])
 
     def test_every_hosted_gauntlet_context_is_pinned_to_github_actions(self) -> None:
         expected = {

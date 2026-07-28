@@ -40,7 +40,7 @@ aqg = ["py.typed", "templates/**/*", "static/**/*", "guides/**/*"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers -ra"
-testpaths = ["tests", "agent_ergonomics_audit/audit/regression_tests"]
+testpaths = ["tests", "quality/tests", "agent_ergonomics_audit/audit/regression_tests"]
 markers = [
   "mutation_incompatible: test exercises process-global native state or executes a copied runtime that cannot safely import mutmut instrumentation",
 ]

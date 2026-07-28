@@ -155,7 +155,7 @@
     ],
     "html": ["src"],
     "source": ["scripts", "src"],
-    "tests": ["tests", "agent_ergonomics_audit/audit/regression_tests"]
+    "tests": ["tests", "quality/tests", "agent_ergonomics_audit/audit/regression_tests"]
   },
   "profile_thresholds": {
     "deep": {
@@ -236,7 +236,7 @@
     "mutation_timeout_multiplier": 5.0,
     "pytest_args": ["--strict-config", "--strict-markers", "-ra"],
     "source_paths": ["scripts", "src"],
-    "test_paths": ["tests", "agent_ergonomics_audit/audit/regression_tests"]
+    "test_paths": ["tests", "quality/tests", "agent_ergonomics_audit/audit/regression_tests"]
   },
   "schema_version": 2,
   "stacks": {
