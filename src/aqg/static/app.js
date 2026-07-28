@@ -106,93 +106,182 @@ function actionStatus() {
       .join(""),
   );
 }
-function renderDecision(item) {
+function ownerDecisionPresentation(state) {
+  const presentations = {
+    blocked: { status: "quality_failure", title: "Do not merge" },
+    ready_for_authoritative_check: {
+      status: "pass",
+      title: "Ready for the authoritative merge check",
+    },
+  };
+  return (
+    presentations[state] || { status: "review", title: "Merge is not proven" }
+  );
+}
+function decisionStripMarkup(label, title, detail, meta, action = "") {
+  const metaMarkup = meta.map((value) => `<span>${esc(value)}</span>`).join("");
+  return `<div><p class="eyebrow">${esc(label)}</p><strong>${esc(title)}</strong><span>${esc(detail)}</span>${action}</div><div class="decision-meta">${metaMarkup}</div>`;
+}
+function announceDecision(title, detail) {
+  const announcement = `${title}. ${detail}`;
+  if (announcement === lastDecisionAnnouncement) return;
+  $("#decision-announcement").textContent = announcement;
+  lastDecisionAnnouncement = announcement;
+}
+function ownerDecisionDetail(lead) {
+  return (
+    lead?.message ||
+    "Local evidence cannot grant repository-hosted merge authority."
+  );
+}
+function ownerDecisionAction(lead) {
+  if (!lead?.action) return "";
+  return `<p class="decision-action"><b>Next:</b> ${esc(lead.action)}</p>`;
+}
+function renderOwnerDecision(item, merge) {
   const owner = item.owner_status || {};
-  const decisions = owner.decisions || {};
-  const merge = decisions.merge;
-  if (merge) {
-    const lead = merge.reasons?.[0];
-    const status =
-      merge.state === "blocked"
-        ? "quality_failure"
-        : merge.state === "ready_for_authoritative_check"
-          ? "pass"
-          : "review";
-    const title =
-      merge.state === "blocked"
-        ? "Do not merge"
-        : merge.state === "ready_for_authoritative_check"
-          ? "Ready for the authoritative merge check"
-          : "Merge is not proven";
-    const detail =
-      lead?.message ||
-      "Local evidence cannot grant repository-hosted merge authority.";
-    const node = $("#decision-strip");
-    node.className = `decision-strip ${status}`;
-    setSafeHTML(
-      node,
-      `<div><p class="eyebrow">Owner decision</p><strong>${esc(title)}</strong><span>${esc(detail)}</span>${lead?.action ? `<p class="decision-action"><b>Next:</b> ${esc(lead.action)}</p>` : ""}</div><div class="decision-meta"><span>${esc(human(item.risk?.selected_risk_profile || "risk unresolved"))}</span><span>${esc(human(owner.review_freshness?.state || "review unknown"))}</span></div>`,
-    );
-    const announcement = `${title}. ${detail}`;
-    if (announcement !== lastDecisionAnnouncement) {
-      $("#decision-announcement").textContent = announcement;
-      lastDecisionAnnouncement = announcement;
-    }
-    return;
-  }
-  const latest = item.latest;
-  const review = item.review;
-  const risk = item.risk || {};
-  const onboarding = item.onboarding?.current || {};
-  const blockers = review?.summary?.blockers ?? 0;
-  const prompts = review?.summary?.human_review ?? 0;
-  const setupBlocked = (onboarding.summary?.blockers || 0) > 0;
-  let status = "neutral",
-    title = "No current decision",
-    detail = "Generate deterministic evidence and a review packet.";
-  if (setupBlocked) {
-    status = "configuration_error";
-    title = "Setup controls are incomplete";
-    detail = `${onboarding.summary.blockers} onboarding blocker(s) must be resolved before guarded agent autonomy.`;
-  } else if (blockers) {
-    status = "quality_failure";
-    title = "Change is blocked";
-    detail = `${blockers} automated blocker(s) require correction and fresh evidence.`;
-  } else if (prompts) {
-    status = "review";
-    title = "Human review required";
-    detail = `${prompts} behavioral or approval decision(s) remain.`;
-  } else if (latest?.status === "pass" && review) {
-    status = "pass";
-    title = "Current automated evidence is clear";
-    detail = "Complete any risk-required human approval before release.";
-  } else if (latest) {
-    status = latest.status;
-    title = `Latest ${latest.profile} run: ${human(latest.status)}`;
-    detail = "Open Evidence to inspect the gate that prevented a current pass.";
-  }
+  const lead = (merge.reasons || [])[0];
+  const presentation = ownerDecisionPresentation(merge.state);
+  const detail = ownerDecisionDetail(lead);
+  const action = ownerDecisionAction(lead);
+  const meta = [
+    human(item.risk?.selected_risk_profile || "risk unresolved"),
+    human(owner.review_freshness?.state || "review unknown"),
+  ];
   const node = $("#decision-strip");
-  node.className = `decision-strip ${status}`;
+  node.className = `decision-strip ${presentation.status}`;
   setSafeHTML(
     node,
-    `<div><p class="eyebrow">Current disposition</p><strong>${esc(title)}</strong><span>${esc(detail)}</span></div><div class="decision-meta"><span>${esc(human(risk.selected_risk_profile || "risk unresolved"))}</span><span>${esc(review?.summary?.evidence_status || "evidence unknown")}</span></div>`,
+    decisionStripMarkup(
+      "Owner decision",
+      presentation.title,
+      detail,
+      meta,
+      action,
+    ),
   );
+  announceDecision(presentation.title, detail);
+}
+function legacyReviewContext(item) {
+  const review = item.review;
+  const risk = item.risk || {};
+  const blockers = review?.summary?.blockers ?? 0;
+  const prompts = review?.summary?.human_review ?? 0;
+  return { review, risk, blockers, prompts };
+}
+function legacyOnboardingContext(item) {
+  const onboarding = item.onboarding?.current || {};
+  const setupBlocked = (onboarding.summary?.blockers || 0) > 0;
+  return { onboarding, setupBlocked };
+}
+function legacyDecisionContext(item) {
+  return {
+    latest: item.latest,
+    ...legacyReviewContext(item),
+    ...legacyOnboardingContext(item),
+  };
+}
+function legacySetupDecision(context) {
+  if (!context.setupBlocked) return null;
+  return {
+    status: "configuration_error",
+    title: "Setup controls are incomplete",
+    detail: `${context.onboarding.summary.blockers} onboarding blocker(s) must be resolved before guarded agent autonomy.`,
+    risk: context.risk,
+    review: context.review,
+  };
+}
+function legacyReviewDecision(context) {
+  if (context.blockers)
+    return {
+      status: "quality_failure",
+      title: "Change is blocked",
+      detail: `${context.blockers} automated blocker(s) require correction and fresh evidence.`,
+      risk: context.risk,
+      review: context.review,
+    };
+  if (context.prompts)
+    return {
+      status: "review",
+      title: "Human review required",
+      detail: `${context.prompts} behavioral or approval decision(s) remain.`,
+      risk: context.risk,
+      review: context.review,
+    };
+  return null;
+}
+function legacyEvidenceDecision(context) {
+  const { latest, review, risk } = context;
+  if (latest?.status === "pass" && review)
+    return {
+      status: "pass",
+      title: "Current automated evidence is clear",
+      detail: "Complete any risk-required human approval before release.",
+      risk,
+      review,
+    };
+  if (latest)
+    return {
+      status: latest.status,
+      title: `Latest ${latest.profile} run: ${human(latest.status)}`,
+      detail:
+        "Open Evidence to inspect the gate that prevented a current pass.",
+      risk,
+      review,
+    };
+  return {
+    status: "neutral",
+    title: "No current decision",
+    detail: "Generate deterministic evidence and a review packet.",
+    risk,
+    review,
+  };
+}
+function legacyDecision(item) {
+  const context = legacyDecisionContext(item);
+  return (
+    legacySetupDecision(context) ||
+    legacyReviewDecision(context) ||
+    legacyEvidenceDecision(context)
+  );
+}
+function renderLegacyDecision(item) {
+  const decision = legacyDecision(item);
+  const node = $("#decision-strip");
+  node.className = `decision-strip ${decision.status}`;
+  const meta = [
+    human(decision.risk.selected_risk_profile || "risk unresolved"),
+    decision.review?.summary?.evidence_status || "evidence unknown",
+  ];
+  setSafeHTML(
+    node,
+    decisionStripMarkup(
+      "Current disposition",
+      decision.title,
+      decision.detail,
+      meta,
+    ),
+  );
+}
+function renderDecision(item) {
+  const merge = item.owner_status?.decisions?.merge;
+  if (merge) return renderOwnerDecision(item, merge);
+  renderLegacyDecision(item);
+}
+function decisionSemantic(state) {
+  if (["allowed", "ready_for_authoritative_check"].includes(state))
+    return "pass";
+  if (state === "blocked") return "quality_failure";
+  return "neutral";
 }
 function decisionCard(name, decision = {}) {
   const reason = decision.reasons?.[0];
-  const semantic =
-    decision.state === "allowed" ||
-    decision.state === "ready_for_authoritative_check"
-      ? "pass"
-      : decision.state === "blocked"
-        ? "quality_failure"
-        : "neutral";
-  const symbol =
-    semantic === "pass" ? "✓" : semantic === "quality_failure" ? "!" : "?";
+  const semantic = decisionSemantic(decision.state);
+  const symbols = { pass: "✓", quality_failure: "!", neutral: "?" };
+  const symbol = symbols[semantic];
   return `<article class="decision-card ${semantic}"><div class="decision-card-head"><span class="decision-symbol" aria-hidden="true">${symbol}</span><div><p>${esc(name)}</p><strong>${esc(human(decision.state || "not proven"))}</strong></div></div><p>${esc(reason?.message || "No trusted decision evidence is available.")}</p><small>${reason?.action ? `<b>Next:</b> ${esc(reason.action)}` : "No next action recorded."}</small></article>`;
 }
-function renderOwnerOverview(item) {
-  const owner = item.owner_status || {};
+function renderDecisionDeck(owner) {
   const decisions = owner.decisions || {};
   setSafeHTML(
     $("#owner-decision-deck"),
@@ -200,6 +289,8 @@ function renderOwnerOverview(item) {
       .map((name) => decisionCard(name, decisions[name]))
       .join(""),
   );
+}
+function renderEvidenceLedger(owner) {
   setSafeHTML(
     $("#evidence-ledger"),
     matrix(
@@ -212,8 +303,9 @@ function renderOwnerOverview(item) {
       "Required evidence freshness",
     ),
   );
-  const retro = owner.retrospective || {};
-  const counts = [
+}
+function retrospectiveCounts(retro) {
+  return [
     [
       "Inherited debt",
       retro.inherited_debt || 0,
@@ -240,6 +332,9 @@ function renderOwnerOverview(item) {
       "Requires an owner decision",
     ],
   ];
+}
+function renderDebtSummary(owner) {
+  const counts = retrospectiveCounts(owner.retrospective || {});
   setSafeHTML(
     $("#debt-summary"),
     `<div class="ledger-list">${counts
@@ -249,8 +344,9 @@ function renderOwnerOverview(item) {
       )
       .join("")}</div>`,
   );
-  const council = owner.council || { state: "not_configured" };
-  const councilEmpty = {
+}
+function councilEmptyMarkup(state) {
+  const messages = {
     not_configured:
       "<strong>No council evidence configured.</strong><p>Deterministic checks and required human authorities are unchanged. Agent consensus is not being assumed.</p>",
     stale:
@@ -258,7 +354,11 @@ function renderOwnerOverview(item) {
     invalid:
       "<strong>Council evidence is invalid.</strong><p>The immutable record could not be verified. Treat the review as unavailable.</p>",
   };
-  const councilDetail = councilEmpty[council.state];
+  return messages[state];
+}
+function renderCouncilSummary(owner) {
+  const council = owner.council || { state: "not_configured" };
+  const councilDetail = councilEmptyMarkup(council.state);
   setSafeHTML(
     $("#council-summary"),
     councilDetail
@@ -266,66 +366,86 @@ function renderOwnerOverview(item) {
       : `<div class="council-result"><strong>${esc(human(council.status || council.state))}</strong><span>${esc(council.members?.length || 0)} valid ballot(s) from ${esc(council.provider_groups?.length || 0)} independent provider group(s)</span><span>${council.dissent?.present ? "Provider dissent is present" : "No provider dissent recorded"}</span><small>Agent advisory — not an approval or release authority.</small></div>`,
   );
 }
-function renderOverview(item) {
-  const p = item.project || {};
+function renderOwnerOverview(item) {
+  const owner = item.owner_status || {};
+  renderDecisionDeck(owner);
+  renderEvidenceLedger(owner);
+  renderDebtSummary(owner);
+  renderCouncilSummary(owner);
+}
+function latestMetric(item) {
   const latest = item.latest;
-  const review = item.review;
+  const detail = latest
+    ? `${latest.profile} · ${duration(latest.duration_ms)}`
+    : "No deterministic profile evidence";
+  return ["Latest status", latest?.status || "No run", detail];
+}
+function riskMetric(item) {
   const risk = item.risk || {};
-  const onboarding = item.onboarding?.current || {};
-  const blockers = review?.summary?.blockers ?? 0;
-  const prompts = review?.summary?.human_review ?? 0;
-  const warnings = review?.summary?.warnings ?? 0;
+  return [
+    "Risk profile",
+    risk.selected_risk_profile || "Unresolved",
+    `minimum ${risk.minimum_risk_profile || "unknown"}`,
+  ];
+}
+function reviewMetric(item) {
+  const summary = item.review?.summary || {};
+  const blockers = summary.blockers ?? 0;
+  const detail = blockers
+    ? "Must be resolved"
+    : `${summary.human_review ?? 0} human prompt(s) · ${summary.warnings ?? 0} warning(s)`;
+  return ["Review blockers", blockers, detail];
+}
+function approvalMetric(item) {
+  const approvals = item.approvals || {};
+  return [
+    "Approvals",
+    approvals.errors?.length ? "Pending" : "Current",
+    `${approvals.required?.length || 0} required`,
+  ];
+}
+function onboardingMetric(item) {
+  const summary = item.onboarding?.current?.summary || {};
+  return [
+    "Onboarding",
+    summary.ready_for_guarded_use ? "Ready" : "Blocked",
+    `${summary.blockers || 0} blocker(s)`,
+  ];
+}
+function evidenceRunMetric(item) {
+  const latest = item.latest;
   const actionRunning = Object.values(state.actions || {}).some(
     (value) => value === "running",
   );
-  const metrics = [
-    [
-      "Latest status",
-      latest?.status || "No run",
-      latest
-        ? `${latest.profile} · ${duration(latest.duration_ms)}`
-        : "No deterministic profile evidence",
-    ],
-    [
-      "Risk profile",
-      risk.selected_risk_profile || "Unresolved",
-      `minimum ${risk.minimum_risk_profile || "unknown"}`,
-    ],
-    [
-      "Review blockers",
-      blockers,
-      blockers
-        ? "Must be resolved"
-        : `${prompts} human prompt(s) · ${warnings} warning(s)`,
-    ],
-    [
-      "Approvals",
-      item.approvals?.errors?.length ? "Pending" : "Current",
-      `${item.approvals?.required?.length || 0} required`,
-    ],
-    [
-      "Onboarding",
-      onboarding.summary?.ready_for_guarded_use ? "Ready" : "Blocked",
-      `${onboarding.summary?.blockers || 0} blocker(s)`,
-    ],
-    [
-      "Evidence runs",
-      item.runs?.length || 0,
-      actionRunning
-        ? "A check is running"
-        : latest?.revision?.slice(0, 12) || "No revision",
-    ],
+  const detail = actionRunning
+    ? "A check is running"
+    : latest?.revision?.slice(0, 12) || "No revision";
+  return ["Evidence runs", item.runs?.length || 0, detail];
+}
+function overviewMetrics(item) {
+  return [
+    latestMetric(item),
+    riskMetric(item),
+    reviewMetric(item),
+    approvalMetric(item),
+    onboardingMetric(item),
+    evidenceRunMetric(item),
   ];
+}
+function renderMetrics(item) {
   setSafeHTML(
     $("#metrics"),
-    metrics
+    overviewMetrics(item)
       .map(
         ([label, value, small]) =>
           `<article class="metric"><label>${esc(label)}</label><strong>${esc(human(value))}</strong><small>${esc(small)}</small></article>`,
       )
       .join(""),
   );
-  renderOwnerOverview(item);
+}
+function renderOverviewBadges(item) {
+  const latest = item.latest;
+  const risk = item.risk || {};
   $("#latest-badge").className = `badge ${latest?.status || "neutral"}`;
   $("#latest-badge").textContent = human(latest?.status || "No run");
   $("#risk-badge").className =
@@ -333,10 +453,37 @@ function renderOverview(item) {
   $("#risk-badge").textContent = human(
     risk.selected_risk_profile || "Unresolved",
   );
+}
+function riskCalloutMarkup(risk) {
+  const selected = risk.selected_risk_profile || "Unresolved";
+  const minimum = risk.minimum_risk_profile || "unknown";
+  return `<div class="risk-callout"><strong>${esc(human(selected))}</strong><span>deterministic minimum ${esc(human(minimum))}</span></div>`;
+}
+function executionProfilesMarkup(risk) {
+  const profiles = risk.required_execution_profiles || [];
+  const chips = profiles
+    .map((name) => `<span class="chip">${esc(name)}</span>`)
+    .join("");
+  return `<div class="chip-row">${chips || '<span class="muted">No required profiles resolved.</span>'}</div>`;
+}
+function riskEvidenceMarkup(item) {
+  const summary = item.review?.summary || {};
+  const approvals = item.approvals || {};
+  const evidence = summary.evidence_status || "not generated";
+  const approval =
+    summary.approval_status ||
+    human(approvals.errors?.length ? "missing_or_stale" : "current");
+  return `<dl class="compact"><div><dt>Evidence</dt><dd>${esc(evidence)}</dd></div><div><dt>Approvals</dt><dd>${esc(approval)}</dd></div></dl>`;
+}
+function renderRiskOverview(item) {
+  const risk = item.risk || {};
   setSafeHTML(
     $("#risk-overview"),
-    `<div class="risk-callout"><strong>${esc(human(risk.selected_risk_profile || "Unresolved"))}</strong><span>deterministic minimum ${esc(human(risk.minimum_risk_profile || "unknown"))}</span></div><div class="chip-row">${(risk.required_execution_profiles || []).map((name) => `<span class="chip">${esc(name)}</span>`).join("") || '<span class="muted">No required profiles resolved.</span>'}</div><dl class="compact"><div><dt>Evidence</dt><dd>${esc(review?.summary?.evidence_status || "not generated")}</dd></div><div><dt>Approvals</dt><dd>${esc(review?.summary?.approval_status || human(item.approvals?.errors?.length ? "missing_or_stale" : "current"))}</dd></div></dl>`,
+    `${riskCalloutMarkup(risk)}${executionProfilesMarkup(risk)}${riskEvidenceMarkup(item)}`,
   );
+}
+function renderGateMap(item) {
+  const latest = item.latest;
   $("#gate-map").classList.toggle("empty", !latest?.gates?.length);
   setSafeHTML(
     $("#gate-map"),
@@ -349,21 +496,35 @@ function renderOverview(item) {
           .join("")
       : "No evidence yet.",
   );
-  const findings = review?.findings || [];
+}
+function renderReviewPreview(item) {
+  const findings = item.review?.findings || [];
   setSafeHTML(
     $("#review-preview"),
     findings.slice(0, 4).map(findingCard).join("") ||
       '<div class="empty">Generate a review packet to classify the current diff.</div>',
   );
+}
+function renderAdapterGrid(item) {
+  const stacks = item.project?.stacks || {};
   setSafeHTML(
     $("#adapter-grid"),
-    Object.entries(p.stacks || {})
+    Object.entries(stacks)
       .map(
         ([name, enabled]) =>
           `<div class="adapter ${enabled ? "enabled" : "disabled"}"><span class="dot ${enabled ? "pass" : "neutral"}"></span><div><strong>${esc(name)}</strong><small>${enabled ? "detected and managed" : "not detected"}</small></div></div>`,
       )
       .join(""),
   );
+}
+function renderOverview(item) {
+  renderMetrics(item);
+  renderOwnerOverview(item);
+  renderOverviewBadges(item);
+  renderRiskOverview(item);
+  renderGateMap(item);
+  renderReviewPreview(item);
+  renderAdapterGrid(item);
 }
 function renderRuns(item) {
   const latest = item.latest;
@@ -430,9 +591,7 @@ function renderReview(item) {
     ),
   );
 }
-function renderSetup(item) {
-  const bundle = item.onboarding || {};
-  const onboarding = bundle.current || {};
+function renderOnboardingBadge(bundle, onboarding) {
   const summary = onboarding.summary || {};
   $("#onboarding-badge").className =
     `badge ${summary.blockers ? "configuration_error" : bundle.stale ? "review" : "pass"}`;
@@ -441,6 +600,8 @@ function renderSetup(item) {
     : bundle.stale
       ? "stale"
       : "ready";
+}
+function renderSetupStages(onboarding) {
   setSafeHTML(
     $("#setup-stages"),
     (onboarding.stages || [])
@@ -450,11 +611,15 @@ function renderSetup(item) {
       )
       .join("") || '<div class="empty">No onboarding plan generated.</div>',
   );
+}
+function renderNextAction(bundle, onboarding) {
   const next = onboarding.next_action || {};
   setSafeHTML(
     $("#next-action"),
     `<div class="next-card ${esc(next.severity || "info")}"><span>${esc(String(next.severity || "info").toUpperCase())}</span><h3>${esc(next.message || "No action resolved")}</h3><code>${esc(next.next_step || "")}</code>${bundle.stale ? "<p>Stored onboarding state is stale. Run <code>qg onboarding refresh</code>.</p>" : ""}</div>`,
   );
+}
+function renderOnboardingGaps(onboarding) {
   setSafeHTML(
     $("#onboarding-gaps"),
     (onboarding.gaps || [])
@@ -464,6 +629,14 @@ function renderSetup(item) {
       )
       .join("") || '<div class="empty">No generated setup gap remains.</div>',
   );
+}
+function renderSetup(item) {
+  const bundle = item.onboarding || {};
+  const onboarding = bundle.current || {};
+  renderOnboardingBadge(bundle, onboarding);
+  renderSetupStages(onboarding);
+  renderNextAction(bundle, onboarding);
+  renderOnboardingGaps(onboarding);
 }
 function renderPolicy(item) {
   $("#config-json").textContent = JSON.stringify(
@@ -479,17 +652,17 @@ function renderPolicy(item) {
     2,
   );
 }
-function render() {
-  const item = project();
-  if (item.error) {
-    $("#project-name").textContent = "Repository unavailable";
-    $("#project-root").textContent = item.root || "";
-    setSafeHTML(
-      $("#decision-strip"),
-      `<strong>Configuration error</strong><span>${esc(item.error)}</span>`,
-    );
-    return;
-  }
+function renderUnavailable(item) {
+  if (!item.error) return false;
+  $("#project-name").textContent = "Repository unavailable";
+  $("#project-root").textContent = item.root || "";
+  setSafeHTML(
+    $("#decision-strip"),
+    `<strong>Configuration error</strong><span>${esc(item.error)}</span>`,
+  );
+  return true;
+}
+function renderProjectHeader(item) {
   const p = item.project || {};
   $("#project-name").textContent =
     p.name ||
@@ -504,6 +677,8 @@ function render() {
     : config.actions_enabled
       ? "actions enabled"
       : "read-only";
+}
+function renderProjectPanels(item) {
   renderDecision(item);
   renderOverview(item);
   renderRuns(item);
@@ -511,21 +686,31 @@ function render() {
   renderSetup(item);
   renderPolicy(item);
   actionStatus();
+}
+function renderActionAvailability() {
   const busy = Object.values(state.actions || {}).some(
     (value) => value === "running",
   );
-  $("#run-profile").disabled =
-    !config.actions_enabled || state.portfolio || busy;
-  $("#generate-review").disabled =
-    !config.actions_enabled || state.portfolio || busy;
-  $("#regenerate-review").disabled =
-    !config.actions_enabled || state.portfolio || busy;
+  const disabled = !config.actions_enabled || state.portfolio || busy;
+  $("#run-profile").disabled = disabled;
+  $("#generate-review").disabled = disabled;
+  $("#regenerate-review").disabled = disabled;
+}
+function bindPortfolioSelection() {
   $$("[data-project-index]").forEach((button) =>
     button.addEventListener("click", () => {
       selectedIndex = Number(button.dataset.projectIndex || 0);
       render();
     }),
   );
+}
+function render() {
+  const item = project();
+  if (renderUnavailable(item)) return;
+  renderProjectHeader(item);
+  renderProjectPanels(item);
+  renderActionAvailability();
+  bindPortfolioSelection();
 }
 async function load() {
   try {
@@ -600,7 +785,7 @@ $(".rail nav").addEventListener("keydown", (event) => {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   const tabs = $$(".nav");
   const current = tabs.indexOf(document.activeElement);
-  let next =
+  const next =
     event.key === "Home"
       ? 0
       : event.key === "End"
