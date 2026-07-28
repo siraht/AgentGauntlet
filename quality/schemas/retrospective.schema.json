@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/siraht/AgentGauntlet/blob/main/quality/schemas/retrospective.schema.json",
+  "title": "Agent Quality Gauntlet retrospective classification",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "certification",
+    "inventory",
+    "unreviewed_debt",
+    "measured_failures",
+    "blocking_failures",
+    "inherited_debt",
+    "regressions",
+    "missing_evidence",
+    "configuration_errors",
+    "infrastructure_errors",
+    "unknown_product_intent",
+    "new_debt",
+    "resolved_debt",
+    "invalid_debt",
+    "counts"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "certification": {
+      "enum": ["observations_only", "regression_free", "not_regression_free"]
+    },
+    "inventory": {"type": "array", "items": {"type": "object"}},
+    "unreviewed_debt": {"type": "array", "items": {"type": "object"}},
+    "measured_failures": {"type": "array", "items": {"type": "object"}},
+    "blocking_failures": {"type": "array", "items": {"type": "object"}},
+    "inherited_debt": {"type": "array", "items": {"type": "object"}},
+    "regressions": {"type": "array", "items": {"type": "object"}},
+    "missing_evidence": {"type": "array", "items": {"type": "object"}},
+    "configuration_errors": {"type": "array", "items": {"type": "object"}},
+    "infrastructure_errors": {"type": "array", "items": {"type": "object"}},
+    "unknown_product_intent": {"type": "array", "items": {"type": "object"}},
+    "new_debt": {"type": "array", "items": {"type": "object"}},
+    "resolved_debt": {"type": "array", "items": {"type": "object"}},
+    "invalid_debt": {"type": "array", "items": {"type": "object"}},
+    "counts": {"type": "object"}
+  },
+  "additionalProperties": false
+}

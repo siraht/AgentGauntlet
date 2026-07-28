@@ -45,6 +45,7 @@
       ]
     },
     "exit_code": {
+      "type": "integer",
       "enum": [0, 1, 2, 3]
     },
     "raw_exit_code": {

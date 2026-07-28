@@ -76,6 +76,7 @@ from aqg.scaffold import (
     initialize_project,
     upgrade_runtime,
 )
+from aqg.schema_contracts import validate_named_schema
 from aqg.util import (
     CommandResult,
     change_fingerprint,
@@ -2540,6 +2541,10 @@ class SetupContractTests(RepoCase):
             if name.endswith(".cdx.json"):
                 self.assertEqual(validate_cyclonedx_document(read_json(output / name)), [])
         provenance = read_json(output / "provenance.intoto.json")
+        self.assertEqual(
+            validate_named_schema(source_root, "release-provenance", provenance),
+            [],
+        )
         self.assertEqual(provenance["_type"], "https://in-toto.io/Statement/v1")
         self.assertEqual(provenance["predicateType"], "https://slsa.dev/provenance/v1")
         self.assertEqual(

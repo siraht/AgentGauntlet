@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/siraht/AgentGauntlet/blob/main/quality/schemas/debt-baseline.schema.json",
+  "title": "Agent Quality Gauntlet reviewed debt baseline",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "state",
+    "source_revision",
+    "policy_fingerprint",
+    "control_fingerprint",
+    "created_at",
+    "measurement",
+    "inventory"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "state": {"enum": ["proposed", "reviewed"]},
+    "source_revision": {"type": "string", "minLength": 1},
+    "policy_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "control_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "measurement": {
+      "type": "object",
+      "required": [
+        "run_id",
+        "profile",
+        "measured_at",
+        "change_fingerprint",
+        "manifest_fingerprint"
+      ],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "profile": {"type": "string", "minLength": 1},
+        "measured_at": {"type": "string", "format": "date-time"},
+        "change_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "manifest_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "inventory": {"type": "array", "items": {"type": "object"}},
+    "reviewer": {"type": "string", "minLength": 1},
+    "reviewed_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
