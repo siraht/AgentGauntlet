@@ -20,6 +20,7 @@ assert _MATRIX_SPEC and _MATRIX_SPEC.loader
 _MATRIX_MODULE = importlib.util.module_from_spec(_MATRIX_SPEC)
 _MATRIX_SPEC.loader.exec_module(_MATRIX_MODULE)
 _corepack_shim = _MATRIX_MODULE._corepack_shim
+_prepare_typescript_web = _MATRIX_MODULE._prepare_typescript_web
 
 
 class CrossPlatformMatrixContractTests(unittest.TestCase):
@@ -103,6 +104,33 @@ class CrossPlatformMatrixContractTests(unittest.TestCase):
             project = build_project_config(root, detect_project(root))
             self.assertEqual(project["python"]["test_runner"], "tox")
             self.assertEqual(project["python"]["unit_command"][0], "$AQG_PY_BIN/tox")
+
+    def test_typescript_web_pilot_is_offline_inspectable_and_strict(self) -> None:
+        """The connected matrix case is generated deterministically before npm installs it."""
+        with tempfile.TemporaryDirectory(prefix="aqg-contract-") as temporary:
+            root = Path(temporary)
+            gates = _prepare_typescript_web(root)
+
+            self.assertEqual(
+                gates,
+                ["test_integrity", "unit", "structure", "coverage", "acceptance"],
+            )
+            detection = detect_project(root)
+            self.assertTrue(detection.typescript)
+            self.assertTrue(detection.html)
+            self.assertTrue(detection.css)
+            self.assertIn("vite", detection.frameworks)
+            self.assertEqual(detection.js_test_runner, "vitest")
+            project = build_project_config(root, detection, mode="greenfield")
+            self.assertEqual(project["enforcement"]["mode"], "greenfield")
+            self.assertEqual(project["enforcement"]["scope"], "full")
+            self.assertTrue(project["gates"]["acceptance"]["applicable"])
+            self.assertEqual(project["web"]["base_url"], "http://127.0.0.1:5173")
+            self.assertIn("noUncheckedIndexedAccess", (root / "tsconfig.json").read_text())
+            self.assertIn("fast-check", (root / "tests" / "counter.test.ts").read_text())
+            self.assertIn("AxeBuilder", (root / "e2e" / "counter.spec.ts").read_text())
+            self.assertIn("CTP-001", (root / "feature-spec" / "Counter.md").read_text())
+            self.assertTrue((root / "qa" / "procedures" / "QA-COUNTER.md").is_file())
 
 
 if __name__ == "__main__":

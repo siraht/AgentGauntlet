@@ -27,7 +27,7 @@ DEFAULT_CASES = (
     "python-pytest",
     "python-tox",
 )
-ALL_CASES = (*DEFAULT_CASES, "bun-node", "browser-static")
+ALL_CASES = (*DEFAULT_CASES, "bun-node", "browser-static", "typescript-web")
 JS_CASES = {
     "npm-jest": ("npm", "jest", "30.4.2"),
     "pnpm-mocha": ("pnpm", "mocha", "11.7.6"),
@@ -263,6 +263,142 @@ def _prepare_browser(project: Path) -> list[str]:
     return ["acceptance"]
 
 
+def _prepare_typescript_web(project: Path) -> list[str]:
+    """Write a small, real web application used by the opt-in connected pilot.
+
+    The fixture is deliberately generated rather than copied from this repository:
+    matrix cases must prove that setup discovers an ordinary project, not rely on
+    AQG's own source tree.  Installing the pinned npm dependencies is left to the
+    normal matrix preparation path, so focused unit tests can inspect this contract
+    without downloading packages or a browser.
+    """
+    _write(
+        project / "src" / "counter.ts",
+        "export type Counter = { value: number };\n\n"
+        "export function increment(counter: Counter, amount: number): Counter {\n"
+        "  if (!Number.isSafeInteger(amount) || amount < 1) {\n"
+        "    throw new Error('amount must be a positive safe integer');\n"
+        "  }\n"
+        "  return { value: counter.value + amount };\n"
+        "}\n",
+    )
+    _write(
+        project / "src" / "main.ts",
+        "import { increment } from './counter';\n\n"
+        "const value = document.querySelector<output>('#count');\n"
+        "const button = document.querySelector<HTMLButtonElement>('#increment');\n\n"
+        "if (!value || !button) throw new Error('counter controls are missing');\n"
+        "button.addEventListener('click', () => {\n"
+        "  const next = increment({ value: Number(value.value) }, 1);\n"
+        "  value.value = String(next.value);\n"
+        "  value.textContent = value.value;\n"
+        "});\n",
+    )
+    _write(
+        project / "tests" / "counter.test.ts",
+        "import { describe, expect, it } from 'vitest';\n"
+        "import fc from 'fast-check';\n"
+        "import { increment } from '../src/counter';\n\n"
+        "// Feature-Spec: Counter CTP-001 CTP-002\n"
+        "describe('increment', () => {\n"
+        "  it('adds a positive amount without mutating the input', () => {\n"
+        "    const current = { value: 2 };\n"
+        "    expect(increment(current, 3)).toEqual({ value: 5 });\n"
+        "    expect(current).toEqual({ value: 2 });\n"
+        "  });\n\n"
+        "  it('adds every positive safe integer', () => {\n"
+        "    fc.assert(fc.property(fc.integer(), fc.integer({ min: 1, max: 1000 }), (value, amount) =>\n"
+        "      increment({ value }, amount).value === value + amount,\n"
+        "    ));\n"
+        "  });\n\n"
+        "  it('rejects an unsafe or non-positive amount', () => {\n"
+        "    expect(() => increment({ value: 0 }, 0)).toThrow('positive safe integer');\n"
+        "    expect(() => increment({ value: 0 }, Number.MAX_SAFE_INTEGER + 1)).toThrow();\n"
+        "  });\n"
+        "});\n",
+    )
+    _write(
+        project / "e2e" / "counter.spec.ts",
+        "import { expect, test } from '@playwright/test';\n"
+        "import AxeBuilder from '@axe-core/playwright';\n\n"
+        "// Feature-Spec: Counter CTP-001 CTP-002\n"
+        "test('increments with keyboard-accessible controls and has no serious axe findings', async ({ page }) => {\n"
+        "  await page.goto('/');\n"
+        "  await page.getByRole('button', { name: 'Increment count' }).press('Enter');\n"
+        "  await expect(page.getByRole('status')).toHaveText('1');\n"
+        "  const results = await new AxeBuilder({ page }).analyze();\n"
+        "  expect(results.violations.filter(({ impact }) => impact === 'serious' || impact === 'critical')).toEqual([]);\n"
+        "});\n",
+    )
+    _write(
+        project / "index.html",
+        '<!doctype html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Counter pilot</title></head>\n'
+        '  <body><main><h1>Counter pilot</h1><output id="count" role="status" aria-live="polite" value="0">0</output><button id="increment" type="button" aria-label="Increment count">Increment</button></main><script type="module" src="/src/main.ts"></script></body>\n'
+        "</html>\n",
+    )
+    _write(project / "src" / "styles.css", "button:focus-visible { outline: 3px solid #005fcc; }\n")
+    _write(
+        project / "tsconfig.json",
+        json.dumps(
+            {
+                "compilerOptions": {
+                    "strict": True,
+                    "noUncheckedIndexedAccess": True,
+                    "exactOptionalPropertyTypes": True,
+                    "useUnknownInCatchVariables": True,
+                    "noImplicitOverride": True,
+                    "target": "ES2022",
+                    "module": "ESNext",
+                    "moduleResolution": "bundler",
+                    "noEmit": True,
+                },
+                "include": ["src", "tests", "e2e"],
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+    _write(
+        project / "feature-spec" / "Counter.md",
+        "# Counter\n\n"
+        "- `CTP-001` The counter MUST increment by one through its visible control.\n"
+        "- `CTP-002` The counter MUST expose its updated value through an accessible status.\n",
+    )
+    _write(
+        project / "features" / "counter.feature",
+        "Feature: Counter\n\n"
+        "  Scenario: Increment the visible count\n"
+        "    Given a counter showing 0\n"
+        "    When the increment control is activated\n"
+        "    Then the counter shows 1\n",
+    )
+    _write(
+        project / "qa" / "procedures" / "QA-COUNTER.md",
+        "# QA-COUNTER · keyboard and zoom check\n\n"
+        "Requirements: CTP-001, CTP-002\n\n"
+        "1. At 200% zoom, use Tab then Enter to activate **Increment**.\n"
+        "2. Verify focus remains visible and the status changes from 0 to 1.\n"
+        "3. Record browser, OS, revision, result, and any rollback required.\n",
+    )
+    package = {
+        "name": "aqg-typescript-web-pilot",
+        "private": True,
+        "type": "module",
+        "packageManager": "npm@10.9.8",
+        "scripts": {"dev": "vite --host 127.0.0.1", "build": "tsc -p tsconfig.json && vite build"},
+        "devDependencies": {
+            "@axe-core/playwright": "4.12.1",
+            "@playwright/test": "1.62.0",
+            "fast-check": "4.9.0",
+            "typescript": "6.0.3",
+            "vite": "7.1.7",
+            "vitest": "4.1.10",
+        },
+    }
+    _write(project / "package.json", json.dumps(package, indent=2) + "\n")
+    return ["test_integrity", "unit", "structure", "coverage", "acceptance"]
+
+
 def _browser_setup_options() -> dict[str, str]:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
@@ -282,6 +418,9 @@ def _execute_case(case: str, workspace: Path) -> dict[str, Any]:
     elif case.startswith("python-"):
         gates = _prepare_python(project, case)
         javascript, python = False, True
+    elif case == "typescript-web":
+        gates = _prepare_typescript_web(project)
+        javascript, python = True, False
     else:
         gates = _prepare_browser(project)
         javascript, python = True, False
