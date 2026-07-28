@@ -45,7 +45,7 @@ The following items named in the referenced conversation were absent or incomple
 - Nonzero mutation execution or result-export commands are infrastructure failures;
   comment-only production diffs complete without creating a mutation sandbox.
 - PEP 561 typed-package metadata.
-- 454 Python test cases and two JavaScript dashboard contract tests,
+- 456 Python test cases and two JavaScript dashboard contract tests,
   and internal, installed-tool, disposable-project, browser, and control-surface
   conformance fixtures.
 - A shared owner-status projection for CLI/dashboard Develop, Merge, and Release
@@ -155,3 +155,15 @@ score. That is explicit dashboard behavioral-test debt, not a pass. The same
 whole checkpoint refuses 3,209 changed Python production lines against the
 protected 250-line campaign limit. Bounded Python mutation remains green; the
 full mixed-language checkpoint remains non-certifying.
+
+A first live high-tier council exercised Grok 4.5, GLM-5.2, Kimi-K3, and
+DeepSeek V4 Flash. Kimi-K3 timed out at the protected 180-second boundary, so
+the verifying run remained explicitly incomplete. The other three ballots
+identified four blockers. Two were control-contract defects that are now fixed:
+high tier requires current deep evidence, and the greenfield pilot claim now
+matches the gates actually executed. The remaining manual-QA and rollback
+rehearsal findings are intentionally not fabricated.
+
+The evidence-profile selection slice subsequently completed 123 selected
+mutants with all 123 killed, zero survivors, 90.48% selector coverage against
+the 90% deep floor, and a 100% mutation score.

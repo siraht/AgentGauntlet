@@ -182,3 +182,26 @@ Measure per model and role:
 
 Promote a model/tier only through protected policy maintenance after its
 measured performance and data-handling terms are acceptable.
+
+## First high-tier dogfood result
+
+Run `council-20260728T162532Z-060cf244` exercised all four configured models
+against one public, content-addressed candidate. Grok 4.5, GLM-5.2, and
+DeepSeek V4 Flash returned valid cited ballots from three provider groups.
+Kimi-K3 reached the protected 180-second timeout, leaving the security/trust
+role missing. The manifest verifies, and the result is correctly
+`advisory_blocked` and incomplete.
+
+The valid ballots found four blockers:
+
+1. high tier had bundled fast rather than deep evidence;
+2. the risk card overstated which greenfield pilot gates executed;
+3. manual QA was missing;
+4. rollback rehearsal was missing.
+
+The first two findings changed the implementation and risk contract. High tier
+now refuses to run without a current deep-or-release manifested quality run,
+and the pilot claim names only its executed gates. The latter two remain
+accountable real-world actions; no agent record substitutes for them. The
+Kimi timeout is retained as calibration data rather than hidden or retried
+until it appears green.

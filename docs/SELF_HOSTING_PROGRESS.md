@@ -211,6 +211,16 @@ The real council result is now stale because later commits fixed one of its
 blockers. It remains valid historical evidence and must not be presented as a
 review of the current candidate.
 
+A later high-tier run, `council-20260728T162532Z-060cf244`, exercised every
+configured model. Three ballots were valid; Kimi-K3 timed out at 180 seconds,
+so the security/trust role was missing and the run remained incomplete. Its
+manifest verifies. The council found that high tier had selected a fast run
+despite the high-assurance risk profile and that the risk card overstated the
+greenfield pilot. Both findings were reproduced and fixed. High tier now
+requires deep-or-release evidence. The resulting bounded slice passed
+structure, 100% changed-line coverage, and 123/123 killed mutants with zero
+survivors. The council's missing manual-QA and rollback findings remain open.
+
 ## Next checkpoint
 
 After the final code and documentation surface settles:
