@@ -49,6 +49,7 @@ from aqg.adapters import (
     _python_mutation_platform_supported,
     _python_structure_evidence,
     _python_test_env,
+    _prettier_files,
     run_adapter,
 )
 from aqg.approvals import template, validate_approval, validate_required_approvals
@@ -519,6 +520,9 @@ class SetupTests(RepoCase):
         self.assertEqual(
             current_onboarding(self.root)["current"]["detected"]["name"], project["name"]
         )
+        prettier_files = _prettier_files(self.root, project)
+        self.assertIn("quality/change-risk.json", prettier_files)
+        self.assertNotIn("quality/onboarding.json", prettier_files)
         self.assertTrue((self.root / "aqg").is_file())
         self.assertTrue((self.root / "quality" / "qg.py").is_file())
         self.assertTrue((self.root / "quality" / "_aqg" / "cli.py").is_file())

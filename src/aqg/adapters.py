@@ -93,6 +93,7 @@ from .util import (
 JS_SUFFIXES = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
 WEB_SUFFIXES = {".html", ".htm", ".css", ".scss", ".sass", ".less"}
 PY_SUFFIXES = {".py", ".pyi"}
+GENERATED_FORMAT_EXCLUDES = {"quality/onboarding.json"}
 CommandSpec = (
     tuple[list[str], int, dict[str, str] | None]
     | tuple[list[str], int, dict[str, str] | None, tuple[int, ...]]
@@ -291,18 +292,23 @@ def _not_applicable(root: Path, gate: str, reason: str) -> tuple[int, dict[str, 
     )
 
 
+def _prettier_files(root: Path, project: dict[str, Any]) -> list[str]:
+    candidates = _scoped_files(
+        root,
+        project,
+        _relative_files(
+            root, JS_SUFFIXES | WEB_SUFFIXES | {".json", ".md", ".yaml", ".yml"}, project
+        ),
+    )
+    return [path for path in candidates if path not in GENERATED_FORMAT_EXCLUDES]
+
+
 def _format(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     commands: list[tuple[list[str], int, dict[str, str] | None]] = []
     stacks = project["stacks"]
     scoped: dict[str, list[str]] = {}
     if stacks.get("javascript") or stacks.get("html") or stacks.get("css"):
-        files = _scoped_files(
-            root,
-            project,
-            _relative_files(
-                root, JS_SUFFIXES | WEB_SUFFIXES | {".json", ".md", ".yaml", ".yml"}, project
-            ),
-        )
+        files = _prettier_files(root, project)
         scoped["prettier"] = files
         if files:
             prettier = _tool(root, "prettier", "js")
