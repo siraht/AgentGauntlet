@@ -19,4 +19,4 @@ pip-tools
 # libcst selects this free-threaded YAML build on Python 3.13+; pin it explicitly
 # so one protected hash lock installs on every supported Python version.
 pyyaml-ft==8.0.0; python_version >= "3.13"
-uv==0.11.32
+uv==0.12.1
