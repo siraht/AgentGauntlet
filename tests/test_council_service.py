@@ -449,6 +449,34 @@ def test_debt_review_omits_unrelated_diff_content_but_binds_its_identity(
     assert boundary["omitted_diff_sha256"].startswith("sha256:")
 
 
+def test_candidate_bundle_contains_every_manifested_gate_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    gates = run_dir / "gates"
+    gates.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "retrospective.json").write_text('{"certification":"pending"}\n', encoding="utf-8")
+    for gate in ("assurance", "coverage", "mutation_changed"):
+        (gates / f"{gate}.details.json").write_text(
+            json.dumps({"gate": gate}) + "\n", encoding="utf-8"
+        )
+    (tmp_path / "quality").mkdir()
+    (tmp_path / "quality" / "change-risk.json").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "feature-spec").mkdir()
+    monkeypatch.setattr(service, "git_diff", lambda *_args, **_kwargs: "diff")
+    monkeypatch.setattr(service, "_review_projection", lambda *_args: {})
+
+    inputs = service._bundle_inputs(tmp_path, "origin/main", run_dir, {}, "candidate")
+
+    assert inputs["run/retrospective.json"] == b'{"certification":"pending"}\n'
+    assert {name for name in inputs if name.startswith("run/gates/")} == {
+        "run/gates/assurance.details.json",
+        "run/gates/coverage.details.json",
+        "run/gates/mutation_changed.details.json",
+    }
+
+
 def test_fake_run_publishes_only_verified_immutable_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

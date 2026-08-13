@@ -193,6 +193,10 @@ def _bundle_inputs(
     if purpose != "debt_baseline":
         inputs["quality/change-risk.json"] = (root / "quality" / "change-risk.json").read_bytes()
         inputs["review/current.json"] = _json_text(_review_projection(root, base))
+    if purpose == "candidate":
+        inputs["run/retrospective.json"] = (run_dir / "retrospective.json").read_bytes()
+        for path in sorted((run_dir / "gates").glob("*.details.json")):
+            inputs[f"run/gates/{path.name}"] = path.read_bytes()
     feature_paths = (
         [root / "feature-spec" / "AgentQualityGauntlet.Retrospective.md"]
         if purpose == "debt_baseline"
@@ -393,8 +397,14 @@ def _prepare_plan(
                     else (
                         "Review the exact candidate for technical assurance. This council is an "
                         "input to the assurance gate, so do not block solely because the seed "
-                        "run lacks this same current council. Do block every other deterministic "
-                        "failure, missing requirement, or unsafe condition."
+                        "run lacks this same current council. The seed run is necessarily not the "
+                        "final passing run when its only failed gate is assurance and the bundled "
+                        "assurance details show behavior, functional rehearsal, and rollback work "
+                        "while independent verification only lacks this exact current candidate "
+                        "council. In that precise circular case, neither the assurance-only failure "
+                        "nor review/current's resulting missing passing deep run is an independent "
+                        "blocker. Inspect the bundled gate details and do block every other "
+                        "deterministic failure, missing requirement, or unsafe condition."
                     )
                 )
             ),
