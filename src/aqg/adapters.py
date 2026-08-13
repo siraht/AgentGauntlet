@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+import hashlib
 import http.client
 import json
 import os
@@ -748,6 +749,8 @@ def _javascript_structure_commands(root: Path, files: list[str]) -> list[Command
                 _control_path(root, "quality/tools/js/config/eslint.config.mjs"),
                 "--max-warnings",
                 "0",
+                "--format",
+                "json",
                 *group,
             ],
             900,
@@ -755,6 +758,108 @@ def _javascript_structure_commands(root: Path, files: list[str]) -> list[Command
         )
         for group in _chunks(files)
     ]
+
+
+_JS_COMPLEXITY = re.compile(
+    r"^(?:Arrow function|Function '(?P<name>[^']+)') has a complexity of (?P<value>\d+)\."
+)
+
+
+def _javascript_structure_evidence(
+    root: Path, project: dict[str, Any], results: list[dict[str, Any]]
+) -> tuple[dict[str, Any], list[str]]:
+    """Normalize ESLint structure output and retain content-addressed raw provenance."""
+    limits = _effective_thresholds(project)["structure"]
+    changed = _changed_lines(root, project) if _adopt_mode(project) else {}
+    functions: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    failures: list[str] = []
+    parse_errors: list[str] = []
+    for result in results:
+        raw = str(result.get("stdout", ""))
+        result["stdout_bytes"] = len(raw.encode())
+        result["stdout_sha256"] = "sha256:" + hashlib.sha256(raw.encode()).hexdigest()
+        result["stdout"] = ""
+        try:
+            reports = json.loads(raw)
+        except json.JSONDecodeError:
+            parse_errors.append("ESLint structure output was not valid JSON")
+            continue
+        if not isinstance(reports, list):
+            parse_errors.append("ESLint structure output was not an array")
+            continue
+        _collect_javascript_structure(
+            root, project, reports, changed, functions, findings, failures
+        )
+    return (
+        {
+            "functions": sorted(functions, key=lambda item: (item["path"], item["line"])),
+            "findings": sorted(findings, key=lambda item: (item["path"], item["line"])),
+            "failures": failures,
+            "limits": limits,
+            "scope": "changed-functions" if _adopt_mode(project) else "full",
+        },
+        parse_errors,
+    )
+
+
+def _collect_javascript_structure(
+    root: Path,
+    project: dict[str, Any],
+    reports: list[Any],
+    changed: dict[str, set[int]],
+    functions: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+    failures: list[str],
+) -> None:
+    limit = _effective_thresholds(project)["structure"]["max_cyclomatic_complexity"]
+    for report in reports:
+        if not isinstance(report, dict):
+            continue
+        path = _relative_report_path(root, report.get("filePath"))
+        for message in report.get("messages", []):
+            if not isinstance(message, dict):
+                continue
+            finding = {
+                key: message.get(key)
+                for key in (
+                    "ruleId",
+                    "severity",
+                    "message",
+                    "line",
+                    "column",
+                    "endLine",
+                    "endColumn",
+                )
+            }
+            finding["path"] = path
+            findings.append(finding)
+            match = _JS_COMPLEXITY.match(str(message.get("message", "")))
+            if message.get("ruleId") != "complexity" or match is None or not path:
+                continue
+            line = int(message.get("line", 0))
+            column = int(message.get("column", 0))
+            name = match.group("name") or f"<arrow@{line}:{column}>"
+            enforced = not _adopt_mode(project) or line in changed.get(path, set())
+            item = {
+                "path": path,
+                "name": name,
+                "line": line,
+                "complexity": int(match.group("value")),
+                "enforced": enforced,
+            }
+            functions.append(item)
+            if enforced and item["complexity"] > limit:
+                failures.append(f"{path}:{line} {name} complexity {item['complexity']} > {limit}")
+
+
+def _relative_report_path(root: Path, value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        return ""
+    try:
+        return Path(value).resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return ""
 
 
 def _python_structure_analysis(
@@ -786,6 +891,9 @@ def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
         else []
     )
     code, results = _run_many(root, _javascript_structure_commands(root, js_files))
+    javascript_evidence, javascript_errors = _javascript_structure_evidence(root, project, results)
+    if javascript_errors:
+        code = max(code, INFRASTRUCTURE_ERROR)
     radon, python_evidence = _python_structure_analysis(root, project, py_files)
     if radon:
         results.append(radon)
@@ -801,6 +909,8 @@ def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
             "scope": "changed" if _adopt_mode(project) else "full",
             "scoped_files": {"javascript": js_files, "python": py_files},
             "commands": results,
+            "javascript": javascript_evidence,
+            "javascript_errors": javascript_errors,
             "python": python_evidence,
         },
     )

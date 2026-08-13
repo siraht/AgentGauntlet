@@ -39,6 +39,7 @@ from aqg.adapters import (
     _empty_js_mutation_report,
     _evaluate_js_mutation,
     _is_test_path,
+    _javascript_structure_evidence,
     _javascript_unit_spec,
     _js_mutation_files,
     _js_mutation_metrics,
@@ -467,6 +468,53 @@ class ConfigurationValidationTests(RepoCase):
 
 
 class StructureRatchetTests(RepoCase):
+    def test_javascript_structure_evidence_normalizes_every_complexity_violation(self) -> None:
+        source = self.root / "src" / "app.js"
+        source.parent.mkdir()
+        source.write_text("const value = () => true;\n", encoding="utf-8")
+        payload = [
+            {
+                "filePath": str(source),
+                "messages": [
+                    {
+                        "ruleId": "complexity",
+                        "severity": 2,
+                        "message": "Arrow function has a complexity of 10. Maximum allowed is 8.",
+                        "line": 1,
+                        "column": 15,
+                        "endLine": 1,
+                        "endColumn": 17,
+                    },
+                    {
+                        "ruleId": "complexity",
+                        "severity": 2,
+                        "message": "Function 'named' has a complexity of 9. Maximum allowed is 8.",
+                        "line": 2,
+                        "column": 1,
+                    },
+                ],
+            }
+        ]
+        raw = json.dumps(payload)
+        results = [{"stdout": raw}]
+        project = {
+            "enforcement": {"scope": "full"},
+            "thresholds": {"structure": {"max_cyclomatic_complexity": 8}},
+            "profile_thresholds": {},
+        }
+
+        evidence, errors = _javascript_structure_evidence(self.root, project, results)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            [item["name"] for item in evidence["functions"]],
+            ["<arrow@1:15>", "named"],
+        )
+        self.assertEqual(len(evidence["failures"]), 2)
+        self.assertEqual(results[0]["stdout"], "")
+        self.assertEqual(results[0]["stdout_bytes"], len(raw))
+        self.assertTrue(results[0]["stdout_sha256"].startswith("sha256:"))
+
     def test_only_changed_functions_are_enforced_in_adopt_mode(self) -> None:
         source = self.root / "src" / "module.py"
         source.parent.mkdir()

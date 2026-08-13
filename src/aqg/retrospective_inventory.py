@@ -65,31 +65,36 @@ def _metric_item(
 def _structure_inventory(
     detail: Mapping[str, Any], thresholds: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
-    python = _mapping(detail.get("python")) or detail
     limits = _mapping(thresholds.get("structure"))
     items: list[dict[str, Any]] = []
-    for function in _sequence(python.get("functions")):
-        if not isinstance(function, Mapping):
-            continue
-        path = _text(function.get("path"))
-        name = _text(function.get("name")) or "<anonymous>"
-        if not path:
-            continue
-        for metric, limit_name in _STRUCTURE_METRICS:
-            value = _number(function.get(metric))
-            limit = _number(limits.get(limit_name))
-            if value is None or limit is None or value <= limit:
+    reports = [
+        report
+        for report in (_mapping(detail.get("javascript")), _mapping(detail.get("python")))
+        if report
+    ] or [detail]
+    for report in reports:
+        for function in _sequence(report.get("functions")):
+            if not isinstance(function, Mapping):
                 continue
-            items.append(
-                _metric_item(
-                    fingerprint=f"structure:{metric}:{path}:{name}",
-                    category="structure",
-                    path=path,
-                    value=value,
-                    direction="higher_is_worse",
-                    location=_location(function.get("line")),
+            path = _text(function.get("path"))
+            name = _text(function.get("name")) or "<anonymous>"
+            if not path:
+                continue
+            for metric, limit_name in _STRUCTURE_METRICS:
+                value = _number(function.get(metric))
+                limit = _number(limits.get(limit_name))
+                if value is None or limit is None or value <= limit:
+                    continue
+                items.append(
+                    _metric_item(
+                        fingerprint=f"structure:{metric}:{path}:{name}",
+                        category="structure",
+                        path=path,
+                        value=value,
+                        direction="higher_is_worse",
+                        location=_location(function.get("line")),
+                    )
                 )
-            )
     return items
 
 

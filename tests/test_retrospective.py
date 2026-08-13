@@ -341,6 +341,31 @@ class RetrospectiveTaxonomyTests(unittest.TestCase):
         self.assertTrue(all("22" not in item["fingerprint"] for item in integrity))
         self.assertTrue(all("40" not in item["fingerprint"] for item in integrity))
 
+    def test_javascript_structure_functions_are_baseline_eligible(self) -> None:
+        details = {
+            "structure": {
+                "gate": "structure",
+                "javascript": {
+                    "functions": [
+                        {
+                            "path": "src/app.js",
+                            "name": "render",
+                            "line": 12,
+                            "complexity": 11,
+                            "enforced": False,
+                        }
+                    ]
+                },
+            }
+        }
+
+        report = build_retrospective([], details, THRESHOLDS)
+
+        self.assertIn(
+            "structure:complexity:src/app.js:render",
+            {item["fingerprint"] for item in report["inventory"]},
+        )
+
     def test_non_baselinable_findings_excluded_from_inventory(self) -> None:
         details = _full_details()
         report = build_retrospective(
