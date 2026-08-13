@@ -28,6 +28,14 @@ PROVIDER_SPEC_SCHEMA_VERSION = 1
 EXECUTION_SCHEMA_VERSION = 1
 PROMPT_FILENAME = "review-prompt.txt"
 SCHEMA_FILENAME = "review-output.schema.json"
+GEMINI_POLICY_FILENAME = "gemini-deny-all.toml"
+GEMINI_DENY_ALL_POLICY = (
+    "[[rule]]\n"
+    'toolName = "*"\n'
+    'decision = "deny"\n'
+    "priority = 999\n"
+    'denyMessage = "AQG council reviewers cannot invoke tools."\n'
+)
 _ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _BASE_ENV_NAMES = (
     "HOME",
@@ -254,10 +262,8 @@ def _gemini_command(model_id: str, prompt: str) -> list[str]:
         "json",
         "--approval-mode",
         "plan",
-        "--allowed-tools",
-        "",
-        "--allowed-mcp-server-names",
-        "",
+        "--admin-policy",
+        GEMINI_POLICY_FILENAME,
         "--sandbox",
         "--skip-trust",
     ]
@@ -602,6 +608,8 @@ def _prepare_provider_inputs(
         (Path(cwd) / SCHEMA_FILENAME).write_bytes(
             canonical_json(REVIEW_PAYLOAD_JSON_SCHEMA) + b"\n"
         )
+    if spec["provider_id"] == "gemini":
+        (Path(cwd) / GEMINI_POLICY_FILENAME).write_text(GEMINI_DENY_ALL_POLICY, encoding="utf-8")
     return normalized_bundle, prompt, spec
 
 

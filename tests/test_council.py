@@ -30,6 +30,8 @@ from aqg.council import (
     write_council_evidence,
 )
 from aqg.council_providers import (
+    GEMINI_DENY_ALL_POLICY,
+    GEMINI_POLICY_FILENAME,
     PROMPT_FILENAME,
     REVIEW_PAYLOAD_JSON_SCHEMA,
     SCHEMA_FILENAME,
@@ -275,10 +277,8 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
         "json",
         "--approval-mode",
         "plan",
-        "--allowed-tools",
-        "",
-        "--allowed-mcp-server-names",
-        "",
+        "--admin-policy",
+        GEMINI_POLICY_FILENAME,
         "--sandbox",
         "--skip-trust",
     ]
@@ -417,6 +417,38 @@ def test_aqg_council_005_codex_is_read_only_isolated_and_schema_bound(
     assert execution["exit_code"] == PASS
     assert ballot is not None
     assert ballot["reviewer"]["provider_group"] == "openai:codex"
+
+
+def test_aqg_council_005_gemini_is_tool_denied_and_isolated(tmp_path: Path) -> None:
+    bundle = _bundle()
+    payload = _payload(bundle)
+
+    def executor(arguments: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        assert arguments[0] == "gemini"
+        assert arguments[arguments.index("--admin-policy") + 1] == GEMINI_POLICY_FILENAME
+        assert "--allowed-tools" not in arguments
+        assert "--allowed-mcp-server-names" not in arguments
+        assert kwargs["cwd"] == tmp_path
+        assert kwargs["input"] == build_review_prompt(bundle, "operability_rollback")
+        assert (tmp_path / GEMINI_POLICY_FILENAME).read_text(
+            encoding="utf-8"
+        ) == GEMINI_DENY_ALL_POLICY
+        return _completed(json.dumps({"response": payload}))
+
+    ballot, execution = collect_ballot(
+        review_id="gemini-review",
+        model_id="gemini/gemini-3-flash-preview",
+        role="operability_rollback",
+        bundle=bundle,
+        cwd=tmp_path,
+        environment={"HOME": "/safe/home", "PATH": "/usr/bin"},
+        timeout_seconds=10,
+        executor=executor,
+    )
+
+    assert execution["exit_code"] == PASS
+    assert ballot is not None
+    assert ballot["reviewer"]["provider_group"] == "google:gemini-cli"
 
 
 @pytest.mark.parametrize(
