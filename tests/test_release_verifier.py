@@ -59,9 +59,7 @@ def test_release_verifier_rejects_unlisted_archive_content() -> None:
 
 def test_publish_workflow_requires_exact_tag_risk_selected_evidence() -> None:
     # Feature-Spec: AgentQualityGauntlet AQG-CORE-020 AQG-CORE-025 AQG-CORE-028
-    workflow = (ROOT / ".github" / "workflows" / "publish-release.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "publish-release.yml").read_text(encoding="utf-8")
 
     quality = workflow.index("name: Prove exact-tag risk-selected quality evidence")
     publish = workflow.index("name: Publish immutable artifacts")
