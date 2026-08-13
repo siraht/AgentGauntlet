@@ -204,6 +204,7 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
     # service is being initialized.
     from .debt import document_fingerprint
     from .debt_store import build_debt_baseline_proposal
+    from .retrospective_inventory import debt_inventory
 
     proposal = build_debt_baseline_proposal(root, run_dir.name)["baseline"]
     retrospective = read_json(run_dir / "retrospective.json")
@@ -217,26 +218,17 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
         "unknown_product_intent",
     )
     exclusions = {key: retrospective.get(key, []) for key in excluded_keys}
+    project = load_project(root)
+    profile = str(proposal["measurement"]["profile"])
+    thresholds = _merged_settings(
+        project.get("thresholds", {}), project.get("profile_thresholds", {}).get(profile, {})
+    )
+    details = _debt_source_details(run_dir, inventory)
+    recomputed = debt_inventory(details, thresholds)
     source_reports = {
-        "coverage": "coverage.details.json",
-        "crap": "structure.details.json",
-        "structure": "structure.details.json",
+        f"{gate}.details.json": "sha256:" + sha256_file(run_dir / "gates" / f"{gate}.details.json")
+        for gate in sorted(details)
     }
-    source_hashes = {
-        name: "sha256:" + sha256_file(run_dir / "gates" / name)
-        for name in sorted(set(source_reports.values()))
-    }
-    provenance = [
-        {
-            "fingerprint": str(item.get("fingerprint")),
-            "source_gate": source_reports.get(str(item.get("category"))),
-            "source_detail_sha256": source_hashes.get(
-                str(source_reports.get(str(item.get("category"))))
-            ),
-        }
-        for item in inventory
-        if isinstance(item, Mapping)
-    ]
     inputs.update(
         {
             "baseline/proposed.json": _json_text(proposal),
@@ -259,13 +251,19 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
                     "non_baselinable": exclusions,
                 }
             ),
-            "controller/debt-item-provenance.json": _json_text(
+            "controller/debt-reconciliation.json": _json_text(
                 {
                     "schema_version": 1,
-                    "items": provenance,
+                    "exact_match": recomputed == proposal["inventory"],
+                    "inventory_count": len(recomputed),
+                    "inventory_sha256": _value_sha256(recomputed),
+                    "proposal_inventory_sha256": _value_sha256(proposal["inventory"]),
+                    "source_reports": source_reports,
+                    "thresholds": thresholds,
                     "rule": (
-                        "Every proposed inventory fingerprint maps to the immutable source gate "
-                        "detail report identified by this run's manifest."
+                        "AQG deterministically recomputed the proposed inventory from the complete "
+                        "bundled raw gate details and exact effective thresholds. Reviewers may "
+                        "independently inspect both inputs and require exact equality."
                     ),
                 }
             ),
@@ -276,6 +274,43 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
         path = run_dir / "gates" / f"{gate}.json"
         if path.is_file():
             inputs[f"run/gates/{path.name}"] = path.read_bytes()
+    for gate, detail in details.items():
+        inputs[f"run/gates/{gate}.details.json"] = json.dumps(
+            detail, sort_keys=True, separators=(",", ":")
+        )
+
+
+def _debt_source_details(run_dir: Path, inventory: Any) -> dict[str, Mapping[str, Any]]:
+    category_gate = {
+        "coverage": "coverage",
+        "crap": "coverage",
+        "structure": "structure",
+        "test_integrity": "test_integrity",
+    }
+    gates = {
+        category_gate[str(item.get("category"))]
+        for item in inventory
+        if isinstance(item, Mapping) and str(item.get("category")) in category_gate
+    }
+    return {gate: read_json(run_dir / "gates" / f"{gate}.details.json") for gate in sorted(gates)}
+
+
+def _merged_settings(base: Any, override: Any) -> dict[str, Any]:
+    merged = {
+        key: dict(value) if isinstance(value, Mapping) else value
+        for key, value in (base.items() if isinstance(base, Mapping) else ())
+    }
+    for key, value in override.items() if isinstance(override, Mapping) else ():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), Mapping):
+            merged[key] = _merged_settings(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _value_sha256(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
 def _json_text(value: Any) -> str:

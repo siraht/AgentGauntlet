@@ -317,7 +317,7 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
     run_dir = tmp_path / ".aqg" / "runs" / "shadow-source"
     inventory = [
         {
-            "fingerprint": "structure:src/legacy.py:legacy",
+            "fingerprint": "structure:complexity:src/legacy.py:legacy",
             "category": "structure",
             "path": "src/legacy.py",
             "severity": "medium",
@@ -350,12 +350,25 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
     }
     write_evidence_json(run_dir / "retrospective.json", retrospective)
     write_evidence_json(run_dir / "gates" / "structure.json", {"status": "quality_failure"})
-    write_evidence_json(run_dir / "gates" / "structure.details.json", {"findings": inventory})
+    write_evidence_json(
+        run_dir / "gates" / "structure.details.json",
+        {
+            "gate": "structure",
+            "python": {
+                "functions": [{"path": "src/legacy.py", "name": "legacy", "complexity": 80}]
+            },
+        },
+    )
     write_evidence_json(run_dir / "gates" / "coverage.json", {"status": "pass"})
     write_evidence_json(run_dir / "gates" / "coverage.details.json", {"metrics": []})
     monkeypatch.setattr(
         "aqg.debt_store.build_debt_baseline_proposal",
         lambda _root, _run_id: {"baseline": proposal},
+    )
+    monkeypatch.setattr(
+        service,
+        "load_project",
+        lambda _root: {"thresholds": {"structure": {"max_cyclomatic_complexity": 8}}},
     )
     inputs: dict[str, str | bytes] = {}
 
@@ -365,11 +378,12 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
     assert json.loads(bytes(inputs["run/retrospective.json"]).decode()) == retrospective
     assert "run/gates/structure.json" in inputs
     assert "run/gates/coverage.json" in inputs
-    assert "run/gates/structure.details.json" not in inputs
-    provenance = json.loads(str(inputs["controller/debt-item-provenance.json"]))
-    assert provenance["items"][0]["fingerprint"] == "structure:src/legacy.py:legacy"
-    assert provenance["items"][0]["source_gate"] == "structure.details.json"
-    assert provenance["items"][0]["source_detail_sha256"].startswith("sha256:")
+    assert "run/gates/structure.details.json" in inputs
+    reconciliation = json.loads(str(inputs["controller/debt-reconciliation.json"]))
+    assert reconciliation["exact_match"] is True
+    assert reconciliation["inventory_count"] == 1
+    assert reconciliation["inventory_sha256"] == reconciliation["proposal_inventory_sha256"]
+    assert reconciliation["source_reports"]["structure.details.json"].startswith("sha256:")
     eligibility = json.loads(str(inputs["controller/debt-eligibility.json"]))
     assert eligibility["inventory_count"] == 1
     assert eligibility["inventory_categories"] == ["structure"]
