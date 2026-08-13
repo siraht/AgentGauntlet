@@ -298,15 +298,27 @@ def _validate_rollback(rollback: Any) -> None:
     if not isinstance(rollback, dict):
         raise DogfoodFailure("rollback must be an object")
     _exact_keys(rollback, expected, "rollback")
+    _validate_rollback_metadata(rollback)
+    _validate_rollback_digests(rollback)
+    _validate_rollback_proof(rollback)
+
+
+def _validate_rollback_metadata(rollback: dict[str, Any]) -> None:
     if rollback["status"] != "pass":
         raise DogfoodFailure("rollback status must be pass")
     if not isinstance(rollback["mechanism"], str) or not rollback["mechanism"].strip():
         raise DogfoodFailure("rollback mechanism must be a nonempty string")
+
+
+def _validate_rollback_digests(rollback: dict[str, Any]) -> None:
     for key in ("before_identity", "candidate_identity", "restored_identity"):
         if not isinstance(rollback[key], str) or not re.fullmatch(
             r"sha256:[0-9a-f]{64}", rollback[key]
         ):
             raise DogfoodFailure(f"rollback {key} is not a SHA-256 digest")
+
+
+def _validate_rollback_proof(rollback: dict[str, Any]) -> None:
     if not all(
         rollback[key] is True
         for key in ("candidate_changed", "restored_matches_before", "operation_outputs_equal")
@@ -324,8 +336,11 @@ def _validate_functional_qa(functional_qa: Any) -> None:
     _exact_keys(functional_qa, {"status", "checks", "evidence"}, "functional_qa")
     if functional_qa["status"] != "pass":
         raise DogfoodFailure("functional QA status must be pass")
-    checks = functional_qa["checks"]
-    evidence = functional_qa["evidence"]
+    checks = _validate_qa_checks(functional_qa["checks"])
+    _validate_qa_evidence(checks, functional_qa["evidence"])
+
+
+def _validate_qa_checks(checks: Any) -> list[str]:
     if (
         not isinstance(checks, list)
         or not checks
@@ -334,6 +349,10 @@ def _validate_functional_qa(functional_qa: Any) -> None:
         raise DogfoodFailure("functional QA checks must be a nonempty string list")
     if len(checks) != len(set(checks)):
         raise DogfoodFailure("functional QA checks must be unique")
+    return checks
+
+
+def _validate_qa_evidence(checks: list[str], evidence: Any) -> None:
     if not isinstance(evidence, dict) or set(evidence) != set(checks):
         raise DogfoodFailure("functional QA evidence must match every named check")
     if any(not isinstance(item, dict) or not item for item in evidence.values()):
