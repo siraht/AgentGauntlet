@@ -108,10 +108,40 @@ def test_inventory_includes_whole_tree_debt_even_when_not_currently_enforced() -
 def test_changed_scope_inventory_excludes_untouched_functions() -> None:
     details = _details()
     details["structure"]["python"]["scope"] = "changed-functions"
-    details["coverage"]["metrics"]["python"]["crap"]["scope"] = "changed-functions"
+    crap = details["coverage"]["metrics"]["python"]["crap"]
+    crap["scope"] = "changed-functions"
+    crap["functions"].append(
+        {
+            "path": "src/current.py",
+            "name": "current",
+            "line": 5,
+            "crap": 20.0,
+            "enforced": True,
+        }
+    )
     inventory = debt_inventory(details, LIMITS)
 
-    assert not any(item["category"] in {"structure", "crap"} for item in inventory)
+    fingerprints = {item["fingerprint"] for item in inventory}
+    assert not any(item["category"] == "structure" for item in inventory)
+    assert "crap:src/legacy.py:legacy" not in fingerprints
+    assert "crap:src/current.py:current" in fingerprints
+
+
+def test_crap_inventory_preserves_anonymous_identity_and_exact_boundary() -> None:
+    details = _details()
+    details["coverage"]["metrics"]["python"]["crap"]["functions"] = [
+        {"path": "src/anonymous.py", "name": "", "crap": 16.0},
+        {"path": "", "name": "missing_path", "crap": 16.0},
+        {"path": "src/equal.py", "name": "equal", "crap": 15.0},
+    ]
+
+    fingerprints = {
+        item["fingerprint"]
+        for item in debt_inventory(details, LIMITS)
+        if item["category"] == "crap"
+    }
+
+    assert fingerprints == {"crap:src/anonymous.py:<anonymous>"}
 
 
 def test_only_reviewable_quality_debt_is_baseline_eligible() -> None:
