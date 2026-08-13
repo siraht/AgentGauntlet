@@ -580,7 +580,15 @@ class SetupTests(RepoCase):
         )
         prettier_files = _prettier_files(self.root, project)
         self.assertIn("quality/change-risk.json", prettier_files)
-        self.assertNotIn("quality/onboarding.json", prettier_files)
+        for generated in (
+            ".agents/skills/quality-gauntlet/SKILL.md",
+            ".claude/skills/quality-gauntlet/SKILL.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "quality/onboarding.json",
+            "quality/project.json",
+        ):
+            self.assertNotIn(generated, prettier_files)
         self.assertTrue((self.root / "aqg").is_file())
         self.assertTrue((self.root / "quality" / "qg.py").is_file())
         self.assertTrue((self.root / "quality" / "_aqg" / "cli.py").is_file())

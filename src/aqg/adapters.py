@@ -93,7 +93,14 @@ from .util import (
 JS_SUFFIXES = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
 WEB_SUFFIXES = {".html", ".htm", ".css", ".scss", ".sass", ".less"}
 PY_SUFFIXES = {".py", ".pyi"}
-GENERATED_FORMAT_EXCLUDES = {"quality/onboarding.json"}
+GENERATED_FORMAT_EXCLUDES = {
+    ".agents/skills/quality-gauntlet/SKILL.md",
+    ".claude/skills/quality-gauntlet/SKILL.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "quality/onboarding.json",
+    "quality/project.json",
+}
 MUTATION_EXECUTED_STATUSES = ("Killed", "Timeout", "Survived", "NoCoverage")
 CommandSpec = (
     tuple[list[str], int, dict[str, str] | None]
