@@ -303,6 +303,7 @@ def _council_authority(
         raise ConfigurationError("debt review council is not authoritative: " + "; ".join(errors))
     resolved = str(report["run_id"])
     manifest_path = root / ".aqg" / "council" / resolved / "manifest.json"
+    scope = report["scope"]
     return {
         "kind": "agent_council",
         "run_id": resolved,
@@ -311,7 +312,15 @@ def _council_authority(
         "report_sha256": fingerprint(report),
         "provider_groups": sorted(str(value) for value in report["provider_groups"]),
         "covered_roles": sorted(str(value) for value in report["covered_roles"]),
-        "scope": dict(report["scope"]),
+        "scope": {
+            key: scope[key]
+            for key in (
+                "revision",
+                "base_revision",
+                "change_fingerprint",
+                "control_fingerprint",
+            )
+        },
     }
 
 

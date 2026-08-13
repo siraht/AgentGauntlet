@@ -102,6 +102,7 @@ def _clear_council_report(
             "base_revision": "HEAD",
             "change_fingerprint": proposal["measurement"]["change_fingerprint"],
             "control_fingerprint": control_fingerprint or proposal["control_fingerprint"],
+            "evidence_manifest_sha256": "sha256:" + "9" * 64,
         },
         "status": "advisory_clear",
         "complete": True,
@@ -150,7 +151,16 @@ def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
     assert authority["tier"] == "high"
     assert authority["manifest_sha256"].startswith("sha256:")
     assert authority["report_sha256"].startswith("sha256:")
-    assert authority["scope"] == report["scope"]
+    assert authority["scope"] == {
+        key: report["scope"][key]
+        for key in (
+            "revision",
+            "base_revision",
+            "change_fingerprint",
+            "control_fingerprint",
+        )
+    }
+    assert "evidence_manifest_sha256" not in authority["scope"]
 
     candidate_review = json.loads(json.dumps(report))
     candidate_review["purpose"] = "candidate"
