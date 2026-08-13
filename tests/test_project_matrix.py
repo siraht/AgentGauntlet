@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -124,6 +125,8 @@ class CrossPlatformMatrixContractTests(unittest.TestCase):
             self.assertEqual(
                 gates,
                 [
+                    "format",
+                    "lint",
                     "typecheck",
                     "test_integrity",
                     "unit",
@@ -195,6 +198,20 @@ class CrossPlatformMatrixContractTests(unittest.TestCase):
     def test_compile_errors_alone_do_not_count_as_executed_mutants(self) -> None:
         self.assertEqual(_executed_mutant_count({"CompileError": 4}), 0)
         self.assertEqual(_executed_mutant_count({"CompileError": 4, "Killed": 1}), 1)
+
+    def test_web_pilot_help_starts_without_pythonpath(self) -> None:
+        environment = os.environ.copy()
+        environment.pop("PYTHONPATH", None)
+        result = subprocess.run(
+            [sys.executable, "scripts/dogfood_web_pilot.py", "--help"],
+            cwd=Path(__file__).resolve().parents[1],
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("greenfield TypeScript/HTML/CSS", result.stdout)
 
     def test_installed_vitest_config_excludes_packaged_runtime_tests(self) -> None:
         """The application runner must not collect AQG's packaged template tests."""

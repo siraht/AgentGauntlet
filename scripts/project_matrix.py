@@ -298,7 +298,7 @@ def _write_typescript_web_app(project: Path) -> None:
     _write(
         project / "index.html",
         '<!doctype html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Counter pilot</title></head>\n'
-        '  <body><main><h1>Counter pilot</h1><output id="count" role="status" aria-live="polite" value="0">0</output><button id="increment" type="button" aria-label="Increment count">Increment</button></main><script type="module" src="/src/main.ts"></script></body>\n'
+        '  <body><main><h1>Counter pilot</h1><output id="count" aria-live="polite" value="0">0</output><button id="increment" type="button" aria-label="Increment count">Increment</button></main><script type="module" src="/src/main.ts"></script></body>\n'
         "</html>\n",
     )
     _write(project / "src" / "styles.css", "button:focus-visible { outline: 3px solid #005fcc; }\n")
@@ -429,17 +429,23 @@ def _stage_typescript_web_change(project: Path) -> None:
         encoding="utf-8",
     )
     test = project / "tests" / "counter.test.ts"
-    content = test.read_text(encoding="utf-8").replace(
+    content = test.read_text(encoding="utf-8")
+    for original_import in (
         "import { increment } from '../src/counter';",
-        "import { increment, incrementByOne } from '../src/counter';",
-    )
-    content = content.replace(
-        "describe('increment', () => {\n",
-        "describe('increment', () => {\n"
-        "  it('provides the one-step operation used by the visible control', () => {\n"
-        "    expect(incrementByOne({ value: 4 })).toEqual({ value: 5 });\n"
-        "  });\n\n",
-    )
+        'import { increment } from "../src/counter";',
+    ):
+        content = content.replace(
+            original_import,
+            'import { increment, incrementByOne } from "../src/counter";',
+        )
+    for describe_line in ("describe('increment', () => {\n", 'describe("increment", () => {\n'):
+        content = content.replace(
+            describe_line,
+            'describe("increment", () => {\n'
+            '  it("provides the one-step operation used by the visible control", () => {\n'
+            "    expect(incrementByOne({ value: 4 })).toEqual({ value: 5 });\n"
+            "  });\n\n",
+        )
     test.write_text(content, encoding="utf-8")
 
 
@@ -467,6 +473,8 @@ def _prepare_typescript_web(project: Path) -> list[str]:
     _write_typescript_web_contract(project)
     _write(project / "package.json", json.dumps(_typescript_web_package(), indent=2) + "\n")
     return [
+        "format",
+        "lint",
         "typecheck",
         "test_integrity",
         "unit",
@@ -575,6 +583,15 @@ def _stage_installed_web_pilot(project: Path) -> None:
         REPOSITORY_ROOT / "quality" / "tools" / "js" / "node_modules",
         project / "node_modules",
     )
+    _run(
+        [
+            str(project / "quality" / "tools" / "js" / "node_modules" / ".bin" / "prettier"),
+            "--write",
+            "--ignore-unknown",
+            ".",
+        ],
+        cwd=project,
+    )
     _commit_all(project, "install Agent Quality Gauntlet")
     _stage_typescript_web_change(project)
 
@@ -642,6 +659,11 @@ def _execute_case(case: str, workspace: Path) -> dict[str, Any]:
         "case": case,
         "duration_seconds": round(time.monotonic() - started, 3),
         "gates": results,
+        "baseline_preparation": (
+            "pinned Prettier normalized generated and fixture text before the product-change baseline"
+            if case == "typescript-web"
+            else "none"
+        ),
     }
 
 

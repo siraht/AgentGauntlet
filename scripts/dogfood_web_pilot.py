@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIRECTORY = Path(__file__).resolve().parent
-if str(SCRIPT_DIRECTORY) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+for import_root in (SCRIPT_DIRECTORY.parent / "src", SCRIPT_DIRECTORY):
+    if str(import_root) not in sys.path:
+        sys.path.insert(0, str(import_root))
 
 from project_matrix import _execute_case  # noqa: E402
 
@@ -22,6 +23,8 @@ REQUIRED_CONTROLS = {
     "installed_cli_status",
     "typecheck",
     "build",
+    "format",
+    "lint",
     "test_integrity",
     "unit",
     "structure",
@@ -80,6 +83,7 @@ def run_pilot(workspace: Path) -> tuple[int, dict[str, Any]]:
             "controls": controls,
             "missing_controls": [],
             "offline_checker_toolchain": True,
+            "baseline_preparation": result["baseline_preparation"],
         }
     )
     return 0, report

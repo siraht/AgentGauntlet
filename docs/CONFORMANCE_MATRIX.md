@@ -37,10 +37,16 @@ with axe-core against a static HTML/CSS project on an isolated free port.
 
 The greenfield TypeScript/web dogfood is deliberately broader. It uses the installed
 AQG CLI inside a disposable Git repository, reuses the exact offline checker lock, and
-proves status, strict TypeScript, production build, test discovery, unit/property tests,
-structure, coverage, a real Chromium keyboard journey, the journey's axe assertion, and
-changed-code Stryker mutation. Compile errors alone do not count as executed mutants.
-Missing browser or mutation infrastructure is reported as exit 3, never as a pass.
+proves status, Prettier, ESLint, HTML-Validate, Stylelint, strict TypeScript, production
+build, test discovery, unit/property tests, structure, coverage, a real Chromium keyboard
+journey, the journey's axe assertion, and changed-code Stryker mutation. Compile errors
+alone do not count as executed mutants. Missing browser or mutation infrastructure is
+reported as exit 3, never as a pass.
+
+The disposable pilot normalizes installer-generated and fixture text with the pinned
+Prettier before committing its AQG baseline. Its report records that preparation instead
+of presenting it as pristine-install evidence; pristine setup formatting remains a
+separate installer conformance concern.
 
 Run the default live cases:
 
