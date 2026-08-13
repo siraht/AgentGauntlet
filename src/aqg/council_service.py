@@ -234,7 +234,12 @@ def _prepare_plan(
                     "does not certify unrelated implementation, satisfy assurance, authorize "
                     "release, or erase deterministic failures."
                     if purpose == "policy_maintenance"
-                    else "Review the exact candidate for ordinary technical assurance."
+                    else (
+                        "Review the exact candidate for technical assurance. This council is an "
+                        "input to the assurance gate, so do not block solely because the seed "
+                        "run lacks this same current council. Do block every other deterministic "
+                        "failure, missing requirement, or unsafe condition."
+                    )
                 )
             ),
         }

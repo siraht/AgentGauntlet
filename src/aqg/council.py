@@ -334,7 +334,10 @@ def build_review_prompt(bundle: Mapping[str, Any], role: str) -> str:
 def _review_purpose(bundle: Mapping[str, Any]) -> dict[str, str]:
     default = {
         "purpose": "candidate",
-        "decision": "Review the exact candidate for ordinary technical assurance.",
+        "decision": (
+            "Review the exact candidate for technical assurance. This council is an input to "
+            "the assurance gate; do not block solely because the seed lacks this same council."
+        ),
     }
     for material in bundle.get("materials", []):
         if not isinstance(material, Mapping) or material.get("name") != "controller/review-purpose.json":
