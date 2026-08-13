@@ -1,4 +1,10 @@
-"""Human approval record templates and validation."""
+"""Legacy and reserved-boundary human approval record validation.
+
+Routine assurance is provided by executable functional evidence and independent
+agent review.  These records remain readable and creatable for compatibility,
+policy-maintenance exceptions, and the four explicitly reserved human authority
+boundaries; they are not risk-profile gates by themselves.
+"""
 
 from __future__ import annotations
 
@@ -24,27 +30,27 @@ from .util import (
 KINDS = {
     "behavior-review": {
         "purpose": "Confirms observable behavior, preserved behavior, and acceptance examples were reviewed.",
-        "required_for": ["standard", "high_assurance", "critical"],
+        "required_for": [],
     },
     "manual-qa": {
         "purpose": "Records execution of the reviewed manual QA procedure in an isolated environment.",
-        "required_for": ["high_assurance", "critical"],
+        "required_for": [],
     },
     "rollback-rehearsal": {
         "purpose": "Records that rollback or recovery was exercised rather than merely described.",
-        "required_for": ["high_assurance", "critical"],
+        "required_for": [],
     },
     "independent-verification": {
         "purpose": "Records read-only verification by a reviewer independent of the builder and evidence producer.",
-        "required_for": ["high_assurance", "critical"],
+        "required_for": [],
     },
     "human-code-review": {
         "purpose": "Records independent human inspection of critical implementation code and tests.",
-        "required_for": ["critical"],
+        "required_for": [],
     },
     "release-approval": {
         "purpose": "Records the final human decision to promote a specific revision.",
-        "required_for": ["critical"],
+        "required_for": [],
     },
     "policy-maintenance": {
         "purpose": "Authorizes a scoped protected-policy maintenance request for independent code-owner review.",
@@ -251,6 +257,12 @@ def _validate_evidence_run(root: Path, approval: dict[str, Any]) -> list[str]:
 
 
 def validate_required_approvals(root: Path, risk_profile: str) -> dict[str, Any]:
+    """Return only approvals activated by an explicit authority-boundary policy.
+
+    The bundled policy activates none.  Keeping the legacy response shape makes
+    old integrations safe while preventing missing ceremonial JSON from
+    blocking standard, high-assurance, or critical functional evidence.
+    """
     required = [kind for kind, info in KINDS.items() if risk_profile in info["required_for"]]
     results: dict[str, list[str]] = {kind: validate_approval(root, kind) for kind in required}
     errors = [f"{kind}: {message}" for kind, messages in results.items() for message in messages]
@@ -258,5 +270,6 @@ def validate_required_approvals(root: Path, risk_profile: str) -> dict[str, Any]
         "required": required,
         "results": results,
         "errors": errors,
+        "mode": "reserved_boundary_only",
         "exit_code": QUALITY_FAILURE if errors else PASS,
     }

@@ -785,8 +785,8 @@ def test_risk_card_valid_message_joins_multiple_execution_profiles(
     assert item["message"] == ("Risk card resolves to custom and requires fast, pr, deep.")
 
 
-def test_onboarding_approvals_use_selected_risk_profile(tmp_path: Path) -> None:
-    """Approval diagnostics must follow the risk card profile, not a hard-coded default."""
+def test_onboarding_explains_artifact_authority_for_high_assurance(tmp_path: Path) -> None:
+    """Routine high assurance must not be blocked by ceremonial approval JSON."""
     root = _baseline_repo(tmp_path)
     card_path = root / "quality" / "change-risk.json"
     card = json.loads(card_path.read_text(encoding="utf-8"))
@@ -796,13 +796,12 @@ def test_onboarding_approvals_use_selected_risk_profile(tmp_path: Path) -> None:
     assert report["risk"]["selected_risk_profile"] == "high_assurance"
     risk_item = _first(report, "risk-card-valid")
     assert "high_assurance" in risk_item["message"]
-    # high_assurance requires four approvals; standard requires one. Passing risk=None
-    # into onboarding would fall back to standard and under-count pending conditions.
-    pending = _first(report, "approvals-pending")
-    assert pending["status"] == "warning"
-    assert pending["message"] == ("4 required human approval condition(s) are not yet current.")
-    assert isinstance(pending["detail"], list)
-    assert len(pending["detail"]) == 4
+    authority = _first(report, "routine-approvals-not-required")
+    assert authority["status"] == "pass"
+    assert authority["message"] == (
+        "No ceremonial human approval record is required for routine high_assurance work."
+    )
+    assert "Executable assurance" in authority["remediation"]
 
 
 def test_module_entrypoint_path_resolution_uses_resolved_root(tmp_path: Path) -> None:

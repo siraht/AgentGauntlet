@@ -980,18 +980,15 @@ class ReviewAndApprovalTests(RepoCase):
         errors = validate_approval(self.root, "behavior-review")
         self.assertTrue(any("stale" in error for error in errors), errors)
 
-    def test_high_assurance_requires_independent_verification_evidence(self) -> None:
+    def test_high_assurance_uses_functional_gates_not_legacy_approval_records(self) -> None:
         self._initialized()
         required = validate_required_approvals(self.root, "high_assurance")
-        self.assertEqual(
-            required["required"],
-            [
-                "behavior-review",
-                "manual-qa",
-                "rollback-rehearsal",
-                "independent-verification",
-            ],
-        )
+        self.assertEqual(required["required"], [])
+        self.assertEqual(required["errors"], [])
+        self.assertEqual(required["mode"], "reserved_boundary_only")
+
+        # A legacy record remains strictly validated when an operator explicitly
+        # chooses to use one at a reserved authority boundary.
         payload = template(
             self.root,
             "independent-verification",

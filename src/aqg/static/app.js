@@ -421,8 +421,12 @@ function reviewMetric(item) {
 function approvalMetric(item) {
   const approvals = item.approvals || {};
   return [
-    "Approvals",
-    approvals.errors?.length ? "Pending" : "Current",
+    "Reserved authority",
+    approvals.errors?.length
+      ? "Pending"
+      : approvals.required?.length
+        ? "Current"
+        : "Not required",
     `${approvals.required?.length || 0} required`,
   ];
 }

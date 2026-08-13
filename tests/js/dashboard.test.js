@@ -335,7 +335,16 @@ test("dashboard metrics distinguish evidence, risk, review, and approval state",
     0,
     "2 human prompt(s) · 1 warning(s)",
   ]);
-  expect(approvalMetric(item)).toEqual(["Approvals", "Pending", "1 required"]);
+  expect(approvalMetric(item)).toEqual([
+    "Reserved authority",
+    "Pending",
+    "1 required",
+  ]);
+  expect(approvalMetric({ approvals: { required: [], errors: [] } })).toEqual([
+    "Reserved authority",
+    "Not required",
+    "0 required",
+  ]);
   expect(onboardingMetric(item)).toEqual([
     "Onboarding",
     "Blocked",

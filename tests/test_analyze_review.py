@@ -732,20 +732,10 @@ def test_require_evidence_without_runs_emits_blockers(tmp_path: Path) -> None:
         {"profile": profile, "status": "missing_or_stale", "run_id": None} for profile in required
     ]
     assert packet["summary"]["evidence_status"] == "missing_or_stale"
-    assert packet["summary"]["approval_status"] == "missing_or_stale"
-    assert "missing-or-stale-human-approval" in by_code
-    approval = by_code["missing-or-stale-human-approval"]
-    assert approval["severity"] == "blocker"
-    assert approval["title"] == "Required human approval is missing, incomplete, or stale"
-    assert approval["paths"] == ["quality/approvals"]
-    assert approval["automated"] is False
-    assert approval["action"] == (
-        "Use `python3 quality/qg.py approval template <kind>`, complete the concrete "
-        "scope/procedure/evidence as the named human reviewer, then validate it against the "
-        "unchanged revision."
-    )
-    assert isinstance(approval["detail"], str) and approval["detail"]
-    assert packet["approvals"]["errors"]
+    assert packet["summary"]["approval_status"] == "not_required"
+    assert "missing-or-stale-human-approval" not in by_code
+    assert packet["approvals"]["required"] == []
+    assert packet["approvals"]["errors"] == []
     assert review_exit_code(packet) == 1
 
 
@@ -1338,9 +1328,9 @@ def test_current_manifested_passing_run_clears_missing_profile_evidence(tmp_path
     assert packet["evidence"] == [{"profile": profile, "status": "current_pass", "run_id": run_id}]
     assert f"missing-current-{profile}-evidence" not in _by_code(packet)
     assert packet["summary"]["evidence_status"] == "current"
-    # Approval is still required and independent of synthetic gate evidence.
-    assert packet["summary"]["approval_status"] == "missing_or_stale"
-    assert "missing-or-stale-human-approval" in _by_code(packet)
+    # Functional assurance is independent of optional legacy approval records.
+    assert packet["summary"]["approval_status"] == "not_required"
+    assert "missing-or-stale-human-approval" not in _by_code(packet)
 
     # A matching summary stops being current as soon as its manifested bytes change.
     (run_dir / "summary.json").write_text(

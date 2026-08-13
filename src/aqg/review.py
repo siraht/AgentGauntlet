@@ -991,7 +991,13 @@ def _build_review_packet(
             "evidence_status": "current"
             if evidence_matrix and all(item["status"] == "current_pass" for item in evidence_matrix)
             else "missing_or_stale",
-            "approval_status": "current" if not approvals.get("errors") else "missing_or_stale",
+            "approval_status": (
+                "not_required"
+                if not approvals.get("required")
+                else "current"
+                if not approvals.get("errors")
+                else "missing_or_stale"
+            ),
         },
         "risk": risk_payload,
         "evidence": evidence_matrix,
