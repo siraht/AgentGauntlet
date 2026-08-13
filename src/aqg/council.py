@@ -313,8 +313,9 @@ def build_review_prompt(bundle: Mapping[str, Any], role: str) -> str:
         "medium, or high. limitations is an array of non-empty strings. findings is an array "
         'of objects with exactly "id", "severity", "category", "claim", "evidence_refs", and '
         '"recommendation". severity is info, warning, or blocker. Every finding must cite at '
-        'least one bundled material using {"material": MATERIAL_NAME, "sha256": MATERIAL_SHA256} '
-        "and may add a positive integer line. If ANY finding has severity blocker, verdict MUST "
+        'least one bundled material using {"material": MATERIAL_NAME, "sha256": MATERIAL_SHA256, '
+        '"line": LINE_OR_NULL}. Use a positive integer for an exact source line and null for a '
+        "material-level citation. If ANY finding has severity blocker, verdict MUST "
         "be block; if verdict is block, at least one finding MUST have severity blocker. "
         "Use abstain only with a limitation. Do not use Markdown or additional keys."
     )
@@ -395,7 +396,7 @@ def _validate_evidence_refs(raw_refs: Any, finding_index: int) -> list[dict[str,
             "material": _require_string(ref["material"], "evidence ref material"),
             "sha256": _require_sha256(ref["sha256"], "evidence ref sha256"),
         }
-        if "line" in ref:
+        if ref.get("line") is not None:
             line = ref["line"]
             if isinstance(line, bool) or not isinstance(line, int) or line < 1:
                 raise ConfigurationError("evidence ref line must be a positive integer")

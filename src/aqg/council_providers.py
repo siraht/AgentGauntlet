@@ -71,14 +71,21 @@ REVIEW_PAYLOAD_JSON_SCHEMA: dict[str, Any] = {
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
-                            "required": ["material", "sha256"],
+                            # OpenAI structured outputs require every declared
+                            # property to be required. Null preserves the
+                            # semantic distinction between a material-level
+                            # citation and an exact source line.
+                            "required": ["material", "sha256", "line"],
                             "properties": {
                                 "material": {"type": "string", "minLength": 1},
                                 "sha256": {
                                     "type": "string",
                                     "pattern": "^sha256:[0-9a-f]{64}$",
                                 },
-                                "line": {"type": "integer", "minimum": 1},
+                                "line": {
+                                    "type": ["integer", "null"],
+                                    "minimum": 1,
+                                },
                             },
                         },
                     },

@@ -324,6 +324,11 @@ def test_aqg_council_005_codex_is_read_only_isolated_and_schema_bound(
         assert kwargs["input"] == build_review_prompt(bundle, "test_evidence")
         schema = json.loads((tmp_path / SCHEMA_FILENAME).read_text(encoding="utf-8"))
         assert schema == REVIEW_PAYLOAD_JSON_SCHEMA
+        evidence_ref = schema["properties"]["findings"]["items"]["properties"][
+            "evidence_refs"
+        ]["items"]
+        assert evidence_ref["required"] == ["material", "sha256", "line"]
+        assert evidence_ref["properties"]["line"]["type"] == ["integer", "null"]
         event = {"type": "item.completed", "item": {"type": "agent_message", "text": payload}}
         return _completed(json.dumps(event))
 
