@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import shutil
@@ -17,7 +18,14 @@ for import_root in (SCRIPT_DIRECTORY.parent / "src", SCRIPT_DIRECTORY):
     if str(import_root) not in sys.path:
         sys.path.insert(0, str(import_root))
 
-from project_matrix import _execute_case  # noqa: E402
+_MATRIX_SPEC = importlib.util.spec_from_file_location(
+    "aqg_project_matrix_for_pilot", SCRIPT_DIRECTORY / "project_matrix.py"
+)
+if _MATRIX_SPEC is None or _MATRIX_SPEC.loader is None:
+    raise RuntimeError("cannot load the project matrix implementation")
+_MATRIX_MODULE = importlib.util.module_from_spec(_MATRIX_SPEC)
+_MATRIX_SPEC.loader.exec_module(_MATRIX_MODULE)
+_execute_case = _MATRIX_MODULE._execute_case
 
 REQUIRED_CONTROLS = {
     "installed_cli_status",
