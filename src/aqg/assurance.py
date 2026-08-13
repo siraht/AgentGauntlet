@@ -113,19 +113,27 @@ def _validate_rehearsal_payload(payload: Any) -> list[str]:
         errors.append("functional rehearsal schema_version must be 2")
     if payload.get("status") != "pass":
         errors.append("functional rehearsal status must be pass")
-    qa = payload.get("functional_qa")
-    if not isinstance(qa, dict) or qa.get("status") != "pass":
-        errors.append("functional_qa.status must be pass")
-    elif not isinstance(qa.get("checks"), list) or not qa["checks"]:
-        errors.append("functional_qa.checks must contain executed checks")
-    rollback = payload.get("rollback")
-    if not isinstance(rollback, dict) or rollback.get("status") != "pass":
-        errors.append("rollback.status must be pass")
-    elif rollback.get("restored_matches_before") is not True:
-        errors.append("rollback must prove restored_matches_before")
+    errors.extend(_functional_qa_errors(payload.get("functional_qa")))
+    errors.extend(_rollback_errors(payload.get("rollback")))
     if payload.get("cleanup_verified") is not True:
         errors.append("functional rehearsal must prove cleanup_verified")
     return errors
+
+
+def _functional_qa_errors(qa: Any) -> list[str]:
+    if not isinstance(qa, dict) or qa.get("status") != "pass":
+        return ["functional_qa.status must be pass"]
+    if not isinstance(qa.get("checks"), list) or not qa["checks"]:
+        return ["functional_qa.checks must contain executed checks"]
+    return []
+
+
+def _rollback_errors(rollback: Any) -> list[str]:
+    if not isinstance(rollback, dict) or rollback.get("status") != "pass":
+        return ["rollback.status must be pass"]
+    if rollback.get("restored_matches_before") is not True:
+        return ["rollback must prove restored_matches_before"]
+    return []
 
 
 def _rehearsal_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]:
@@ -185,23 +193,49 @@ def _council_errors(report: Mapping[str, Any], scope: Mapping[str, str]) -> list
         for name, value in expected.items()
         if council_scope.get(name) != value
     ]
-    if report.get("tier") != "high":
-        errors.append("independent agent verification requires the high council tier")
-    if report.get("status") != "advisory_clear" or report.get("complete") is not True:
-        errors.append("independent agent verification is not complete and clear")
-    if set(report.get("covered_roles", [])) != set(ROLES):
-        errors.append("independent agent verification does not cover every required role")
-    if len(set(report.get("provider_groups", []))) < 3:
-        errors.append("independent agent verification needs at least three provider groups")
+    return errors + _council_quality_errors(report) + _council_integrity_errors(report)
+
+
+def _council_quality_errors(report: Mapping[str, Any]) -> list[str]:
+    checks = (
+        (
+            report.get("tier") == "high",
+            "independent agent verification requires the high council tier",
+        ),
+        (
+            report.get("status") == "advisory_clear" and report.get("complete") is True,
+            "independent agent verification is not complete and clear",
+        ),
+        (
+            set(report.get("covered_roles", [])) == set(ROLES),
+            "independent agent verification does not cover every required role",
+        ),
+        (
+            len(set(report.get("provider_groups", []))) >= 3,
+            "independent agent verification needs at least three provider groups",
+        ),
+    )
+    return [message for passed, message in checks if not passed]
+
+
+def _council_integrity_errors(report: Mapping[str, Any]) -> list[str]:
     dissent = report.get("dissent")
-    if not isinstance(dissent, Mapping) or dissent.get("present") is not False:
-        errors.append("independent agent verification contains or cannot classify dissent")
-    if report.get("blockers") or report.get("incomplete_reasons"):
-        errors.append("independent agent verification contains blockers or incomplete evidence")
     verification = report.get("verification")
-    if not isinstance(verification, Mapping) or verification.get("ok") is not True:
-        errors.append("independent agent verification manifest is invalid")
-    return errors
+    checks = (
+        (
+            isinstance(dissent, Mapping) and dissent.get("present") is False,
+            "independent agent verification contains or cannot classify dissent",
+        ),
+        (
+            not report.get("blockers") and not report.get("incomplete_reasons"),
+            "independent agent verification contains blockers or incomplete evidence",
+        ),
+        (
+            isinstance(verification, Mapping) and verification.get("ok") is True,
+            "independent agent verification manifest is invalid",
+        ),
+    )
+    return [message for passed, message in checks if not passed]
 
 
 def _independent_control(root: Path, scope: Mapping[str, str]) -> dict[str, Any]:
@@ -242,8 +276,7 @@ def _authority_control(card: Mapping[str, Any]) -> dict[str, Any]:
             "triggers": {},
             "errors": ["authority_triggers must be an object"],
         }
-    invalid = [name for name in AUTHORITY_TRIGGERS if not isinstance(raw.get(name, False), bool)]
-    active = [name for name in AUTHORITY_TRIGGERS if raw.get(name) is True]
+    invalid, active = _authority_sets(raw)
     errors = [f"authority trigger {name} must be boolean" for name in invalid]
     return {
         "status": "unusable" if errors else ("human_decision_needed" if active else "works"),
@@ -251,6 +284,12 @@ def _authority_control(card: Mapping[str, Any]) -> dict[str, Any]:
         "active": active,
         "errors": errors,
     }
+
+
+def _authority_sets(raw: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    invalid = [name for name in AUTHORITY_TRIGGERS if not isinstance(raw.get(name, False), bool)]
+    active = [name for name in AUTHORITY_TRIGGERS if raw.get(name) is True]
+    return invalid, active
 
 
 def _exit_code(controls: Mapping[str, Mapping[str, Any]]) -> int:

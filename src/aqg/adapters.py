@@ -2641,13 +2641,7 @@ def _release_readiness(root: Path, project: dict[str, Any]) -> tuple[int, dict[s
     policy = load_policy(root)
     errors, risk = risk_summary(root, policy, "quality/change-risk.json")
     findings: list[str] = list(errors)
-    run_id = os.environ.get("AQG_RUN_ID")
-    if run_id:
-        gate_dir = root / ".aqg" / "runs" / run_id / "gates"
-        for path in gate_dir.glob("*.json") if gate_dir.exists() else []:
-            evidence = read_json(path)
-            if evidence.get("exit_code") != PASS:
-                findings.append(f"gate {evidence.get('gate')} is not green")
+    findings.extend(_release_gate_findings(root, os.environ.get("AQG_RUN_ID")))
     packet = analyze_review(root, policy, base=_base_ref(project), require_evidence=False)
     if packet["summary"]["blockers"]:
         findings.append(f"automated review has {packet['summary']['blockers']} blocker(s)")
@@ -2674,6 +2668,18 @@ def _release_readiness(root: Path, project: dict[str, Any]) -> tuple[int, dict[s
             "findings": findings,
         },
     )
+
+
+def _release_gate_findings(root: Path, run_id: str | None) -> list[str]:
+    if not run_id:
+        return []
+    gate_dir = root / ".aqg" / "runs" / run_id / "gates"
+    findings: list[str] = []
+    for path in gate_dir.glob("*.json") if gate_dir.exists() else []:
+        evidence = read_json(path)
+        if evidence.get("exit_code") != PASS:
+            findings.append(f"gate {evidence.get('gate')} is not green")
+    return findings
 
 
 HANDLERS: dict[str, Callable[[Path, dict[str, Any]], tuple[int, dict[str, Any]]]] = {
