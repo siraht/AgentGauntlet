@@ -1592,6 +1592,52 @@ def test_oracle_resolution_requires_exact_path_and_both_diff_sides() -> None:
     assert _resolved_oracle_paths({"oracle_resolutions": None}, affected, diff) == set()
 
 
+def test_oracle_resolution_preserves_diff_whitespace_exactly() -> None:
+    affected = {"tests/test_app.py"}
+    removed = '    assert result == "old"  '
+    replacement = '    assert result == "new"  '
+    valid = {
+        "path": "tests/test_app.py",
+        "removed_oracle": removed,
+        "replacement_oracle": replacement,
+        "preserved_behavior": "the indented exact result remains checked",
+    }
+    diff = (
+        "diff --git a/tests/test_app.py b/tests/test_app.py\n"
+        "--- a/tests/test_app.py\n"
+        "+++ b/tests/test_app.py\n"
+        "@@ -1 +1 @@\n"
+        f"-{removed}\n"
+        f"+{replacement}\n"
+    )
+
+    assert _resolved_oracle_paths({"oracle_resolutions": [valid]}, affected, diff) == affected
+    assert (
+        _resolved_oracle_paths(
+            {"oracle_resolutions": [{**valid, "removed_oracle": removed.strip()}]},
+            affected,
+            diff,
+        )
+        == set()
+    )
+    assert (
+        _resolved_oracle_paths(
+            {"oracle_resolutions": [{**valid, "replacement_oracle": replacement.rstrip()}]},
+            affected,
+            diff,
+        )
+        == set()
+    )
+    assert (
+        _resolved_oracle_paths(
+            {"oracle_resolutions": [{**valid, "path": " tests/test_app.py "}]},
+            affected,
+            diff,
+        )
+        == set()
+    )
+
+
 def test_clear_council_resolves_only_deleted_oracle_finding() -> None:
     deleted = {
         "code": "test-expectation-deleted",

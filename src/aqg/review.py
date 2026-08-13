@@ -1014,7 +1014,7 @@ def _oracle_lines(lines: list[tuple[str, int, str]]) -> dict[str, set[str]]:
     by_path: dict[str, set[str]] = {}
     for path, _, line in lines:
         if line.strip():
-            by_path.setdefault(path, set()).add(line.strip())
+            by_path.setdefault(path, set()).add(line)
     return by_path
 
 
@@ -1050,7 +1050,7 @@ def _resolution_values(resolution: Any) -> tuple[str, str, str] | None:
     values = (path, removed, replacement, behavior)
     if not all(isinstance(value, str) and value.strip() for value in values):
         return None
-    return str(path).strip(), str(removed).strip(), str(replacement).strip()
+    return str(path), str(removed), str(replacement)
 
 
 def _resolution_path(
