@@ -5,7 +5,7 @@
     "mode": "adopt",
     "new_code_must_meet_current_policy": true,
     "scope": "changed",
-    "stage": "shadow"
+    "stage": "ratchet"
   },
   "acceptance_mutation": {
     "command": ["python3", "tests/test_acceptance.py"],
