@@ -252,13 +252,20 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
         f"{gate}.details.json": "sha256:" + sha256_file(run_dir / "gates" / f"{gate}.details.json")
         for gate in sorted(details)
     }
+    proposal_text = _json_text(proposal)
+    proposal_material_sha256 = "sha256:" + hashlib.sha256(proposal_text.encode()).hexdigest()
     inputs.update(
         {
-            "baseline/proposed.json": _json_text(proposal),
+            "baseline/proposed.json": proposal_text,
             "controller/debt-eligibility.json": _json_text(
                 {
                     "schema_version": 1,
-                    "proposal_sha256": document_fingerprint(proposal),
+                    "proposal_document_fingerprint": document_fingerprint(proposal),
+                    "proposal_document_fingerprint_algorithm": (
+                        "sha256(canonical_json(validated_debt_baseline_document))"
+                    ),
+                    "proposal_material_sha256": proposal_material_sha256,
+                    "proposal_material_sha256_algorithm": "sha256(exact_utf8_material_bytes)",
                     "inventory_count": len(inventory) if isinstance(inventory, list) else None,
                     "inventory_categories": sorted(
                         {

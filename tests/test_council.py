@@ -235,6 +235,10 @@ def test_aqg_council_002_prompt_lists_only_citable_bundled_materials() -> None:
     ]
     assert all(item["material"] != "outside-report.json" for item in materials)
     assert "A file named inside a manifest" in prompt
+    assert (
+        'REQUIRED_FINDING_KEYS=["id","severity","category","claim","evidence_refs",'
+        '"recommendation"]' in prompt
+    )
 
 
 def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() -> None:

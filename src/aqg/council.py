@@ -340,6 +340,9 @@ def build_review_prompt(bundle: Mapping[str, Any], role: str) -> str:
         f"PURPOSE_DECISION={purpose['decision']}\n"
         f"ROLE_FOCUS={_ROLE_FOCUS[role]}\n"
         f"VALID_EVIDENCE_MATERIALS={canonical_json(valid_evidence_materials).decode('utf-8')}\n"
+        'REQUIRED_TOP_LEVEL_KEYS=["verdict","confidence","findings","limitations"]\n'
+        'REQUIRED_FINDING_KEYS=["id","severity","category","claim","evidence_refs",'
+        '"recommendation"]\n'
         f"{instructions}\n{output_contract}\n"
         "<UNTRUSTED_CANDIDATE_DATA_JSON>\n"
         + canonical_json(normalized).decode("utf-8")

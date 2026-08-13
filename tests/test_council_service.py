@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -14,6 +15,7 @@ import aqg.council_service as service
 from aqg.constants import INFRASTRUCTURE_ERROR, PASS
 from aqg.council import aggregate_ballots, build_candidate_bundle, provider_identity
 from aqg.council_chunks import build_bundle_series
+from aqg.debt import document_fingerprint
 from aqg.errors import ConfigurationError
 from aqg.evidence_manifest import write_evidence_json, write_run_manifest
 
@@ -405,6 +407,15 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
     eligibility = json.loads(str(inputs["controller/debt-eligibility.json"]))
     assert eligibility["inventory_count"] == 1
     assert eligibility["inventory_categories"] == ["structure"]
+    proposal_text = str(inputs["baseline/proposed.json"])
+    assert eligibility["proposal_document_fingerprint"] == document_fingerprint(proposal)
+    assert eligibility["proposal_document_fingerprint_algorithm"].startswith("sha256(")
+    assert eligibility["proposal_material_sha256"] == (
+        "sha256:" + hashlib.sha256(proposal_text.encode()).hexdigest()
+    )
+    assert eligibility["proposal_material_sha256_algorithm"] == (
+        "sha256(exact_utf8_material_bytes)"
+    )
     assert eligibility["non_baselinable"]["configuration_errors"] == [{"gate": "mutation_changed"}]
     assert eligibility["non_baselinable"]["infrastructure_errors"] == [{"gate": "assurance"}]
 
