@@ -239,3 +239,144 @@ assurance invariants from AgentGauntlet's own dogfood surfaces. With a first-cla
 mode and standard host-evidence ingestion, the tool would be much easier to apply honestly to
 plugins, desktop applications, services, and other products whose public interfaces are not a CLI,
 dashboard, and TUI.
+
+---
+
+## Follow-up campaign: immediate multi-select and calculated fields (2026-08-13)
+
+This section records a second full application of AgentGauntlet to the code added after the first
+campaign. The reviewed product delta added immediately persisted multi-select controls, virtual
+calculated fields, and calculated values synchronized to frontmatter. The final cleaned candidate
+builds, type-checks, passes all 60 unit/component tests, passes AgentGauntlet's deep lint and
+structure adapters, and passed focused testing in an isolated official Obsidian 1.13.7 host. The
+host test proved immediate multi-select persistence, repeated-reference refresh, virtual and saved
+recalculation, cold-start persistence, plugin disable/rollback, unchanged source Markdown, and
+empty console/page-error logs.
+
+AgentGauntlet again found useful product defects. Its complexity limits drove the formula tokenizer,
+parser/evaluator, CodeMirror decoration builder, field widgets, schema normalization, and Obsidian
+modal/plugin initialization into smaller typed units. The review also led to a concrete undo bug:
+an automatic saved-calculation write replaced the user's undo checkpoint. Automatic derived writes
+now bypass user undo history, with a regression test and a real-host test proving that Undo restores
+the user's field while keeping the current calculated output. Formula modulo-by-zero handling was
+also made explicit, and the parser no longer depends on a monolithic numeric regular expression.
+
+### New evaluator issues found in this campaign
+
+#### 1. Diagnose a missing ratchet baseline before running the gates
+
+Every measured fast gate passed, yet the command finished as `configuration_error` because ratchet
+mode required a current reviewed debt baseline. `doctor` did not identify that specific prerequisite,
+and the ordinary command summary did not print the reason; it was discoverable only in the run's
+retrospective JSON.
+
+Before an expensive check, `doctor`, `status`, `triage`, and `check` should all preflight the exact
+baseline required by the selected enforcement stage. If it is missing or stale, print the reason
+and the legitimate next command. The measured-gate result should remain separately visible as
+“all executed gates passed; certification unavailable because …” rather than being collapsed into
+one confusing status.
+
+#### 2. Make “changes since the last successful run” a first-class review scope
+
+This follow-up was explicitly about code added since the previous gauntlet. Reconstructing that
+scope required an isolated worktree and manually replaying the intervening commits. The configured
+long-lived base still selected large previously reviewed files, including the whole Obsidian host
+entrypoint, so changed-line coverage and mutation measured the wrong-sized surface.
+
+Add a scope selector such as `--since-run <run-id>` or `--since-evidence latest-passing`, bound to
+the prior run's exact candidate tree and control fingerprints. `changed-files`, coverage, mutation,
+review, council, and assurance must all consume the same sealed scope. The CLI should display that
+scope before execution.
+
+#### 3. Do not demand headless line coverage for a host-only entrypoint without an integration path
+
+The deep coverage adapter reported 55.1% changed-line coverage against a 95% threshold. It counted
+992 changed executable lines and assigned `src/main.ts` and `src/obsidian-adapter.ts` 0% because the
+Vitest adapter cannot load the real Obsidian Electron API. That is neither evidence that the host
+code is bad nor evidence that it works; it is an applicability mismatch. A real Obsidian run did
+exercise the critical paths, but AgentGauntlet could not ingest or credit it.
+
+Coverage policy should support explicit per-surface evidence routes: unit coverage for pure modules,
+component coverage for CodeMirror widgets, and manifested host/integration evidence for Electron
+entrypoints. Excluding a file must require a documented alternative evidence source, not silently
+remove scrutiny. This is the same architectural need as configurable assurance surfaces and host
+evidence ingestion noted above.
+
+#### 4. Bound and explain mutation scope before starting a long campaign
+
+The changed mutation gate instrumented seven files with 3,111 mutants and ran for 24 minutes. Its
+final score was 35.28%: 735 killed, 33 timed out, 384 survived, 1,025 had no coverage, and 934 ended
+as errors. `main.ts` alone contributed 809 no-coverage mutants and 235 errors. During the profile
+run, the useful progress lines were captured inside the child command rather than streamed by the
+gate wrapper, so the owner-facing console appeared idle for nearly the entire campaign.
+
+Before execution, print target files, executable lines, estimated mutant count, uncovered target
+lines, concurrency, timeout, and an estimated range. Stream normalized progress. If a host-only file
+has zero dry-run coverage, fail the campaign preflight or classify it as requiring another evidence
+route rather than spending time generating hundreds of non-actionable mutants. Provide per-file
+resume and survivor-only reruns bound to exact source/test/tool fingerprints.
+
+#### 5. Keep fast and deep lint policy differences visible
+
+The fast lint gate passed while deep lint later found 16 complexity and function-length violations.
+The stricter deep limits were useful, but the difference was not visible until after the expensive
+profile had started. `status` or `check-risk --plan` should show profile-specific thresholds and
+which files currently violate the required profile, allowing a cheap preflight before coverage and
+mutation.
+
+#### 6. Make review heuristics semantic enough to avoid obvious false positives
+
+The review packet flagged a new TODO debt marker at a textarea placeholder containing the ordinary
+label `To do`. It also flagged deleted test assertions after tests were split and reformatted, even
+though the net test diff added hundreds of lines and a new undo regression case. Finally, merely
+changing files named `contracts.ts` and `schema.ts` forced an external-contract risk mismatch
+without distinguishing internal TypeScript contracts from a public network/file contract.
+
+Recommended fixes:
+
+- tokenize comment debt markers and require word/case/context appropriate to comments, excluding
+  string literals such as UI copy;
+- compare test identities and assertion ASTs across renames/refactors instead of treating deleted
+  diff lines as deleted evidence;
+- report whether an assertion was removed without replacement, moved, or strengthened;
+- make external-contract inference language- and export-aware, and present path-name matches as a
+  human prompt rather than a blocker unless policy explicitly requires otherwise.
+
+#### 7. Surface full failure reasons in the normal CLI summary
+
+The deep run ended as `infrastructure_error`, while its meaningful inventory contained product
+quality failures (lint, structure, coverage, mutation, review), a configuration error (missing debt
+baseline), and missing/incompatible assurance evidence. The short console summary did not explain
+this mixed outcome. Reading individual gate detail JSON was required to understand it.
+
+End every run with a concise categorized table: product failures, configuration errors,
+infrastructure failures, missing evidence, inapplicable gates, and exact next commands. Preserve the
+immutable detail files, but do not require users to reverse-engineer a headline status from them.
+
+### Suggested new acceptance tests
+
+1. A ratchet-stage project without a reviewed baseline must be diagnosed before any expensive gate,
+   and the CLI must still report the separate result of any explicitly requested measured run.
+2. `--since-run` must reproduce exactly the product delta after a sealed prior run across changed
+   files, coverage, mutation, review, council, and assurance.
+3. A UI string containing `To do` must not trigger a TODO/FIXME production-debt rule; an actual
+   `// TODO:` comment must trigger it.
+4. Splitting one test suite into several `describe` blocks without removing semantic assertions must
+   not trigger “test assertions deleted.”
+5. A host-only entrypoint with zero headless coverage and declared host evidence must be classified
+   as requiring that evidence route, not mutated as thousands of uncovered sites.
+6. Profile planning must show that deep complexity limits differ from fast limits before executing
+   coverage or mutation.
+7. A 20-minute child mutation command must stream progress and expose a resumable campaign ID.
+8. A mixed run must summarize every distinct product, configuration, infrastructure, missing, and
+   inapplicable outcome without forcing inspection of retrospective JSON.
+
+### Follow-up bottom line
+
+The second campaign again justified using AgentGauntlet: it materially improved architecture and
+helped expose a real cross-feature undo bug. Its largest remaining problem is scope and evidence
+routing. When a pure TypeScript core, CodeMirror UI, and native Obsidian host are treated as one
+uniform headless surface, the tool spends substantial time producing numbers that are technically
+correct for its adapter but misleading about the product. A sealed “since last run” scope, early
+ratchet preflight, semantic review heuristics, streamed mutation progress, and configurable
+per-surface evidence would make the same rigor far more accurate and practical.
