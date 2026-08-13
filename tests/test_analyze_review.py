@@ -20,12 +20,15 @@ from aqg.evidence_manifest import write_run_manifest
 from aqg.policy import load_policy
 from aqg.reporting import review_to_sarif
 from aqg.review import (
+    _ballot_oracle_resolution,
     _clear_high_council_for_scope,
     _consume_replacement,
     _deleted_test_assertion_paths,
     _html,
     _markdown,
+    _resolution_path,
     _resolve_deleted_expectations,
+    _resolved_oracle_paths,
     _resolved_review_findings,
     _test_expectation_key,
     _test_expectation_resolution_roles,
@@ -1334,9 +1337,19 @@ def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_pa
         severity: str,
         category: str,
         *,
-        claim: str = "tests/test_app.py preserves its removed oracle",
+        claim: Any = "tests/test_app.py preserves its removed oracle",
         materials: tuple[str, ...] = ("current.diff.patch", "review/current.json"),
+        resolutions: Any = None,
     ) -> dict[str, Any]:
+        if resolutions is None:
+            resolutions = [
+                {
+                    "path": "tests/test_app.py",
+                    "removed_oracle": 'assert result == "old"',
+                    "replacement_oracle": 'assert result == "new"',
+                    "preserved_behavior": "the exact result remains checked",
+                }
+            ]
         return {
             "reviewer": {"role": role},
             "findings": [
@@ -1345,9 +1358,31 @@ def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_pa
                     "category": category,
                     "claim": claim,
                     "evidence_refs": [{"material": material} for material in materials],
+                    "oracle_resolutions": resolutions,
                 }
             ],
         }
+
+    (run_dir.parent / "candidate-bundle.json").write_text(
+        json.dumps(
+            {
+                "materials": [
+                    {
+                        "name": "current.diff.patch",
+                        "content": (
+                            "diff --git a/tests/test_app.py b/tests/test_app.py\n"
+                            "--- a/tests/test_app.py\n"
+                            "+++ b/tests/test_app.py\n"
+                            "@@ -1 +1 @@\n"
+                            '-assert result == "old"\n'
+                            '+assert result == "new"\n'
+                        ),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
 
     (run_dir / "000.json").write_text(
         json.dumps(ballot("adversarial", "info", "test-expectation-resolution")),
@@ -1370,6 +1405,7 @@ def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_pa
         json.dumps({"reviewer": None, "findings": []}),
         encoding="utf-8",
     )
+    assert _ballot_oracle_resolution(run_dir / "-001.json", {"tests/test_app.py"}) is None
     (run_dir / "-003.json").write_text(
         json.dumps({"reviewer": {"role": "ignored"}, "findings": [None]}),
         encoding="utf-8",
@@ -1412,19 +1448,89 @@ def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_pa
                 "test_evidence",
                 "info",
                 "test-expectation-resolution",
-                claim=None,  # type: ignore[arg-type]
+                claim=None,
             ),
             ballot(
                 "test_evidence",
                 "info",
                 "test-expectation-resolution",
-                claim="an unrelated test is strong",
+                resolutions=[
+                    {
+                        "path": "tests/unrelated.py",
+                        "removed_oracle": 'assert result == "old"',
+                        "replacement_oracle": 'assert result == "new"',
+                        "preserved_behavior": "unrelated",
+                    }
+                ],
             ),
             ballot(
                 "test_evidence",
                 "info",
                 "test-expectation-resolution",
                 materials=("current.diff.patch",),
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                resolutions=[],
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                resolutions="not-an-array",
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                resolutions=[None],
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                resolutions=[{"path": "tests/test_app.py"}],
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                resolutions=[
+                    {
+                        "path": "tests/test_app.py",
+                        "removed_oracle": "assert unsupported",
+                        "replacement_oracle": 'assert result == "new"',
+                        "preserved_behavior": "unsupported deletion",
+                    }
+                ],
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                resolutions=[
+                    {
+                        "path": "tests/test_app.py",
+                        "removed_oracle": 'assert result == "old"',
+                        "replacement_oracle": "assert unsupported",
+                        "preserved_behavior": "unsupported replacement",
+                    }
+                ],
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                resolutions=[
+                    {
+                        "path": "tests/test_app.py",
+                        "removed_oracle": 'assert result == "old"',
+                        "replacement_oracle": 'assert result == "new"',
+                        "preserved_behavior": "",
+                    }
+                ],
             ),
         ),
         start=10,
@@ -1434,6 +1540,56 @@ def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_pa
     assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == {
         "adversarial"
     }
+
+    bundle_path = run_dir.parent / "candidate-bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["materials"].insert(0, None)
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == {
+        "adversarial"
+    }
+    bundle_path.unlink()
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == set()
+    bundle_path.write_text("not-json", encoding="utf-8")
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == set()
+    bundle_path.write_text(json.dumps({"materials": None}), encoding="utf-8")
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == set()
+    bundle_path.write_text(json.dumps({"materials": []}), encoding="utf-8")
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == set()
+
+
+def test_oracle_resolution_requires_exact_path_and_both_diff_sides() -> None:
+    affected = {"tests/test_app.py"}
+    deleted = {"tests/test_app.py": {"assert old"}}
+    added = {"tests/test_app.py": {"assert new"}}
+    valid = {
+        "path": "tests/test_app.py",
+        "removed_oracle": "assert old",
+        "replacement_oracle": "assert new",
+        "preserved_behavior": "the exact output remains checked",
+    }
+
+    assert _resolution_path(valid, affected, deleted, added) == "tests/test_app.py"
+    assert _resolution_path({**valid, "path": "tests/other.py"}, affected, deleted, added) is None
+    assert (
+        _resolution_path({**valid, "replacement_oracle": "assert old"}, affected, deleted, added)
+        is None
+    )
+    assert _resolution_path(valid, affected, {}, added) is None
+    assert _resolution_path(valid, affected, deleted, {}) is None
+
+    finding = {"oracle_resolutions": [valid]}
+    diff = (
+        "diff --git a/tests/test_app.py b/tests/test_app.py\n"
+        "--- a/tests/test_app.py\n"
+        "+++ b/tests/test_app.py\n"
+        "@@ -1 +1 @@\n"
+        "-assert old\n"
+        "+assert new\n"
+    )
+    assert _resolved_oracle_paths(finding, affected, diff) == affected
+    assert _resolved_oracle_paths(finding, affected, None) == set()
+    assert _resolved_oracle_paths({"oracle_resolutions": None}, affected, diff) == set()
 
 
 def test_clear_council_resolves_only_deleted_oracle_finding() -> None:

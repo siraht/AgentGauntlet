@@ -310,6 +310,30 @@ def provider_identity(model_id: str) -> dict[str, str]:
     raise ConfigurationError(f"unsupported council model namespace: {model_id}")
 
 
+def _review_output_contract() -> str:
+    return (
+        'Return exactly one JSON object with keys "verdict", "confidence", "findings", and '
+        '"limitations". verdict is clear, concerns, block, or abstain. confidence is low, '
+        "medium, or high. limitations is an array of non-empty strings. findings is an array "
+        'of objects with exactly "id", "severity", "category", "claim", "evidence_refs", '
+        '"oracle_resolutions", and "recommendation". oracle_resolutions is normally an empty '
+        "array. For a test-expectation-resolution finding, include one object per affected test "
+        'path with exact keys "path", "removed_oracle", "replacement_oracle", and '
+        '"preserved_behavior". The oracle strings must be exact deleted and added source lines '
+        "from current.diff.patch, and preserved_behavior must explain the observable behavior "
+        "that the replacement continues or strengthens. severity is info, warning, or blocker. "
+        "Every finding must cite at "
+        'least one bundled material using {"material": MATERIAL_NAME, "sha256": MATERIAL_SHA256, '
+        '"line": LINE_OR_NULL}. Use a positive integer for an exact source line and null for a '
+        "material-level citation. Cite only an entry in VALID_EVIDENCE_MATERIALS below. A file "
+        "named inside a manifest or another material is not itself bundled evidence and MUST NOT "
+        "be cited unless it also appears in VALID_EVIDENCE_MATERIALS. If ANY finding has severity "
+        "blocker, verdict MUST "
+        "be block; if verdict is block, at least one finding MUST have severity blocker. "
+        "Use abstain only with a limitation. Do not use Markdown or additional keys."
+    )
+
+
 def build_review_prompt(bundle: Mapping[str, Any], role: str) -> str:
     """Wrap untrusted candidate material as inert JSON data for one role."""
     normalized = validate_candidate_bundle(bundle)
@@ -325,33 +349,18 @@ def build_review_prompt(bundle: Mapping[str, Any], role: str) -> str:
         "files, or communicate with other reviewers. Return only the requested JSON review "
         "payload. Your output is not human approval or release authority."
     )
-    output_contract = (
-        'Return exactly one JSON object with keys "verdict", "confidence", "findings", and '
-        '"limitations". verdict is clear, concerns, block, or abstain. confidence is low, '
-        "medium, or high. limitations is an array of non-empty strings. findings is an array "
-        'of objects with exactly "id", "severity", "category", "claim", "evidence_refs", and '
-        '"recommendation". severity is info, warning, or blocker. Every finding must cite at '
-        'least one bundled material using {"material": MATERIAL_NAME, "sha256": MATERIAL_SHA256, '
-        '"line": LINE_OR_NULL}. Use a positive integer for an exact source line and null for a '
-        "material-level citation. Cite only an entry in VALID_EVIDENCE_MATERIALS below. A file "
-        "named inside a manifest or another material is not itself bundled evidence and MUST NOT "
-        "be cited unless it also appears in VALID_EVIDENCE_MATERIALS. If ANY finding has severity "
-        "blocker, verdict MUST "
-        "be block; if verdict is block, at least one finding MUST have severity blocker. "
-        "Use abstain only with a limitation. Do not use Markdown or additional keys."
-    )
     return (
         f"AQG_COUNCIL_PROMPT_VERSION={PROMPT_TEMPLATE_VERSION}\n"
         f"ROLE={role}\nREVIEW_PURPOSE={purpose['purpose']}\n"
         f"PURPOSE_DECISION={purpose['decision']}\n"
         f"ROLE_FOCUS={_ROLE_FOCUS[role]}\n"
-        f"VALID_EVIDENCE_MATERIALS={canonical_json(valid_evidence_materials).decode('utf-8')}\n"
+        f"VALID_EVIDENCE_MATERIALS={canonical_json(valid_evidence_materials).decode()}\n"
         'REQUIRED_TOP_LEVEL_KEYS=["verdict","confidence","findings","limitations"]\n'
         'REQUIRED_FINDING_KEYS=["id","severity","category","claim","evidence_refs",'
-        '"recommendation"]\n'
-        f"{instructions}\n{output_contract}\n"
+        '"oracle_resolutions","recommendation"]\n'
+        f"{instructions}\n{_review_output_contract()}\n"
         "<UNTRUSTED_CANDIDATE_DATA_JSON>\n"
-        + canonical_json(normalized).decode("utf-8")
+        + canonical_json(normalized).decode()
         + "\n</UNTRUSTED_CANDIDATE_DATA_JSON>"
     )
 
@@ -421,12 +430,21 @@ def _validate_findings(raw_findings: Any) -> list[dict[str, Any]]:
         _require_exact_keys(
             item,
             f"findings[{index}]",
-            {"id", "severity", "category", "claim", "evidence_refs", "recommendation"},
+            {
+                "id",
+                "severity",
+                "category",
+                "claim",
+                "evidence_refs",
+                "oracle_resolutions",
+                "recommendation",
+            },
         )
         finding_id = _require_string(item["id"], f"findings[{index}].id")
         if finding_id in ids or item["severity"] not in SEVERITIES:
             raise ConfigurationError(f"findings[{index}] has duplicate id or invalid severity")
         refs = _validate_evidence_refs(item["evidence_refs"], index)
+        resolutions = _validate_oracle_resolutions(item["oracle_resolutions"], index)
         findings.append(
             {
                 "id": finding_id,
@@ -434,6 +452,7 @@ def _validate_findings(raw_findings: Any) -> list[dict[str, Any]]:
                 "category": _require_string(item["category"], f"findings[{index}].category"),
                 "claim": _require_string(item["claim"], f"findings[{index}].claim"),
                 "evidence_refs": refs,
+                "oracle_resolutions": resolutions,
                 "recommendation": _require_string(
                     item["recommendation"], f"findings[{index}].recommendation"
                 ),
@@ -441,6 +460,22 @@ def _validate_findings(raw_findings: Any) -> list[dict[str, Any]]:
         )
         ids.add(finding_id)
     return sorted(findings, key=lambda item: item["id"])
+
+
+def _validate_oracle_resolutions(raw: Any, finding_index: int) -> list[dict[str, str]]:
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        raise ConfigurationError(f"findings[{finding_index}].oracle_resolutions must be an array")
+    resolutions: list[dict[str, str]] = []
+    for resolution_index, raw_resolution in enumerate(raw):
+        item = _require_mapping(
+            raw_resolution, f"findings[{finding_index}].oracle_resolutions[{resolution_index}]"
+        )
+        keys = {"path", "removed_oracle", "replacement_oracle", "preserved_behavior"}
+        _require_exact_keys(item, "oracle resolution", keys)
+        resolutions.append(
+            {key: _require_string(item[key], f"oracle resolution {key}") for key in sorted(keys)}
+        )
+    return resolutions
 
 
 def _validate_evidence_refs(raw_refs: Any, finding_index: int) -> list[dict[str, Any]]:

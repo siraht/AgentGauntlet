@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,29 @@ _BASE_ENV_NAMES = (
     "XDG_CONFIG_HOME",
     "XDG_DATA_HOME",
 )
+
+
+def _oracle_resolution_schema() -> dict[str, Any]:
+    return {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "path",
+                "removed_oracle",
+                "replacement_oracle",
+                "preserved_behavior",
+            ],
+            "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "removed_oracle": {"type": "string", "minLength": 1},
+                "replacement_oracle": {"type": "string", "minLength": 1},
+                "preserved_behavior": {"type": "string", "minLength": 1},
+            },
+        },
+    }
+
 
 REVIEW_PAYLOAD_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -103,6 +127,16 @@ REVIEW_PAYLOAD_JSON_SCHEMA: dict[str, Any] = {
         "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
     },
 }
+
+
+def review_payload_json_schema() -> dict[str, Any]:
+    schema = deepcopy(REVIEW_PAYLOAD_JSON_SCHEMA)
+    finding = schema["properties"]["findings"]["items"]
+    finding["required"].insert(-1, "oracle_resolutions")
+    finding["properties"]["oracle_resolutions"] = _oracle_resolution_schema()
+    return schema
+
+
 _PROVIDER_SPEC_FIELDS = {
     "schema_version",
     "kind",
@@ -199,7 +233,7 @@ def build_file_provider_spec(model_id: str, prompt_path: str = PROMPT_FILENAME) 
 
 
 def _grok_command(model_id: str, prompt: str) -> list[str]:
-    schema = canonical_json(REVIEW_PAYLOAD_JSON_SCHEMA).decode("utf-8")
+    schema = canonical_json(review_payload_json_schema()).decode()
     return [
         "grok",
         "--single",
@@ -602,14 +636,14 @@ def _prepare_provider_inputs(
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
     normalized_bundle = validate_candidate_bundle(bundle)
     prompt = build_review_prompt(normalized_bundle, role)
-    (Path(cwd) / PROMPT_FILENAME).write_text(prompt, encoding="utf-8")
+    (Path(cwd) / PROMPT_FILENAME).write_bytes(prompt.encode())
     spec = build_file_provider_spec(model_id)
     if spec["provider_id"] == "codex":
         (Path(cwd) / SCHEMA_FILENAME).write_bytes(
-            canonical_json(REVIEW_PAYLOAD_JSON_SCHEMA) + b"\n"
+            canonical_json(review_payload_json_schema()) + b"\n"
         )
     if spec["provider_id"] == "gemini":
-        (Path(cwd) / GEMINI_POLICY_FILENAME).write_text(GEMINI_DENY_ALL_POLICY, encoding="utf-8")
+        (Path(cwd) / GEMINI_POLICY_FILENAME).write_bytes(GEMINI_DENY_ALL_POLICY.encode())
     return normalized_bundle, prompt, spec
 
 

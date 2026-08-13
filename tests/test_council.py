@@ -4,11 +4,13 @@
 # Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-007 AQG-COUNCIL-008
 # Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-009 AQG-COUNCIL-010
 # Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-011 AQG-COUNCIL-012
+# Feature-Spec: AgentQualityGauntlet.ReviewCouncil AQG-COUNCIL-016
 """Contracts for the dependency-free, advisory-only review council core."""
 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -21,11 +23,13 @@ from aqg.council import (
     aggregate_ballots,
     build_candidate_bundle,
     build_review_prompt,
+    canonical_json,
     create_ballot,
     fingerprint,
     validate_ballot,
     validate_candidate_bundle,
     validate_council_result,
+    validate_review_payload,
     verify_council_evidence,
     write_council_evidence,
 )
@@ -33,7 +37,6 @@ from aqg.council_providers import (
     GEMINI_DENY_ALL_POLICY,
     GEMINI_POLICY_FILENAME,
     PROMPT_FILENAME,
-    REVIEW_PAYLOAD_JSON_SCHEMA,
     SCHEMA_FILENAME,
     _gemini_stdin_command,
     build_file_provider_spec,
@@ -41,6 +44,7 @@ from aqg.council_providers import (
     collect_ballot,
     execute_provider,
     minimal_environment,
+    review_payload_json_schema,
     validate_provider_spec,
 )
 from aqg.errors import ConfigurationError
@@ -92,6 +96,7 @@ def _payload(
                 "category": "behavior",
                 "claim": "A material concern is present.",
                 "evidence_refs": [_ref(bundle)],
+                "oracle_resolutions": [],
                 "recommendation": "Inspect the cited behavior before proceeding.",
             }
         ]
@@ -238,8 +243,40 @@ def test_aqg_council_002_prompt_lists_only_citable_bundled_materials() -> None:
     assert "A file named inside a manifest" in prompt
     assert (
         'REQUIRED_FINDING_KEYS=["id","severity","category","claim","evidence_refs",'
-        '"recommendation"]' in prompt
+        '"oracle_resolutions","recommendation"]' in prompt
     )
+
+
+def test_authority_schema_prompt_command_and_payload_are_exact_contracts() -> None:
+    import hashlib
+
+    bundle = _bundle()
+    prompt = build_review_prompt(bundle, "test_evidence")
+    schema = review_payload_json_schema()
+    command = build_provider_spec("grok-4.5", prompt)["command"]
+    normalized = validate_review_payload(_payload(bundle, "concerns"))
+    contracts = {
+        "schema": (
+            canonical_json(schema),
+            "8e67c67f69aa7f5f5e6b959b2ddcd9c595765901904f8704797e42e202f569ef",
+        ),
+        "prompt": (
+            prompt.encode(),
+            "5cff6fd589973762d4bd30ab33206409f07c61ce9157fd8fdaca4387a8b5098f",
+        ),
+        "command": (
+            canonical_json(command),
+            "9741c50b7116e48e62fa56368ae6c2076b146b45e81518b52b397f96b64e035e",
+        ),
+        "payload": (
+            canonical_json(normalized),
+            "e967ef9c4212a548422e72e2882a788842d7abe9bd6d29d2315852dbbf8fe58b",
+        ),
+    }
+
+    assert {
+        name: hashlib.sha256(content).hexdigest() for name, (content, _) in contracts.items()
+    } == {name: expected for name, (_, expected) in contracts.items()}
 
 
 def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() -> None:
@@ -402,6 +439,98 @@ def test_aqg_council_005_valid_output_creates_ballot_and_malformed_schema_fails(
     assert failed["status"].startswith("malformed provider review")
 
 
+def test_oracle_resolution_payload_is_structured_and_fail_closed() -> None:
+    payload = _payload(_bundle(), "concerns")
+    finding = payload["findings"][0]
+    finding["oracle_resolutions"] = [
+        {
+            "path": "tests/test_app.py",
+            "removed_oracle": "assert old",
+            "replacement_oracle": "assert new",
+            "preserved_behavior": "the result is still checked exactly",
+        }
+    ]
+
+    normalized = validate_review_payload(payload)
+    assert normalized["findings"][0]["oracle_resolutions"] == finding["oracle_resolutions"]
+
+    invalid_values: tuple[Any, ...] = (
+        None,
+        "not-an-array",
+        [None],
+        [{"path": "tests/test_app.py"}],
+        [
+            {
+                "path": "tests/test_app.py",
+                "removed_oracle": "assert old",
+                "replacement_oracle": "assert new",
+                "preserved_behavior": "",
+            }
+        ],
+    )
+    for invalid in invalid_values:
+        candidate = json.loads(json.dumps(payload))
+        candidate["findings"][0]["oracle_resolutions"] = invalid
+        with pytest.raises(ConfigurationError):
+            validate_review_payload(candidate)
+
+
+def test_finding_validation_reports_exact_invalid_field_and_order() -> None:
+    bundle = _bundle()
+    first = _payload(bundle, "concerns")["findings"][0]
+    second = {**first, "id": "A-0"}
+    payload = _payload(bundle, "concerns")
+    payload["findings"] = [first, second]
+    assert [item["id"] for item in validate_review_payload(payload)["findings"]] == ["A-0", "F-1"]
+
+    invalid_cases = (
+        (None, "review payload findings must be an array"),
+        ([None], "findings[0] must be an object"),
+        ([{"id": "F-1"}], "findings[0] is missing"),
+        ([{**first, "id": ""}], "findings[0].id must be a non-empty string"),
+        ([{**first, "severity": "invalid"}], "findings[0] has duplicate id or invalid severity"),
+        ([first, dict(first)], "findings[1] has duplicate id or invalid severity"),
+        ([{**first, "evidence_refs": None}], "findings[0].evidence_refs must be an array"),
+        (
+            [{**first, "oracle_resolutions": None}],
+            "findings[0].oracle_resolutions must be an array",
+        ),
+        ([{**first, "category": ""}], "findings[0].category must be a non-empty string"),
+        ([{**first, "claim": ""}], "findings[0].claim must be a non-empty string"),
+        (
+            [{**first, "recommendation": ""}],
+            "findings[0].recommendation must be a non-empty string",
+        ),
+    )
+    for findings, message in invalid_cases:
+        candidate = _payload(bundle, "concerns")
+        candidate["findings"] = findings
+        with pytest.raises(ConfigurationError, match=f"^{re.escape(message)}(?:$|:)"):
+            validate_review_payload(candidate)
+
+
+def test_oracle_resolution_validation_reports_exact_invalid_field() -> None:
+    bundle = _bundle()
+    finding = _payload(bundle, "concerns")["findings"][0]
+    resolution = {
+        "path": "tests/test_app.py",
+        "removed_oracle": "assert old",
+        "replacement_oracle": "assert new",
+        "preserved_behavior": "the result remains checked",
+    }
+    invalid_cases = (
+        ([None], "findings[0].oracle_resolutions[0] must be an object"),
+        ([{"path": "tests/test_app.py"}], "oracle resolution is missing"),
+        ([{**resolution, "unexpected": "x"}], "oracle resolution has unknown fields"),
+        ([{**resolution, "path": ""}], "oracle resolution path must be a non-empty string"),
+    )
+    for resolutions, message in invalid_cases:
+        payload = _payload(bundle, "concerns")
+        payload["findings"][0] = {**finding, "oracle_resolutions": resolutions}
+        with pytest.raises(ConfigurationError, match=re.escape(message)):
+            validate_review_payload(payload)
+
+
 def test_aqg_council_005_codex_is_read_only_isolated_and_schema_bound(
     tmp_path: Path,
 ) -> None:
@@ -414,12 +543,21 @@ def test_aqg_council_005_codex_is_read_only_isolated_and_schema_bound(
         assert kwargs["cwd"] == tmp_path
         assert kwargs["input"] == build_review_prompt(bundle, "test_evidence")
         schema = json.loads((tmp_path / SCHEMA_FILENAME).read_text(encoding="utf-8"))
-        assert schema == REVIEW_PAYLOAD_JSON_SCHEMA
+        assert schema == review_payload_json_schema()
         evidence_ref = schema["properties"]["findings"]["items"]["properties"]["evidence_refs"][
             "items"
         ]
+        oracle_resolution = schema["properties"]["findings"]["items"]["properties"][
+            "oracle_resolutions"
+        ]["items"]
         assert evidence_ref["required"] == ["material", "sha256", "line"]
         assert evidence_ref["properties"]["line"]["type"] == ["integer", "null"]
+        assert oracle_resolution["required"] == [
+            "path",
+            "removed_oracle",
+            "replacement_oracle",
+            "preserved_behavior",
+        ]
         event = {"type": "item.completed", "item": {"type": "agent_message", "text": payload}}
         return _completed(json.dumps(event))
 
@@ -529,6 +667,7 @@ def test_aqg_council_005_out_of_bundle_citation_fails_the_member(
                     "sha256": "sha256:" + "0" * 64,
                 }
             ],
+            "oracle_resolutions": [],
             "recommendation": "Cite an exact bundled material.",
         }
     ]

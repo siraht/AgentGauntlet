@@ -1010,20 +1010,89 @@ def _cited_materials(value: Any) -> set[Any]:
     return {ref.get("material") for ref in value if isinstance(ref, dict)}
 
 
-def _claim_covers_paths(claim: str, affected_paths: set[str]) -> bool:
-    return bool(affected_paths) and all(path in claim for path in affected_paths)
+def _oracle_lines(lines: list[tuple[str, int, str]]) -> dict[str, set[str]]:
+    by_path: dict[str, set[str]] = {}
+    for path, _, line in lines:
+        if line.strip():
+            by_path.setdefault(path, set()).add(line.strip())
+    return by_path
 
 
-def _is_test_expectation_resolution(finding: Any, affected_paths: set[str]) -> bool:
-    if not isinstance(finding, dict):
-        return False
+def _claim_covers_paths(resolved_paths: set[str], affected_paths: set[str]) -> bool:
+    return bool(affected_paths) and resolved_paths == affected_paths
+
+
+def _bundle_diff(ballot_path: Path) -> str | None:
+    try:
+        bundle = read_json(ballot_path.parent.parent / "candidate-bundle.json")
+    except (ConfigurationError, OSError):
+        return None
+    materials = bundle.get("materials") if isinstance(bundle, dict) else None
+    if not isinstance(materials, list):
+        return None
+    for material in materials:
+        if isinstance(material, dict) and material.get("name") == "current.diff.patch":
+            content = material.get("content")
+            return content if isinstance(content, str) else None
+    return None
+
+
+def _resolution_values(resolution: Any) -> tuple[str, str, str] | None:
+    if not isinstance(resolution, dict):
+        return None
+    expected = {"path", "removed_oracle", "replacement_oracle", "preserved_behavior"}
+    if set(resolution) != expected:
+        return None
+    path = resolution.get("path")
+    removed = resolution.get("removed_oracle")
+    replacement = resolution.get("replacement_oracle")
+    behavior = resolution.get("preserved_behavior")
+    values = (path, removed, replacement, behavior)
+    if not all(isinstance(value, str) and value.strip() for value in values):
+        return None
+    return str(path).strip(), str(removed).strip(), str(replacement).strip()
+
+
+def _resolution_path(
+    resolution: Any,
+    affected_paths: set[str],
+    deleted: dict[str, set[str]],
+    added: dict[str, set[str]],
+) -> str | None:
+    values = _resolution_values(resolution)
+    if values is None:
+        return None
+    path, removed, replacement = values
+    if path not in affected_paths:
+        return None
+    if removed == replacement:
+        return None
+    if path not in deleted or path not in added:
+        return None
+    if removed not in deleted[path] or replacement not in added[path]:
+        return None
+    return path
+
+
+def _resolved_oracle_paths(finding: Any, affected_paths: set[str], diff: str | None) -> set[str]:
+    if not isinstance(finding, dict) or diff is None:
+        return set()
+    resolutions = finding.get("oracle_resolutions")
+    if not isinstance(resolutions, list):
+        return set()
+    deleted = _oracle_lines(_deleted_lines(diff))
+    added = _oracle_lines(_added_lines(diff))
+    paths = (_resolution_path(item, affected_paths, deleted, added) for item in resolutions)
+    return {path for path in paths if path is not None}
+
+
+def _is_test_expectation_resolution(finding: dict[str, Any]) -> bool:
     claim = finding.get("claim")
     if not isinstance(claim, str) or not claim.strip():
         return False
     return (
         finding.get("severity") == "info"
         and finding.get("category") == "test-expectation-resolution"
-        and _claim_covers_paths(claim, affected_paths)
         and {"current.diff.patch", "review/current.json"}.issubset(
             _cited_materials(finding.get("evidence_refs"))
         )
@@ -1034,16 +1103,32 @@ def _test_expectation_resolution_roles(
     root: Path, run_id: str, affected_paths: set[str]
 ) -> set[str]:
     run_dir = root / ".aqg" / "council" / run_id
-    roles: set[str] = set()
+    resolved_by_role: dict[str, set[str]] = {}
     for path in sorted(run_dir.rglob("ballots/*.json")):
-        ballot = read_json(path)
-        findings = ballot.get("findings") if isinstance(ballot, dict) else None
-        reviewer = ballot.get("reviewer") if isinstance(ballot, dict) else None
-        if not isinstance(findings, list) or not isinstance(reviewer, dict):
+        resolution = _ballot_oracle_resolution(path, affected_paths)
+        if resolution is None:
             continue
-        if any(_is_test_expectation_resolution(finding, affected_paths) for finding in findings):
-            roles.add(str(reviewer.get("role")))
-    return roles
+        role, resolved = resolution
+        resolved_by_role.setdefault(role, set()).update(resolved)
+    return {
+        role
+        for role, resolved in resolved_by_role.items()
+        if _claim_covers_paths(resolved, affected_paths)
+    }
+
+
+def _ballot_oracle_resolution(path: Path, affected_paths: set[str]) -> tuple[str, set[str]] | None:
+    ballot = read_json(path)
+    findings = ballot.get("findings") if isinstance(ballot, dict) else None
+    reviewer = ballot.get("reviewer") if isinstance(ballot, dict) else None
+    if not isinstance(findings, list) or not isinstance(reviewer, dict):
+        return None
+    diff = _bundle_diff(path)
+    resolved: set[str] = set()
+    for finding in findings:
+        if isinstance(finding, dict) and _is_test_expectation_resolution(finding):
+            resolved.update(_resolved_oracle_paths(finding, affected_paths, diff))
+    return str(reviewer.get("role")), resolved
 
 
 def _clear_high_council_for_scope(

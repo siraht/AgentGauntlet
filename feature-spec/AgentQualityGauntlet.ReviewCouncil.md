@@ -67,6 +67,13 @@
   cross-segment relationships remain a residual review unknown. `complete`
   means every required per-segment ballot was received and validated; it MUST
   NOT imply whole-patch comprehension, approval, or release authority.
+- `AQG-COUNCIL-016` A council used to resolve a deleted-test-oracle finding MUST
+  provide a structured mapping for every affected test path. Each mapping MUST
+  identify an exact deleted oracle line, an exact added replacement line, and
+  the observable behavior the replacement preserves or strengthens. The
+  controller MUST validate those lines against the immutable candidate diff;
+  prose-only conclusions, generic path lists, partial mappings, and unsupported
+  citations MUST fail closed.
 
 ## Related specifications
 
