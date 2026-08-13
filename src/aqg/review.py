@@ -15,8 +15,8 @@ from typing import Any
 from .approvals import validate_required_approvals
 from .checks import test_feature_traceability
 from .constants import PASS, QUALITY_FAILURE
-from .evidence_manifest import verify_run_manifest
 from .errors import ConfigurationError
+from .evidence_manifest import verify_run_manifest
 from .policy import human_review_patterns, protected_patterns, risk_summary
 from .project import load_project
 from .runner import list_runs
