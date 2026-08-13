@@ -74,6 +74,54 @@ def _checksum_errors(root: Path, expected: dict[str, str]) -> list[str]:
     return errors
 
 
+def _inventory_errors(root: Path, expected: dict[str, str]) -> list[str]:
+    portable = [name for name in expected if name.endswith("-portable.zip")]
+    allowed = {
+        "SHA256SUMS",
+        "aqg.pyz.sha256",
+        *(f"{name}.sha256" for name in portable),
+        *expected,
+    }
+    try:
+        entries = list(root.iterdir())
+    except OSError as exc:
+        return [f"cannot inspect release inventory: {exc}"]
+    actual = {path.name for path in entries}
+    errors = _inventory_difference_errors(actual, allowed)
+    errors.extend(_unsafe_entry_errors(entries))
+    return errors
+
+
+def _inventory_difference_errors(actual: set[str], allowed: set[str]) -> list[str]:
+    if actual != allowed:
+        return [
+            "release directory inventory differs: "
+            f"missing={sorted(allowed - actual)}, unexpected={sorted(actual - allowed)}"
+        ]
+    return []
+
+
+def _unsafe_entry_errors(entries: list[Path]) -> list[str]:
+    unsafe = sorted(path.name for path in entries if not path.is_file() or path.is_symlink())
+    return [f"release directory contains unsafe entries: {unsafe}"] if unsafe else []
+
+
+def _sidecar_errors(root: Path, expected: dict[str, str]) -> list[str]:
+    names = ["aqg.pyz", *(name for name in expected if name.endswith("-portable.zip"))]
+    errors: list[str] = []
+    for name in names:
+        path = root / f"{name}.sha256"
+        wanted = f"{expected.get(name, '')}  {name}\n"
+        try:
+            actual = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            errors.append(f"cannot read checksum sidecar for {name}: {exc}")
+            continue
+        if not expected.get(name) or actual != wanted:
+            errors.append(f"checksum sidecar does not exactly bind {name}")
+    return errors
+
+
 def _portable_errors(path: Path) -> list[str]:
     try:
         with zipfile.ZipFile(path) as archive:
@@ -148,6 +196,8 @@ def verify_release(root: Path, *, smoke: bool = True) -> dict[str, Any]:
     root = root.resolve()
     expected, errors = _checksums(root)
     errors.extend(_checksum_errors(root, expected))
+    errors.extend(_inventory_errors(root, expected))
+    errors.extend(_sidecar_errors(root, expected))
     portable = sorted(root.glob("agent-quality-gauntlet-*-portable.zip"))
     if len(portable) != 1:
         errors.append("release must contain exactly one versioned portable archive")

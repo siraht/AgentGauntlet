@@ -57,6 +57,24 @@ def test_release_verifier_rejects_unlisted_archive_content() -> None:
         assert any("checksum mismatch" in error for error in rejected["errors"])
 
 
+def test_release_verifier_rejects_unchecksummed_files_and_sidecar_tampering() -> None:
+    with tempfile.TemporaryDirectory(prefix="aqg-release-verifier-") as temporary:
+        output = Path(temporary)
+        build(output)
+        (output / "unreviewed.bin").write_bytes(b"candidate-controlled extra")
+
+        rejected = verify_release(output, smoke=False)
+
+        assert rejected["status"] == "invalid"
+        assert any("unexpected=['unreviewed.bin']" in error for error in rejected["errors"])
+
+        (output / "unreviewed.bin").unlink()
+        (output / "aqg.pyz.sha256").write_text("0" * 64 + "  aqg.pyz\n", encoding="utf-8")
+        rejected_sidecar = verify_release(output, smoke=False)
+        assert rejected_sidecar["status"] == "invalid"
+        assert "checksum sidecar does not exactly bind aqg.pyz" in rejected_sidecar["errors"]
+
+
 def test_publish_workflow_requires_exact_tag_risk_selected_evidence() -> None:
     # Feature-Spec: AgentQualityGauntlet AQG-CORE-020 AQG-CORE-025 AQG-CORE-028
     workflow = (ROOT / ".github" / "workflows" / "publish-release.yml").read_text(encoding="utf-8")
