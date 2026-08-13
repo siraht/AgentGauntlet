@@ -352,6 +352,16 @@ def review_debt_proposal(
         reviewer=reviewer,
         review_run_id=review_run_id,
     )
+    return _install_reviewed_baseline(root, proposal, identity, request)
+
+
+def _install_reviewed_baseline(
+    root: Path,
+    proposal: dict[str, Any],
+    identity: dict[str, Any],
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    target = root / "quality" / "baselines" / "debt.json"
     reviewed = copy.deepcopy(proposal)
     reviewed.update(
         {

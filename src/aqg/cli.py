@@ -500,6 +500,14 @@ def _add_council_parsers(sub: Any) -> None:
 
 
 def _add_evidence_parsers(sub: Any) -> None:
+    _add_run_evidence_parser(sub)
+    _add_golden_acceptance_parsers(sub)
+    _add_baseline_parsers(sub)
+    _add_maintenance_promotion_parsers(sub)
+    _add_approval_authoring_parsers(sub)
+
+
+def _add_run_evidence_parser(sub: Any) -> None:
     evidence = sub.add_parser("evidence", help="inspect and verify immutable run evidence")
     evidence_sub = _nested_subparsers(evidence, "evidence_command")
     evidence_verify = evidence_sub.add_parser(
@@ -509,6 +517,8 @@ def _add_evidence_parsers(sub: Any) -> None:
         "--run-id", default="latest", help="completed run identifier; defaults to latest"
     )
 
+
+def _add_golden_acceptance_parsers(sub: Any) -> None:
     golden = sub.add_parser("golden", help="run or explicitly update deterministic golden sessions")
     golden.add_argument("--update", action="store_true")
     golden.add_argument("--scenario")
@@ -518,6 +528,8 @@ def _add_evidence_parsers(sub: Any) -> None:
     acceptance_sub.add_parser("lint", help="validate strict Gherkin feature files")
     acceptance_sub.add_parser("mutate", help="mutate examples to prove behavioral wiring")
 
+
+def _add_baseline_parsers(sub: Any) -> None:
     baseline = sub.add_parser("baseline", help="create a narrow, reviewable legacy-debt baseline")
     baseline_sub = _nested_subparsers(baseline, "baseline_command")
     baseline_test = baseline_sub.add_parser(
@@ -562,6 +574,8 @@ def _add_evidence_parsers(sub: Any) -> None:
         help="for --authority human, assert item-by-item review",
     )
 
+
+def _add_maintenance_promotion_parsers(sub: Any) -> None:
     maintenance = sub.add_parser(
         "maintenance", help="declare a scoped local policy-maintenance edit request"
     )
@@ -588,6 +602,8 @@ def _add_evidence_parsers(sub: Any) -> None:
     )
     promote_proposal.add_argument("--to", choices=STAGES, required=True)
 
+
+def _add_approval_authoring_parsers(sub: Any) -> None:
     approval = sub.add_parser(
         "approval", help="manage legacy or reserved-boundary human authority records"
     )
@@ -1361,37 +1377,54 @@ def _dispatch_acceptance(args: argparse.Namespace, root: Path) -> int:
 
 def _dispatch_baseline(args: argparse.Namespace, root: Path) -> int:
     if args.baseline_command == "debt":
-        if args.debt_command == "propose":
-            report = propose_debt_baseline(root, args.run_id)
-        elif args.debt_command == "review":
-            if args.authority == "human" and not args.confirm_reviewed:
-                raise ConfigurationError(
-                    "human baseline review requires --confirm-reviewed after item-by-item review"
-                )
-            report = review_debt_proposal(
-                root,
-                args.proposal,
-                authority=args.authority,
-                reviewer=args.reviewer,
-                review_run_id=args.review_run_id,
-            )
-        else:
-            raise ConfigurationError("unknown debt baseline command")
-        if args.json:
-            _json_dump(report)
-        elif args.debt_command == "propose":
-            print(f"Debt baseline proposal: {report['path']}")
-            print(f"Fingerprint: {report['document_fingerprint']}")
-            print("State: proposed (cannot authorize ratchet enforcement)")
-        else:
-            print(f"Reviewed debt baseline: {report['path']}")
-            print(f"Fingerprint: {report['document_fingerprint']}")
-            authority = report["baseline"].get("review_authority")
-            if authority:
-                print(f"Authority: verified high-tier council {authority['run_id']}")
-            else:
-                print(f"Authority: reserved human reviewer {report['baseline']['reviewer']}")
-        return PASS
+        return _dispatch_debt_baseline(args, root)
+    return _dispatch_test_integrity_baseline(args, root)
+
+
+def _dispatch_debt_baseline(args: argparse.Namespace, root: Path) -> int:
+    if args.debt_command == "propose":
+        report = propose_debt_baseline(root, args.run_id)
+    elif args.debt_command == "review":
+        report = _review_debt_baseline(args, root)
+    else:
+        raise ConfigurationError("unknown debt baseline command")
+    if args.json:
+        _json_dump(report)
+    else:
+        _print_debt_baseline(args.debt_command, report)
+    return PASS
+
+
+def _review_debt_baseline(args: argparse.Namespace, root: Path) -> dict[str, Any]:
+    if args.authority == "human" and not args.confirm_reviewed:
+        raise ConfigurationError(
+            "human baseline review requires --confirm-reviewed after item-by-item review"
+        )
+    return review_debt_proposal(
+        root,
+        args.proposal,
+        authority=args.authority,
+        reviewer=args.reviewer,
+        review_run_id=args.review_run_id,
+    )
+
+
+def _print_debt_baseline(command: str, report: dict[str, Any]) -> None:
+    if command == "propose":
+        print(f"Debt baseline proposal: {report['path']}")
+        print(f"Fingerprint: {report['document_fingerprint']}")
+        print("State: proposed (cannot authorize ratchet enforcement)")
+        return
+    print(f"Reviewed debt baseline: {report['path']}")
+    print(f"Fingerprint: {report['document_fingerprint']}")
+    authority = report["baseline"].get("review_authority")
+    if authority:
+        print(f"Authority: verified high-tier council {authority['run_id']}")
+    else:
+        print(f"Authority: reserved human reviewer {report['baseline']['reviewer']}")
+
+
+def _dispatch_test_integrity_baseline(args: argparse.Namespace, root: Path) -> int:
     report = scan_test_integrity(root, load_project(root))
     if not args.confirm:
         _json_dump(report) if args.json else print(json.dumps(report, indent=2))
