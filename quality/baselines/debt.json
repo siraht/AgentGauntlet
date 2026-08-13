@@ -1,0 +1,90 @@
+{
+  "control_fingerprint": "sha256:c640c7a33e111373f042688d035255760ed46cf8a9a2548649117e1f9ef48f00",
+  "created_at": "2026-08-13T07:52:39+00:00",
+  "inventory": [
+    {
+      "category": "coverage",
+      "direction": "lower_is_worse",
+      "fingerprint": "coverage:javascript:branches",
+      "path": "javascript",
+      "severity": "medium",
+      "value": 0.0
+    },
+    {
+      "category": "coverage",
+      "direction": "lower_is_worse",
+      "fingerprint": "coverage:javascript:functions",
+      "path": "javascript",
+      "severity": "medium",
+      "value": 0.0
+    },
+    {
+      "category": "coverage",
+      "direction": "lower_is_worse",
+      "fingerprint": "coverage:javascript:lines",
+      "path": "javascript",
+      "severity": "medium",
+      "value": 0.0
+    },
+    {
+      "category": "coverage",
+      "direction": "lower_is_worse",
+      "fingerprint": "coverage:javascript:statements",
+      "path": "javascript",
+      "severity": "medium",
+      "value": 0.0
+    },
+    {
+      "category": "coverage",
+      "direction": "lower_is_worse",
+      "fingerprint": "coverage:python:branches",
+      "path": "python",
+      "severity": "medium",
+      "value": 61.42649199417758
+    },
+    {
+      "category": "coverage",
+      "direction": "lower_is_worse",
+      "fingerprint": "coverage:python:lines",
+      "path": "python",
+      "severity": "medium",
+      "value": 71.58160050409577
+    }
+  ],
+  "measurement": {
+    "change_fingerprint": "sha256:746306bdcb476604349ea0fb117dc9cd4090e4063dd5f80b468a372032c381c1",
+    "manifest_fingerprint": "sha256:792c729811de275ffa804866519567a6f107240daa660203e959bc4a0ede5dfc",
+    "measured_at": "2026-08-13T07:52:39+00:00",
+    "profile": "deep",
+    "run_id": "20260813-075007-de5a9351"
+  },
+  "policy_fingerprint": "sha256:6e7409c6853e9bf17770cecb1e2416a7479158d6d6f1b82fe18dc29430b58fac",
+  "review_authority": {
+    "covered_roles": [
+      "operability_rollback",
+      "requirements_behavior",
+      "security_trust",
+      "test_evidence"
+    ],
+    "kind": "agent_council",
+    "manifest_sha256": "sha256:0e3de2468299197b0aa4c7074944149b890bde6390c6afd7f291c6a3a0f3fdc4",
+    "provider_groups": [
+      "openai:codex",
+      "opencode:opencode.ai",
+      "xai:grok.com"
+    ],
+    "report_sha256": "sha256:ac1ea862e7ba0da200a7c45f10b5b5d6d145646e69020b6cb3adfc312a7082ae",
+    "run_id": "council-20260813T075314Z-c45dd056",
+    "scope": {
+      "base_revision": "origin/main",
+      "change_fingerprint": "sha256:746306bdcb476604349ea0fb117dc9cd4090e4063dd5f80b468a372032c381c1",
+      "control_fingerprint": "sha256:41a2cd7a55a391e426aa1e4c1c979a0bb791d4df3cc01ae455978bdab75e0ff1",
+      "revision": "059bb7890d47ccd33ae88fea6607a08282648b13"
+    },
+    "tier": "high"
+  },
+  "reviewed_at": "2026-08-13T07:59:04+00:00",
+  "schema_version": 1,
+  "source_revision": "059bb7890d47ccd33ae88fea6607a08282648b13",
+  "state": "reviewed"
+}
