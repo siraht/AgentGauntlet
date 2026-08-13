@@ -23,6 +23,7 @@ from .util import (
     git_revision,
     read_json,
     run_command,
+    utc_now,
 )
 
 ASSURANCE_SCHEMA_VERSION = 1
@@ -355,38 +356,69 @@ def _alias_errors(payload: Mapping[str, Any]) -> list[str]:
     return errors
 
 
-def _rehearsal_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]:
+def _load_rehearsal_output(output: Path, result: Any) -> tuple[Any, dict[str, Any] | None]:
+    if result.code != 0:
+        state = "broken" if result.code == QUALITY_FAILURE else "unusable"
+        return None, {"status": state, "command": result.as_dict(), "errors": [result.status]}
+    if not output.is_file():
+        return None, {
+            "status": "unusable",
+            "command": result.as_dict(),
+            "errors": ["rehearsal command produced no output"],
+        }
+    try:
+        return read_json(output), None
+    except ConfigurationError as exc:
+        return None, {"status": "unusable", "command": result.as_dict(), "errors": [str(exc)]}
+
+
+def _execution_evidence(
+    output: Path, payload: Any, purpose: str, started_at: str, finished_at: str
+) -> dict[str, Any]:
+    execution = {
+        "purpose": purpose,
+        "producer": "aqg assurance executor",
+        "operator": "agent",
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "artifact_sha256": "sha256:" + hashlib.sha256(output.read_bytes()).hexdigest(),
+        "result_identity": payload.get("result_identity") if isinstance(payload, Mapping) else None,
+    }
+    execution["execution_identity"] = "sha256:" + hashlib.sha256(_canonical(execution)).hexdigest()
+    return execution
+
+
+def _fresh_rehearsal_output(root: Path, artifact_name: str) -> Path:
+    output = root / ".aqg" / "work" / "assurance" / artifact_name
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.unlink(missing_ok=True)
+    return output
+
+
+def _rehearsal_control(
+    root: Path,
+    project: Mapping[str, Any],
+    *,
+    artifact_name: str = "functional-rehearsal.json",
+    execution_purpose: str = "functional-rehearsal",
+) -> dict[str, Any]:
     config = project.get("assurance")
     if not isinstance(config, Mapping):
         return {
             "status": "not_tested",
             "errors": ["quality/project.json has no assurance rehearsal configuration"],
         }
-    output = root / ".aqg" / "work" / "assurance" / "functional-rehearsal.json"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.unlink(missing_ok=True)
+    output = _fresh_rehearsal_output(root, artifact_name)
     try:
         command = _render_command(config.get("rehearsal_command"), output)
     except ConfigurationError as exc:
         return {"status": "unusable", "errors": [str(exc)]}
+    started_at = utc_now()
     result = run_command(command, cwd=root, timeout=int(config.get("timeout_seconds", 600)))
-    if result.code != 0:
-        state = "broken" if result.code == QUALITY_FAILURE else "unusable"
-        return {"status": state, "command": result.as_dict(), "errors": [result.status]}
-    if not output.is_file():
-        return {
-            "status": "unusable",
-            "command": result.as_dict(),
-            "errors": ["rehearsal command produced no output"],
-        }
-    try:
-        payload = read_json(output)
-    except ConfigurationError as exc:
-        return {
-            "status": "unusable",
-            "command": result.as_dict(),
-            "errors": [str(exc)],
-        }
+    finished_at = utc_now()
+    payload, failure = _load_rehearsal_output(output, result)
+    if failure is not None:
+        return failure
     errors = _validate_rehearsal_payload(
         payload,
         revision=git_revision(root),
@@ -396,31 +428,62 @@ def _rehearsal_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]
         "status": "works" if not errors else "broken",
         "command": result.as_dict(),
         "artifact": str(output.relative_to(root)),
+        "execution": _execution_evidence(
+            output, payload, execution_purpose, started_at, finished_at
+        ),
         "result": payload,
         "errors": errors,
     }
 
 
-def _manual_qa_control(rehearsal: Mapping[str, Any]) -> dict[str, Any]:
+def _manual_qa_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]:
+    rehearsal = _rehearsal_control(
+        root,
+        project,
+        artifact_name="manual-qa-rehearsal.json",
+        execution_purpose="manual-qa",
+    )
     result = rehearsal.get("result")
     qa = result.get("functional_qa") if isinstance(result, Mapping) else None
     procedure = qa.get("procedure") if isinstance(qa, Mapping) else None
-    errors = _manual_qa_errors(rehearsal, procedure)
+    procedure_path = root / "qa" / "procedures" / "control-surface-rehearsal.md"
+    procedure_artifact = _procedure_artifact(procedure_path)
+    errors = _manual_qa_errors(rehearsal, procedure, procedure_artifact)
     return {
         "status": "works" if not errors else "broken",
         "method": "agent-operated executable procedure",
         "procedure": dict(procedure) if isinstance(procedure, Mapping) else None,
+        "procedure_artifact": procedure_artifact,
         "artifact": rehearsal.get("artifact"),
+        "execution": rehearsal.get("execution"),
+        "observations": qa.get("evidence") if isinstance(qa, Mapping) else None,
         "errors": errors,
     }
 
 
-def _manual_qa_errors(rehearsal: Mapping[str, Any], procedure: Any) -> list[str]:
+def _procedure_artifact(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    return {
+        "path": "qa/procedures/control-surface-rehearsal.md",
+        "sha256": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+
+
+def _manual_qa_errors(
+    rehearsal: Mapping[str, Any], procedure: Any, procedure_artifact: Any
+) -> list[str]:
     errors = list(rehearsal.get("errors", []))
     if rehearsal.get("status") != "works":
         errors.append("the executed functional QA procedure is not green")
-    if not isinstance(procedure, Mapping):
-        errors.append("executed functional QA procedure identity is missing")
+    errors.extend(_qa_procedure_errors(procedure))
+    execution = rehearsal.get("execution")
+    if not isinstance(execution, Mapping) or execution.get("purpose") != "manual-qa":
+        errors.append("manual QA execution provenance is missing")
+    if not isinstance(procedure_artifact, Mapping) or not _SHA256.fullmatch(
+        str(procedure_artifact.get("sha256"))
+    ):
+        errors.append("manual QA procedure artifact digest is missing")
     return errors
 
 
@@ -566,7 +629,7 @@ def _add_high_assurance_controls(
     rehearsal = _rehearsal_control(root, project)
     controls["functional_rehearsal"] = rehearsal
     if risk.get("required_controls", {}).get("requires_manual_qa") is True:
-        controls["manual_qa"] = _manual_qa_control(rehearsal)
+        controls["manual_qa"] = _manual_qa_control(root, project)
     controls["independent_verification"] = _independent_control(root, scope)
 
 

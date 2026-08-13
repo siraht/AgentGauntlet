@@ -381,20 +381,16 @@ def _test_expectation_key(path: str, line: str) -> str | None:
     unittest_assertion = re.search(r"\bself\.assert\w*\s*\(", line)
     if not _is_test(path) or not (_TEST_EXPECTATION_PATTERN.search(line) or unittest_assertion):
         return None
+    if re.fullmatch(r"\s*assert\s+_\w+_SPEC\s+and\s+_\w+_SPEC\.loader\s*", line):
+        return None
     return " ".join(line.split())
 
 
-def _consume_replacement(
-    added: Counter[str], replacement_capacity: Counter[str], path: str, key: str
-) -> bool:
-    if added[key]:
-        added[key] -= 1
-        replacement_capacity[path] -= 1
-        return True
-    if replacement_capacity[path]:
-        replacement_capacity[path] -= 1
-        return True
-    return False
+def _consume_replacement(added: Counter[str], key: str) -> bool:
+    if not added[key]:
+        return False
+    added[key] -= 1
+    return True
 
 
 def _deleted_test_assertion_paths(diff: str) -> list[str]:
@@ -404,16 +400,11 @@ def _deleted_test_assertion_paths(diff: str) -> list[str]:
         if (key := _test_expectation_key(path, line)) is not None
     )
     deleted_tests: list[str] = []
-    replacement_capacity = Counter(
-        path
-        for path, _, line in _added_lines(diff)
-        if _test_expectation_key(path, line) is not None
-    )
     for path, _, line in _deleted_lines(diff):
         key = _test_expectation_key(path, line)
         if key is None:
             continue
-        if _consume_replacement(added, replacement_capacity, path, key):
+        if _consume_replacement(added, key):
             continue
         deleted_tests.append(path)
     return deleted_tests

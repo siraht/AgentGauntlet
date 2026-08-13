@@ -20,6 +20,7 @@ from aqg.policy import load_policy
 from aqg.reporting import review_to_sarif
 from aqg.review import (
     _consume_replacement,
+    _deleted_test_assertion_paths,
     _html,
     _markdown,
     _test_expectation_key,
@@ -829,6 +830,7 @@ def test_mixed_diff_ordering_summary_and_render_surfaces(tmp_path: Path) -> None
         "policy-plane-change",
         "risk-factor-external_contract",
         "swallowed-broad-exception",
+        "test-expectation-deleted",
         "dependency-change",
         "dependency-lifecycle-script-change",
         "expected-output-change",
@@ -838,7 +840,7 @@ def test_mixed_diff_ordering_summary_and_render_surfaces(tmp_path: Path) -> None
         "weak-test-oracle",
     }
     assert expected_subset <= set(codes)
-    assert packet["summary"]["blockers"] >= 4
+    assert packet["summary"]["blockers"] >= 5
     assert packet["summary"]["human_review"] >= 4
     assert packet["summary"]["warnings"] >= 2
     assert review_exit_code(packet) == 1
@@ -1077,8 +1079,8 @@ def test_moved_test_expectation_is_not_reported_as_deleted(tmp_path: Path) -> No
     assert "test-expectation-deleted" not in _by_code(packet)
 
 
-def test_strengthened_test_expectation_is_not_reported_as_deleted(tmp_path: Path) -> None:
-    """A changed exact assertion is replacement evidence, not a net oracle deletion."""
+def test_changed_test_expectation_remains_a_deleted_oracle_signal(tmp_path: Path) -> None:
+    """A same-count assertion change cannot silently replace the old oracle."""
     root = _baseline_repo(tmp_path)
     test_path = root / "tests" / "test_app.py"
     test_path.write_text(
@@ -1101,16 +1103,16 @@ def test_strengthened_test_expectation_is_not_reported_as_deleted(tmp_path: Path
 
     packet = _packet(root)
 
-    assert "test-expectation-deleted" not in _by_code(packet)
+    assert _by_code(packet)["test-expectation-deleted"]["paths"] == ["tests/test_app.py"]
 
 
-def test_unittest_assertions_replace_deleted_harness_assertions(tmp_path: Path) -> None:
-    """Executable unittest expectations offset a removed test-harness assertion."""
+def test_synthetic_loader_assertion_is_not_a_product_oracle(tmp_path: Path) -> None:
+    """Removing an importlib loader precondition does not claim product test deletion."""
     root = _baseline_repo(tmp_path)
     test_path = root / "tests" / "test_app.py"
     test_path.write_text(
         "# Feature-Spec: Product.Calculation\n"
-        "assert LOADER_READY\n"
+        "assert _DOGFOOD_SPEC and _DOGFOOD_SPEC.loader\n"
         "def test_calculate() -> None:\n"
         "    assert calculate(1) == 2\n",
         encoding="utf-8",
@@ -1119,32 +1121,14 @@ def test_unittest_assertions_replace_deleted_harness_assertions(tmp_path: Path) 
     _git(root, "commit", "-qm", "loader-harness")
     test_path.write_text(
         "# Feature-Spec: Product.Calculation\n"
-        "import unittest\n"
-        "class CalculationTest(unittest.TestCase):\n"
-        "    def test_calculate(self) -> None:\n"
-        "        self.assertEqual(calculate(1), 2)\n"
-        "        self.assertTrue(LOADER_READY)\n",
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
         encoding="utf-8",
     )
 
     packet = _packet(root)
 
     assert "test-expectation-deleted" not in _by_code(packet)
-
-
-def test_replacement_consumption_is_exact_and_bounded() -> None:
-    key = "assert calculate(1) == 2"
-    added = Counter({key: 1})
-    capacity = Counter({"tests/test_app.py": 3})
-
-    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is True
-    assert added == Counter()
-    assert capacity == Counter({"tests/test_app.py": 2})
-    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is True
-    assert capacity == Counter({"tests/test_app.py": 1})
-    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is True
-    assert capacity == Counter()
-    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is False
 
 
 def test_exact_and_changed_replacements_cannot_hide_net_deletion(tmp_path: Path) -> None:
@@ -1178,6 +1162,73 @@ def test_expectation_identity_normalizes_whitespace() -> None:
         _test_expectation_key("tests/test_app.py", "    assert   calculate(1)   ==   2")
         == "assert calculate(1) == 2"
     )
+
+
+@pytest.mark.parametrize(
+    ("path", "line", "expected"),
+    [
+        ("src/app.py", "assert calculate(1) == 2", None),
+        ("tests/test_app.py", "value = calculate(1)", None),
+        ("tests/test_app.py", "assert _DOGFOOD_SPEC and _DOGFOOD_SPEC.loader", None),
+        ("tests/test_app.py", "assert calculate(1) == 2", "assert calculate(1) == 2"),
+        (
+            "tests/test_app.py",
+            "self.assertEqual(calculate(1), 2)",
+            "self.assertEqual(calculate(1), 2)",
+        ),
+    ],
+)
+def test_expectation_identity_only_accepts_product_test_oracles(
+    path: str, line: str, expected: str | None
+) -> None:
+    assert _test_expectation_key(path, line) == expected
+
+
+def test_exact_replacement_consumes_one_matching_oracle_only() -> None:
+    added = Counter({"assert value == 1": 1, "assert unrelated": 2})
+    assert _consume_replacement(added, "assert value == 1") is True
+    assert added == Counter({"assert unrelated": 2})
+    assert _consume_replacement(added, "assert value == 1") is False
+    assert added == Counter({"assert unrelated": 2})
+
+
+def test_deleted_oracle_diff_requires_an_exact_added_match() -> None:
+    changed = (
+        "diff --git a/tests/test_app.py b/tests/test_app.py\n"
+        "--- a/tests/test_app.py\n"
+        "+++ b/tests/test_app.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-assert value == 1\n"
+        "+assert value == 2\n"
+        "-assert preserved == 3\n"
+        "+assert   preserved   ==   3\n"
+    )
+    assert _deleted_test_assertion_paths(changed) == ["tests/test_app.py"]
+
+
+def test_deleted_oracle_scan_continues_after_a_non_oracle_line() -> None:
+    changed = (
+        "diff --git a/tests/test_app.py b/tests/test_app.py\n"
+        "--- a/tests/test_app.py\n"
+        "+++ b/tests/test_app.py\n"
+        "@@ -1,2 +0,0 @@\n"
+        "-value = setup()\n"
+        "-assert value == 1\n"
+    )
+    assert _deleted_test_assertion_paths(changed) == ["tests/test_app.py"]
+
+
+def test_deleted_oracle_scan_continues_after_an_exact_replacement() -> None:
+    changed = (
+        "diff --git a/tests/test_app.py b/tests/test_app.py\n"
+        "--- a/tests/test_app.py\n"
+        "+++ b/tests/test_app.py\n"
+        "@@ -1,2 +1 @@\n"
+        "-assert preserved == 1\n"
+        "+assert preserved == 1\n"
+        "-assert removed == 2\n"
+    )
+    assert _deleted_test_assertion_paths(changed) == ["tests/test_app.py"]
 
 
 def test_module_level_test_def_deletion_is_expectation_deleted(tmp_path: Path) -> None:

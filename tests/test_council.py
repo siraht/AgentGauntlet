@@ -613,10 +613,12 @@ def test_aqg_council_007_ballots_and_results_are_versioned_and_advisory_only() -
 
 def test_aqg_council_008_repeated_codex_roles_count_as_one_provider_group() -> None:
     bundle = _bundle()
-    ballots = _clear_ballots(bundle)
-    result = aggregate_ballots(bundle, ballots)
+    all_ballots = _clear_ballots(bundle)
+    ballots = [ballot for ballot in all_ballots if ballot["reviewer"]["role"] != "adversarial"]
+    result = aggregate_ballots(bundle, all_ballots)
 
-    assert len(ballots) == 5
+    assert len(ballots) == 4
+    assert len(all_ballots) == 5
     assert result["provider_groups"] == [
         "openai:codex",
         "opencode:opencode.ai",

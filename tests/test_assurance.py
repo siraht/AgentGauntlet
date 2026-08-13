@@ -17,16 +17,20 @@ from aqg.assurance import (
     _assurance_result,
     _authority_control,
     _council_errors,
+    _execution_evidence,
     _functional_qa_errors,
     _independent_control,
+    _load_rehearsal_output,
     _manual_qa_control,
     _manual_qa_errors,
     _qa_checks_errors,
     _qa_procedure_errors,
+    _rehearsal_control,
     _validate_rehearsal_payload,
     evaluate_assurance,
 )
 from aqg.constants import INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE
+from aqg.util import CommandResult
 
 
 def _identity(payload: dict[str, object]) -> str:
@@ -96,6 +100,229 @@ def _rehearsal() -> dict[str, object]:
     return payload
 
 
+def _command_result(code: int, status: str) -> CommandResult:
+    return CommandResult(
+        command=["rehearse"],
+        cwd="/candidate",
+        code=code,
+        status=status,
+        stdout="",
+        stderr="",
+        duration_ms=1,
+    )
+
+
+def test_rehearsal_output_distinguishes_failure_missing_invalid_and_valid(tmp_path: Path) -> None:
+    output = tmp_path / "rehearsal.json"
+    quality_result = _command_result(QUALITY_FAILURE, "quality_failure")
+    payload, failure = _load_rehearsal_output(output, quality_result)
+    assert payload is None
+    assert failure == {
+        "status": "broken",
+        "command": quality_result.as_dict(),
+        "errors": ["quality_failure"],
+    }
+
+    infrastructure_result = _command_result(INFRASTRUCTURE_ERROR, "infrastructure_error")
+    payload, failure = _load_rehearsal_output(output, infrastructure_result)
+    assert payload is None
+    assert failure == {
+        "status": "unusable",
+        "command": infrastructure_result.as_dict(),
+        "errors": ["infrastructure_error"],
+    }
+
+    pass_result = _command_result(PASS, "pass")
+    payload, failure = _load_rehearsal_output(output, pass_result)
+    assert payload is None
+    assert failure == {
+        "status": "unusable",
+        "command": pass_result.as_dict(),
+        "errors": ["rehearsal command produced no output"],
+    }
+
+    output.write_text("not json", encoding="utf-8")
+    payload, failure = _load_rehearsal_output(output, _command_result(PASS, "pass"))
+    assert payload is None
+    assert failure == {
+        "status": "unusable",
+        "command": pass_result.as_dict(),
+        "errors": [f"invalid JSON in {output}: Expecting value: line 1 column 1 (char 0)"],
+    }
+
+    output.write_text('{"status":"pass"}', encoding="utf-8")
+    assert _load_rehearsal_output(output, _command_result(PASS, "pass")) == (
+        {"status": "pass"},
+        None,
+    )
+
+
+def test_execution_evidence_is_exact_and_content_addressed(tmp_path: Path) -> None:
+    output = tmp_path / "result.json"
+    output.write_bytes(b'{"result":"pass"}')
+    payload = {"result_identity": "sha256:" + "a" * 64}
+    expected = {
+        "purpose": "manual-qa",
+        "producer": "aqg assurance executor",
+        "operator": "agent",
+        "started_at": "2026-08-13T01:02:03+00:00",
+        "finished_at": "2026-08-13T01:02:04+00:00",
+        "artifact_sha256": "sha256:" + hashlib.sha256(output.read_bytes()).hexdigest(),
+        "result_identity": payload["result_identity"],
+    }
+    expected["execution_identity"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(expected, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+
+    assert (
+        _execution_evidence(
+            output,
+            payload,
+            "manual-qa",
+            "2026-08-13T01:02:03+00:00",
+            "2026-08-13T01:02:04+00:00",
+        )
+        == expected
+    )
+
+
+def test_rehearsal_control_executes_fresh_artifact_and_binds_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / ".aqg" / "work" / "assurance" / "manual.json"
+    output.parent.mkdir(parents=True)
+    output.write_text("stale", encoding="utf-8")
+    payload = _rehearsal()
+
+    def execute(command: list[str], *, cwd: Path, timeout: int) -> CommandResult:
+        assert str(output) in command
+        assert not output.exists()
+        assert cwd == tmp_path
+        assert timeout == 37
+        output.write_text(json.dumps(payload), encoding="utf-8")
+        return _command_result(PASS, "pass")
+
+    monkeypatch.setattr(assurance, "run_command", execute)
+
+    def revision(root: Path) -> str:
+        assert root == tmp_path
+        return "a" * 40
+
+    def dirty(root: Path) -> bool:
+        assert root == tmp_path
+        return False
+
+    monkeypatch.setattr(assurance, "git_revision", revision)
+    monkeypatch.setattr(assurance, "_candidate_dirty", dirty)
+    times = iter(["2026-08-13T01:02:03+00:00", "2026-08-13T01:02:04+00:00"])
+    monkeypatch.setattr(assurance, "utc_now", lambda: next(times))
+
+    control = _rehearsal_control(
+        tmp_path,
+        {
+            "assurance": {
+                "rehearsal_command": ["rehearse", "{output}"],
+                "timeout_seconds": 37,
+            }
+        },
+        artifact_name="manual.json",
+        execution_purpose="manual-qa",
+    )
+
+    artifact_digest = "sha256:" + hashlib.sha256(output.read_bytes()).hexdigest()
+    execution = {
+        "purpose": "manual-qa",
+        "producer": "aqg assurance executor",
+        "operator": "agent",
+        "started_at": "2026-08-13T01:02:03+00:00",
+        "finished_at": "2026-08-13T01:02:04+00:00",
+        "artifact_sha256": artifact_digest,
+        "result_identity": payload["result_identity"],
+    }
+    execution["execution_identity"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(execution, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+    assert control == {
+        "status": "works",
+        "command": _command_result(PASS, "pass").as_dict(),
+        "artifact": ".aqg/work/assurance/manual.json",
+        "execution": execution,
+        "result": payload,
+        "errors": [],
+    }
+
+
+def test_rehearsal_control_fails_closed_for_missing_or_invalid_configuration(
+    tmp_path: Path,
+) -> None:
+    missing = _rehearsal_control(tmp_path, {})
+    assert missing == {
+        "status": "not_tested",
+        "errors": ["quality/project.json has no assurance rehearsal configuration"],
+    }
+    invalid = _rehearsal_control(tmp_path, {"assurance": {"rehearsal_command": ["rehearse"]}})
+    assert invalid["status"] == "unusable"
+    assert invalid["errors"] == ["assurance.rehearsal_command must contain {output}"]
+
+
+def test_rehearsal_control_defaults_timeout_artifact_and_purpose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _rehearsal()
+
+    def execute(command: list[str], *, cwd: Path, timeout: int) -> CommandResult:
+        output = Path(command[-1])
+        assert cwd == tmp_path
+        assert timeout == 600
+        assert output.name == "functional-rehearsal.json"
+        output.write_text(json.dumps(payload), encoding="utf-8")
+        return _command_result(PASS, "pass")
+
+    monkeypatch.setattr(assurance, "run_command", execute)
+    monkeypatch.setattr(assurance, "git_revision", lambda _root: "a" * 40)
+    monkeypatch.setattr(assurance, "_candidate_dirty", lambda _root: False)
+    monkeypatch.setattr(assurance, "utc_now", lambda: "2026-08-13T01:02:03+00:00")
+
+    control = _rehearsal_control(
+        tmp_path,
+        {"assurance": {"rehearsal_command": ["rehearse", "{output}"]}},
+    )
+
+    assert control["artifact"] == ".aqg/work/assurance/functional-rehearsal.json"
+    assert control["execution"]["purpose"] == "functional-rehearsal"
+
+
+def test_rehearsal_control_binds_candidate_validation_and_reports_broken(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _rehearsal()
+
+    def execute(command: list[str], **_kwargs: object) -> CommandResult:
+        Path(command[-1]).write_text(json.dumps(payload), encoding="utf-8")
+        return _command_result(PASS, "pass")
+
+    validate = Mock(return_value=["candidate mismatch"])
+    monkeypatch.setattr(assurance, "run_command", execute)
+    monkeypatch.setattr(assurance, "git_revision", lambda _root: "f" * 40)
+    monkeypatch.setattr(assurance, "_candidate_dirty", lambda _root: True)
+    monkeypatch.setattr(assurance, "_validate_rehearsal_payload", validate)
+
+    control = _rehearsal_control(
+        tmp_path,
+        {"assurance": {"rehearsal_command": ["rehearse", "{output}"]}},
+    )
+
+    assert control["status"] == "broken"
+    assert control["errors"] == ["candidate mismatch"]
+    validate.assert_called_once_with(payload, revision="f" * 40, dirty=True)
+
+
 def test_functional_rehearsal_requires_executed_qa_rollback_and_cleanup() -> None:
     assert _validate_rehearsal_payload(_rehearsal()) == []
     payload = _rehearsal()
@@ -111,43 +338,71 @@ def test_functional_rehearsal_requires_executed_qa_rollback_and_cleanup() -> Non
     assert any("cleanup_verified" in error for error in errors)
 
 
-def test_manual_qa_is_a_distinct_executed_procedure_control() -> None:
+def test_manual_qa_is_a_distinct_executed_procedure_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    procedure_path = tmp_path / "qa" / "procedures" / "control-surface-rehearsal.md"
+    procedure_path.parent.mkdir(parents=True)
+    procedure_path.write_text("# executed procedure\n", encoding="utf-8")
     rehearsal = {
         "status": "works",
-        "artifact": ".aqg/work/assurance/functional-rehearsal.json",
+        "artifact": ".aqg/work/assurance/manual-qa-rehearsal.json",
+        "execution": {
+            "purpose": "manual-qa",
+            "execution_identity": "sha256:" + "e" * 64,
+        },
         "result": _rehearsal(),
         "errors": [],
     }
+    execute = Mock(return_value=rehearsal)
+    monkeypatch.setattr(assurance, "_rehearsal_control", execute)
 
-    control = _manual_qa_control(rehearsal)
+    control = _manual_qa_control(tmp_path, {})
 
+    procedure_artifact = {
+        "path": "qa/procedures/control-surface-rehearsal.md",
+        "sha256": "sha256:" + hashlib.sha256(b"# executed procedure\n").hexdigest(),
+    }
+    result = rehearsal["result"]
+    assert isinstance(result, dict)
+    functional_qa = result["functional_qa"]
+    assert isinstance(functional_qa, dict)
     assert control == {
         "status": "works",
         "method": "agent-operated executable procedure",
-        "procedure": {
-            "id": "QA-AQG-CONTROL-SURFACES-001",
-            "path": "qa/procedures/control-surface-rehearsal.md",
-            "execution_mode": "agent-operated executable procedure",
-            "executor": "aqg deterministic rehearsal",
-        },
-        "artifact": ".aqg/work/assurance/functional-rehearsal.json",
+        "procedure": functional_qa["procedure"],
+        "procedure_artifact": procedure_artifact,
+        "artifact": ".aqg/work/assurance/manual-qa-rehearsal.json",
+        "execution": rehearsal["execution"],
+        "observations": functional_qa["evidence"],
         "errors": [],
     }
+    execute.assert_called_once_with(
+        tmp_path,
+        {},
+        artifact_name="manual-qa-rehearsal.json",
+        execution_purpose="manual-qa",
+    )
+
     rehearsal["result"] = {"functional_qa": {}}
-    broken = _manual_qa_control(rehearsal)
+    broken = _manual_qa_control(tmp_path, {})
     assert broken["status"] == "broken"
-    assert broken["errors"] == ["executed functional QA procedure identity is missing"]
+    assert broken["errors"] == ["functional_qa procedure identity is invalid"]
 
     rehearsal["status"] = "broken"
     rehearsal["errors"] = ["functional rehearsal failed"]
-    broken = _manual_qa_control(rehearsal)
+    broken = _manual_qa_control(tmp_path, {})
     assert broken["errors"] == [
         "functional rehearsal failed",
         "the executed functional QA procedure is not green",
-        "executed functional QA procedure identity is missing",
+        "functional_qa procedure identity is invalid",
     ]
 
-    assert _manual_qa_errors({"status": "works"}, {}) == []
+    assert _manual_qa_errors({"status": "works"}, {}, None) == [
+        "functional_qa procedure identity is invalid",
+        "manual QA execution provenance is missing",
+        "manual QA procedure artifact digest is missing",
+    ]
 
 
 def test_functional_qa_diagnostics_are_stable_machine_contracts() -> None:
@@ -240,9 +495,11 @@ def test_high_assurance_adds_executed_manual_qa_when_risk_requires_it(
     }
     behavior = Mock(return_value={"status": "works", "errors": []})
     rehearsal_control = Mock(return_value=rehearsal)
+    manual_qa = Mock(return_value={"status": "works", "errors": []})
     independent = Mock(return_value={"status": "works", "errors": []})
     monkeypatch.setattr(assurance, "_behavior_control", behavior)
     monkeypatch.setattr(assurance, "_rehearsal_control", rehearsal_control)
+    monkeypatch.setattr(assurance, "_manual_qa_control", manual_qa)
     monkeypatch.setattr(assurance, "_independent_control", independent)
 
     project = {"enforcement": {"base_ref": "HEAD"}}
@@ -265,6 +522,7 @@ def test_high_assurance_adds_executed_manual_qa_when_risk_requires_it(
     assert report["controls"]["independent_verification"]["status"] == "works"
     behavior.assert_called_once_with(tmp_path, project, "high_assurance", None)
     rehearsal_control.assert_called_once_with(tmp_path, project)
+    manual_qa.assert_called_once_with(tmp_path, project)
     independent.assert_called_once_with(tmp_path, report["scope"])
 
     controls: dict[str, dict[str, object]] = {}
