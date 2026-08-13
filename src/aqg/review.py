@@ -1103,18 +1103,15 @@ def _test_expectation_resolution_roles(
     root: Path, run_id: str, affected_paths: set[str]
 ) -> set[str]:
     run_dir = root / ".aqg" / "council" / run_id
-    resolved_by_role: dict[str, set[str]] = {}
+    resolved_roles: set[str] = set()
     for path in sorted(run_dir.rglob("ballots/*.json")):
         resolution = _ballot_oracle_resolution(path, affected_paths)
         if resolution is None:
             continue
         role, resolved = resolution
-        resolved_by_role.setdefault(role, set()).update(resolved)
-    return {
-        role
-        for role, resolved in resolved_by_role.items()
-        if _claim_covers_paths(resolved, affected_paths)
-    }
+        if _claim_covers_paths(resolved, affected_paths):
+            resolved_roles.add(role)
+    return resolved_roles
 
 
 def _ballot_oracle_resolution(path: Path, affected_paths: set[str]) -> tuple[str, set[str]] | None:
@@ -1124,11 +1121,12 @@ def _ballot_oracle_resolution(path: Path, affected_paths: set[str]) -> tuple[str
     if not isinstance(findings, list) or not isinstance(reviewer, dict):
         return None
     diff = _bundle_diff(path)
-    resolved: set[str] = set()
     for finding in findings:
         if isinstance(finding, dict) and _is_test_expectation_resolution(finding):
-            resolved.update(_resolved_oracle_paths(finding, affected_paths, diff))
-    return str(reviewer.get("role")), resolved
+            resolved = _resolved_oracle_paths(finding, affected_paths, diff)
+            if _claim_covers_paths(resolved, affected_paths):
+                return str(reviewer.get("role")), resolved
+    return None
 
 
 def _clear_high_council_for_scope(

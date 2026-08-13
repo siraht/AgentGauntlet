@@ -1638,6 +1638,80 @@ def test_oracle_resolution_preserves_diff_whitespace_exactly() -> None:
     )
 
 
+def test_oracle_resolution_rejects_partial_findings_and_ballots(tmp_path: Path) -> None:
+    run_dir = tmp_path / ".aqg" / "council" / "council-partial" / "ballots"
+    run_dir.mkdir(parents=True)
+    affected = {"tests/test_a.py", "tests/test_b.py"}
+    bundle = {
+        "materials": [
+            {
+                "name": "current.diff.patch",
+                "content": (
+                    "diff --git a/tests/test_a.py b/tests/test_a.py\n"
+                    "--- a/tests/test_a.py\n"
+                    "+++ b/tests/test_a.py\n"
+                    "@@ -1 +1 @@\n"
+                    "-assert old_a\n"
+                    "+assert new_a\n"
+                    "diff --git a/tests/test_b.py b/tests/test_b.py\n"
+                    "--- a/tests/test_b.py\n"
+                    "+++ b/tests/test_b.py\n"
+                    "@@ -1 +1 @@\n"
+                    "-assert old_b\n"
+                    "+assert new_b\n"
+                ),
+            }
+        ]
+    }
+    (run_dir.parent / "candidate-bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+
+    def finding(path: str, suffix: str) -> dict[str, Any]:
+        return {
+            "severity": "info",
+            "category": "test-expectation-resolution",
+            "claim": f"{path} preserves its exact oracle",
+            "evidence_refs": [
+                {"material": "current.diff.patch"},
+                {"material": "review/current.json"},
+            ],
+            "oracle_resolutions": [
+                {
+                    "path": path,
+                    "removed_oracle": f"assert old_{suffix}",
+                    "replacement_oracle": f"assert new_{suffix}",
+                    "preserved_behavior": f"observable {suffix} remains checked",
+                }
+            ],
+        }
+
+    split_findings = {
+        "reviewer": {"role": "adversarial"},
+        "findings": [finding("tests/test_a.py", "a"), finding("tests/test_b.py", "b")],
+    }
+    (run_dir / "000.json").write_text(json.dumps(split_findings), encoding="utf-8")
+    assert _test_expectation_resolution_roles(tmp_path, "council-partial", affected) == set()
+
+    for index, (path, suffix) in enumerate(
+        (("tests/test_a.py", "a"), ("tests/test_b.py", "b")), start=1
+    ):
+        partial_ballot = {
+            "reviewer": {"role": "test_evidence"},
+            "findings": [finding(path, suffix)],
+        }
+        (run_dir / f"{index:03d}.json").write_text(json.dumps(partial_ballot), encoding="utf-8")
+    assert _test_expectation_resolution_roles(tmp_path, "council-partial", affected) == set()
+
+    complete = finding("tests/test_a.py", "a")
+    complete["oracle_resolutions"].extend(finding("tests/test_b.py", "b")["oracle_resolutions"])
+    (run_dir / "003.json").write_text(
+        json.dumps({"reviewer": {"role": "test_evidence"}, "findings": [complete]}),
+        encoding="utf-8",
+    )
+    assert _test_expectation_resolution_roles(tmp_path, "council-partial", affected) == {
+        "test_evidence"
+    }
+
+
 def test_clear_council_resolves_only_deleted_oracle_finding() -> None:
     deleted = {
         "code": "test-expectation-deleted",
