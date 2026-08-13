@@ -458,22 +458,38 @@ def test_candidate_bundle_contains_every_manifested_gate_detail(
     (run_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
     (run_dir / "retrospective.json").write_text('{"certification":"pending"}\n', encoding="utf-8")
     for gate in ("assurance", "coverage", "mutation_changed"):
-        (gates / f"{gate}.details.json").write_text(
-            json.dumps({"gate": gate}) + "\n", encoding="utf-8"
-        )
+        detail: dict[str, Any] = {"gate": gate}
+        if gate == "assurance":
+            detail["assurance"] = {
+                "failures": ["independent_verification: current council missing"],
+                "controls": {
+                    "behavior": {"status": "works"},
+                    "functional_rehearsal": {"status": "works"},
+                    "independent_verification": {"status": "not_tested"},
+                },
+            }
+        (gates / f"{gate}.details.json").write_text(json.dumps(detail) + "\n", encoding="utf-8")
     (tmp_path / "quality").mkdir()
     (tmp_path / "quality" / "change-risk.json").write_text("{}\n", encoding="utf-8")
     (tmp_path / "feature-spec").mkdir()
     monkeypatch.setattr(service, "git_diff", lambda *_args, **_kwargs: "diff")
     monkeypatch.setattr(service, "_review_projection", lambda *_args: {})
 
-    inputs = service._bundle_inputs(tmp_path, "origin/main", run_dir, {}, "candidate")
+    summary = {"gates": [{"name": "assurance", "exit_code": 1}]}
+    inputs = service._bundle_inputs(tmp_path, "origin/main", run_dir, summary, "candidate")
 
     assert inputs["run/retrospective.json"] == b'{"certification":"pending"}\n'
     assert {name for name in inputs if name.startswith("run/gates/")} == {
         "run/gates/assurance.details.json",
         "run/gates/coverage.details.json",
         "run/gates/mutation_changed.details.json",
+    }
+    context = json.loads(str(inputs["controller/pre-council-assurance.json"]))
+    assert context["failed_gates"] == ["assurance"]
+    assert context["control_statuses"] == {
+        "behavior": "works",
+        "functional_rehearsal": "works",
+        "independent_verification": "not_tested",
     }
 
 

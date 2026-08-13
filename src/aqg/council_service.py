@@ -177,10 +177,43 @@ def _review_projection(root: Path, base: str) -> dict[str, Any]:
     return {key: packet[key] for key in keys}
 
 
-def _add_candidate_run_inputs(run_dir: Path, inputs: dict[str, str | bytes]) -> None:
+def _pre_council_assurance_context(
+    summary: Mapping[str, Any], assurance_detail: Mapping[str, Any]
+) -> dict[str, Any]:
+    assurance = assurance_detail.get("assurance", {})
+    controls = assurance.get("controls", {}) if isinstance(assurance, Mapping) else {}
+    return {
+        "schema_version": 1,
+        "seed_run_is_final_assurance": False,
+        "failed_gates": [
+            gate.get("name")
+            for gate in summary.get("gates", [])
+            if isinstance(gate, Mapping) and gate.get("exit_code") != PASS
+        ],
+        "assurance_failures": assurance.get("failures", []),
+        "control_statuses": {
+            name: control.get("status")
+            for name, control in controls.items()
+            if isinstance(control, Mapping)
+        },
+        "interpretation": (
+            "A candidate council runs before final assurance. Inspect the complete assurance "
+            "detail. If its sole unresolved control is this exact current council, that circular "
+            "precondition is not an independent candidate defect; every other failure remains."
+        ),
+    }
+
+
+def _add_candidate_run_inputs(
+    run_dir: Path, summary: Mapping[str, Any], inputs: dict[str, str | bytes]
+) -> None:
     inputs["run/retrospective.json"] = (run_dir / "retrospective.json").read_bytes()
     for path in sorted((run_dir / "gates").glob("*.details.json")):
         inputs[f"run/gates/{path.name}"] = path.read_bytes()
+    assurance = read_json(run_dir / "gates" / "assurance.details.json")
+    inputs["controller/pre-council-assurance.json"] = _json_text(
+        _pre_council_assurance_context(summary, assurance)
+    )
 
 
 def _add_feature_inputs(root: Path, purpose: str, inputs: dict[str, str | bytes]) -> None:
@@ -210,7 +243,7 @@ def _bundle_inputs(
         inputs["quality/change-risk.json"] = (root / "quality" / "change-risk.json").read_bytes()
         inputs["review/current.json"] = _json_text(_review_projection(root, base))
     if purpose == "candidate":
-        _add_candidate_run_inputs(run_dir, inputs)
+        _add_candidate_run_inputs(run_dir, summary, inputs)
     _add_feature_inputs(root, purpose, inputs)
     if purpose == "debt_baseline":
         inputs["controller/debt-adoption-boundary.json"] = _json_text(
