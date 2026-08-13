@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 _DOGFOOD_SPEC = importlib.util.spec_from_file_location(
     "aqg_dogfood_control_surfaces",
     Path(__file__).resolve().parents[1] / "scripts" / "dogfood_control_surfaces.py",
@@ -20,6 +22,7 @@ _DOGFOOD_SPEC.loader.exec_module(_DOGFOOD)
 
 
 class FunctionalRehearsalContractTests(unittest.TestCase):
+    @pytest.mark.mutation_incompatible
     def test_full_rehearsal_proves_public_surfaces_rollback_and_cleanup(self) -> None:
         """AQG-CORE-025 and AQG-RETRO-013: executable QA and rollback replace claims."""
         payload = _DOGFOOD.dogfood()
