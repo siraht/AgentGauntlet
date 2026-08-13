@@ -28,8 +28,8 @@ from .util import (
 )
 
 
-def debt_control_fingerprint(root: Path) -> str:
-    """Bind debt to substantive controls, excluding separately governed promotion state."""
+def debt_control_fingerprint_evidence(root: Path) -> dict[str, Any]:
+    """Expose the exact promotion-stable control fingerprint derivation."""
     project_path = root / "quality" / "project.json"
     project = copy.deepcopy(load_project(root)) if project_path.is_file() else {}
     enforcement = project.get("enforcement")
@@ -44,7 +44,28 @@ def debt_control_fingerprint(root: Path) -> str:
         "project_without_promotion_state": project,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+    return {
+        "schema_version": 1,
+        "algorithm": "sha256(canonical_json(derivation_input))",
+        "excluded_promotion_only": [
+            "quality/baselines/debt.json",
+            "quality/project.json:enforcement.stage",
+            "quality/project.json:enforcement.scope",
+        ],
+        "derivation_input": payload,
+        "debt_control_fingerprint": "sha256:" + hashlib.sha256(canonical.encode()).hexdigest(),
+        "complete_control_fingerprint": control_fingerprint(root),
+        "purpose": (
+            "The complete fingerprint binds measurement and council scope. The debt fingerprint "
+            "binds every substantive control while allowing the separately governed shadow-to-"
+            "ratchet promotion and baseline installation to occur without making reviewed debt stale."
+        ),
+    }
+
+
+def debt_control_fingerprint(root: Path) -> str:
+    """Bind debt to substantive controls, excluding separately governed promotion state."""
+    return str(debt_control_fingerprint_evidence(root)["debt_control_fingerprint"])
 
 
 def _object(path: Path, label: str) -> dict[str, Any]:

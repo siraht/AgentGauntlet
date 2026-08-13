@@ -366,6 +366,13 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
         lambda _root, _run_id: {"baseline": proposal},
     )
     monkeypatch.setattr(
+        "aqg.debt_store.debt_control_fingerprint_evidence",
+        lambda _root: {
+            "debt_control_fingerprint": proposal["control_fingerprint"],
+            "complete_control_fingerprint": "sha256:" + "f" * 64,
+        },
+    )
+    monkeypatch.setattr(
         service,
         "load_project",
         lambda _root: {"thresholds": {"structure": {"max_cyclomatic_complexity": 8}}},
@@ -384,6 +391,12 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
     assert reconciliation["inventory_count"] == 1
     assert reconciliation["inventory_sha256"] == reconciliation["proposal_inventory_sha256"]
     assert reconciliation["source_reports"]["structure.details.json"].startswith("sha256:")
+    assert (
+        bytes(inputs["run/gates/structure.details.json"])
+        == (run_dir / "gates" / "structure.details.json").read_bytes()
+    )
+    binding = json.loads(str(inputs["controller/debt-control-binding.json"]))
+    assert binding["debt_control_fingerprint"] == proposal["control_fingerprint"]
     eligibility = json.loads(str(inputs["controller/debt-eligibility.json"]))
     assert eligibility["inventory_count"] == 1
     assert eligibility["inventory_categories"] == ["structure"]

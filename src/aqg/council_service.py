@@ -220,7 +220,7 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
     # Imported lazily because review -> runner imports debt_store while this
     # service is being initialized.
     from .debt import document_fingerprint
-    from .debt_store import build_debt_baseline_proposal
+    from .debt_store import build_debt_baseline_proposal, debt_control_fingerprint_evidence
     from .retrospective_inventory import debt_inventory
 
     proposal = build_debt_baseline_proposal(root, run_dir.name)["baseline"]
@@ -284,6 +284,9 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
                     ),
                 }
             ),
+            "controller/debt-control-binding.json": _json_text(
+                debt_control_fingerprint_evidence(root)
+            ),
             "run/retrospective.json": (run_dir / "retrospective.json").read_bytes(),
         }
     )
@@ -291,10 +294,10 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
         path = run_dir / "gates" / f"{gate}.json"
         if path.is_file():
             inputs[f"run/gates/{path.name}"] = path.read_bytes()
-    for gate, detail in details.items():
-        inputs[f"run/gates/{gate}.details.json"] = json.dumps(
-            detail, sort_keys=True, separators=(",", ":")
-        )
+    for gate in details:
+        inputs[f"run/gates/{gate}.details.json"] = (
+            run_dir / "gates" / f"{gate}.details.json"
+        ).read_bytes()
 
 
 def _debt_source_details(run_dir: Path, inventory: Any) -> dict[str, Mapping[str, Any]]:

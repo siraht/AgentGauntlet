@@ -24,6 +24,7 @@ from aqg.debt_store import (
     _verified_shadow_documents,
     build_debt_baseline_proposal,
     debt_control_fingerprint,
+    debt_control_fingerprint_evidence,
     load_current_debt_baseline,
     propose_debt_baseline,
     review_debt_proposal,
@@ -537,3 +538,14 @@ def test_debt_control_fingerprint_ignores_only_promotion_state(tmp_path: Path) -
     project["thresholds"]["coverage"]["lines"] += 1
     path.write_text(json.dumps(project), encoding="utf-8")
     assert debt_control_fingerprint(tmp_path) != before
+
+
+def test_debt_control_fingerprint_exposes_reproducible_promotion_mapping(tmp_path: Path) -> None:
+    initialize_project(tmp_path, owner="@quality", force=True)
+
+    evidence = debt_control_fingerprint_evidence(tmp_path)
+
+    assert evidence["debt_control_fingerprint"] == debt_control_fingerprint(tmp_path)
+    assert evidence["complete_control_fingerprint"] == control_fingerprint(tmp_path)
+    assert evidence["algorithm"] == "sha256(canonical_json(derivation_input))"
+    assert "quality/project.json:enforcement.stage" in evidence["excluded_promotion_only"]
