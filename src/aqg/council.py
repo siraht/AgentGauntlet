@@ -276,39 +276,15 @@ def provider_identity(model_id: str) -> dict[str, str]:
             "model_family": "grok",
         }
     if model_id.startswith("synthetic/"):
-        family = "synthetic:" + model_id.rpartition("/")[2].partition("-")[0].lower()
-        return {
-            "provider_id": "synthetic",
-            "provider_group": "synthetic:api.synthetic.new",
-            "endpoint_origin": "https://api.synthetic.new/openai/v1",
-            "model_family": family,
-        }
+        return _synthetic_identity(model_id)
     if model_id.startswith("opencode/"):
-        family = "opencode:" + model_id.removeprefix("opencode/").partition("-")[0].lower()
-        return {
-            "provider_id": "opencode",
-            "provider_group": "opencode:opencode.ai",
-            "endpoint_origin": "https://opencode.ai/zen/v1",
-            "model_family": family,
-        }
+        return _opencode_identity(model_id)
     if model_id.startswith("codex/"):
-        family = "openai:" + model_id.removeprefix("codex/").partition("-")[0].lower()
-        return {
-            "provider_id": "codex",
-            "provider_group": "openai:codex",
-            "endpoint_origin": "local-subscription",
-            "model_family": family,
-        }
+        return _codex_identity(model_id)
     if model_id.startswith("claude/"):
         return _claude_identity(model_id)
     if model_id.startswith("gemini/"):
-        family = "google:" + model_id.removeprefix("gemini/").partition("-")[0].lower()
-        return {
-            "provider_id": "gemini",
-            "provider_group": "google:gemini-cli",
-            "endpoint_origin": "oauth-personal-free-quota",
-            "model_family": family,
-        }
+        return _gemini_identity(model_id)
     raise ConfigurationError(f"unsupported council model namespace: {model_id}")
 
 
@@ -318,6 +294,46 @@ def _claude_identity(model_id: str) -> dict[str, str]:
         "provider_id": "claude",
         "provider_group": "anthropic:claude-cli",
         "endpoint_origin": "local-subscription",
+        "model_family": family,
+    }
+
+
+def _synthetic_identity(model_id: str) -> dict[str, str]:
+    family = "synthetic:" + model_id.rpartition("/")[2].partition("-")[0].lower()
+    return {
+        "provider_id": "synthetic",
+        "provider_group": "synthetic:api.synthetic.new",
+        "endpoint_origin": "https://api.synthetic.new/openai/v1",
+        "model_family": family,
+    }
+
+
+def _opencode_identity(model_id: str) -> dict[str, str]:
+    family = "opencode:" + model_id.removeprefix("opencode/").partition("-")[0].lower()
+    return {
+        "provider_id": "opencode",
+        "provider_group": "opencode:opencode.ai",
+        "endpoint_origin": "https://opencode.ai/zen/v1",
+        "model_family": family,
+    }
+
+
+def _codex_identity(model_id: str) -> dict[str, str]:
+    family = "openai:" + model_id.removeprefix("codex/").partition("-")[0].lower()
+    return {
+        "provider_id": "codex",
+        "provider_group": "openai:codex",
+        "endpoint_origin": "local-subscription",
+        "model_family": family,
+    }
+
+
+def _gemini_identity(model_id: str) -> dict[str, str]:
+    family = "google:" + model_id.removeprefix("gemini/").partition("-")[0].lower()
+    return {
+        "provider_id": "gemini",
+        "provider_group": "google:gemini-cli",
+        "endpoint_origin": "oauth-personal-free-quota",
         "model_family": family,
     }
 

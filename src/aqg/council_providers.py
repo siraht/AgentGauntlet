@@ -455,11 +455,17 @@ def _validate_exact_provider_command(value: Mapping[str, Any], command: list[str
         raise ConfigurationError(
             "Codex provider command does not match the protected argument shape"
         )
-    if value["executable"] == "gemini" and not _valid_gemini_command(value["model_id"], command):
+    _validate_gemini_command(value, command)
+    _validate_claude_command(value, command)
+
+
+def _validate_gemini_command(value: Mapping[str, Any], command: list[str]) -> None:
+    if value["executable"] != "gemini":
+        return
+    if not _valid_gemini_command(value["model_id"], command):
         raise ConfigurationError(
             "Gemini provider command does not match the protected argument shape"
         )
-    _validate_claude_command(value, command)
 
 
 def _validate_claude_command(value: Mapping[str, Any], command: list[str]) -> None:
