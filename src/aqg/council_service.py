@@ -82,9 +82,19 @@ TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
         ("adversarial", "grok-4.5"),
         ("test_evidence", "codex/gpt-5.6-sol"),
         ("security_trust", "codex/gpt-5.6-sol"),
-        ("operability_rollback", _high_operability_model()),
+        ("operability_rollback", "opencode/deepseek-v4-flash-free"),
     ),
 }
+
+
+def _tier_members(tier: str) -> tuple[tuple[str, str], ...]:
+    members = TIER_MEMBERS[tier]
+    if tier != "high":
+        return members
+    return tuple(
+        (role, _high_operability_model() if role == "operability_rollback" else model)
+        for role, model in members
+    )
 
 
 def _series_limitations(chunked: bool) -> list[str]:
@@ -101,7 +111,7 @@ def _series_limitations(chunked: bool) -> list[str]:
 def _tier_rules(tier: str) -> tuple[list[str], int]:
     if tier not in TIER_MEMBERS:
         raise ConfigurationError(f"unknown council tier: {tier!r}")
-    roles = sorted(ROLES) if tier == "smoke" else sorted(role for role, _ in TIER_MEMBERS[tier])
+    roles = sorted(ROLES) if tier == "smoke" else sorted(role for role, _ in _tier_members(tier))
     return roles, 3
 
 
@@ -576,7 +586,7 @@ def _plan_payload(
     roles, groups = _tier_rules(tier)
     chunked = len(series["bundles"]) > 1
     members = []
-    for role, model_id in TIER_MEMBERS[tier]:
+    for role, model_id in _tier_members(tier):
         members.append({"role": role, "model_id": model_id, **provider_identity(model_id)})
     return {
         "schema_version": SERVICE_SCHEMA_VERSION,
@@ -653,7 +663,7 @@ def council_doctor(
         name: _tool_version(name, which=which, executor=executor)
         for name in ("codex", "gemini", "grok", "opencode")
     }
-    models = {tier: [model for _, model in members] for tier, members in TIER_MEMBERS.items()}
+    models = {tier: [model for _, model in _tier_members(tier)] for tier in TIER_MEMBERS}
     missing = sorted(name for name, item in tools.items() if not item["available"])
     return {
         "schema_version": SERVICE_SCHEMA_VERSION,
@@ -688,7 +698,7 @@ def _run_members(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     ballots: list[dict[str, Any]] = []
     executions: list[dict[str, Any]] = []
-    for role, model_id in TIER_MEMBERS[tier]:
+    for role, model_id in _tier_members(tier):
         ballot, execution = collect_ballot(
             review_id=review_id,
             model_id=model_id,
