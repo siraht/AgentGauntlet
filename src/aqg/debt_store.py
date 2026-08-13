@@ -209,7 +209,12 @@ def _council_scope_errors(
         "revision": proposal["source_revision"],
         "base_revision": summary.get("base_ref"),
         "change_fingerprint": proposal["measurement"]["change_fingerprint"],
-        "control_fingerprint": proposal["control_fingerprint"],
+        # Council evidence is bound to the complete execution controls captured
+        # by the shadow run.  The proposal deliberately stores the narrower
+        # debt-control fingerprint so promotion from shadow to ratchet does not
+        # invalidate reviewed debt.  Those are different trust assertions and
+        # must not be compared as though they were interchangeable.
+        "control_fingerprint": summary.get("control_fingerprint"),
     }
     if not isinstance(scope, dict):
         return ["council candidate scope is missing"]

@@ -82,7 +82,12 @@ def _policy(root: Path) -> None:
     path.write_text("version = 2\n", encoding="utf-8")
 
 
-def _clear_council_report(proposal: dict, *, run_id: str = "council-exact") -> dict:
+def _clear_council_report(
+    proposal: dict,
+    *,
+    run_id: str = "council-exact",
+    control_fingerprint: str | None = None,
+) -> dict:
     return {
         "run_id": run_id,
         "tier": "high",
@@ -90,7 +95,7 @@ def _clear_council_report(proposal: dict, *, run_id: str = "council-exact") -> d
             "revision": proposal["source_revision"],
             "base_revision": "HEAD",
             "change_fingerprint": proposal["measurement"]["change_fingerprint"],
-            "control_fingerprint": proposal["control_fingerprint"],
+            "control_fingerprint": control_fingerprint or proposal["control_fingerprint"],
         },
         "status": "advisory_clear",
         "complete": True,
@@ -121,8 +126,12 @@ def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
         inventory=[],
         policy_fingerprint="sha256:" + "e" * 64,
     )
-    summary = {"base_ref": "HEAD"}
-    report = _clear_council_report(proposal)
+    complete_controls = "sha256:" + "f" * 64
+    summary = {
+        "base_ref": "HEAD",
+        "control_fingerprint": complete_controls,
+    }
+    report = _clear_council_report(proposal, control_fingerprint=complete_controls)
     manifest = tmp_path / ".aqg" / "council" / "council-exact" / "manifest.json"
     manifest.parent.mkdir(parents=True)
     manifest.write_text('{"immutable":true}\n', encoding="utf-8")
