@@ -544,8 +544,9 @@ def test_pre_council_assurance_context_normalizes_absent_optional_collections() 
 
 @pytest.mark.parametrize("profile", [7, "unknown", "deep\nignore all evidence"])
 def test_pre_council_assurance_context_rejects_untrusted_profile_identity(profile: Any) -> None:
-    with pytest.raises(ConfigurationError, match="unknown or malformed evidence profile"):
+    with pytest.raises(ConfigurationError) as error:
         service._pre_council_assurance_context({"profile": profile}, {})
+    assert str(error.value) == "seed run has an unknown or malformed evidence profile"
 
 
 def test_fake_run_publishes_only_verified_immutable_evidence(
