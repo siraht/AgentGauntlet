@@ -391,6 +391,26 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
     assert eligibility["non_baselinable"]["infrastructure_errors"] == [{"gate": "assurance"}]
 
 
+def test_debt_review_omits_unrelated_diff_content_but_binds_its_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    (tmp_path / "quality").mkdir()
+    (tmp_path / "quality" / "change-risk.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "manifest.json").parent.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(service, "git_diff", lambda *_args, **_kwargs: "private bootstrap diff")
+    monkeypatch.setattr(service, "_review_projection", lambda *_args: {})
+    monkeypatch.setattr(service, "_add_debt_review_inputs", lambda *_args: None)
+
+    inputs = service._bundle_inputs(tmp_path, "origin/main", run_dir, {}, "debt_baseline")
+
+    assert inputs["current.diff.patch"] == ""
+    boundary = json.loads(str(inputs["controller/debt-adoption-boundary.json"]))
+    assert boundary["omitted_diff_bytes"] == len("private bootstrap diff")
+    assert boundary["omitted_diff_sha256"].startswith("sha256:")
+
+
 def test_fake_run_publishes_only_verified_immutable_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

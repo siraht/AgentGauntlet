@@ -184,8 +184,9 @@ def _bundle_inputs(
     summary: Mapping[str, Any],
     purpose: str = "candidate",
 ) -> dict[str, str | bytes]:
+    diff = git_diff(root, base, unified=3)
     inputs: dict[str, str | bytes] = {
-        "current.diff.patch": git_diff(root, base, unified=3),
+        "current.diff.patch": "" if purpose == "debt_baseline" else diff,
         "quality/change-risk.json": (root / "quality" / "change-risk.json").read_bytes(),
         "review/current.json": _json_text(_review_projection(root, base)),
         "run/manifest.json": (run_dir / "manifest.json").read_bytes(),
@@ -194,6 +195,22 @@ def _bundle_inputs(
     for path in sorted((root / "feature-spec").glob("*.md")):
         inputs[f"feature-spec/{path.name}"] = path.read_bytes()
     if purpose == "debt_baseline":
+        inputs["controller/debt-adoption-boundary.json"] = _json_text(
+            {
+                "schema_version": 1,
+                "adoption_meaning": (
+                    "This is the initial no-regression floor for the exact current committed "
+                    "repository tree. It does not claim the inventory predates the current diff "
+                    "and it does not certify any candidate behavior or non-baselinable failure."
+                ),
+                "omitted_diff_bytes": len(diff.encode()),
+                "omitted_diff_sha256": "sha256:" + hashlib.sha256(diff.encode()).hexdigest(),
+                "scope_binding": (
+                    "The council scope still binds revision, base revision, complete change "
+                    "fingerprint, control fingerprint, and source evidence manifest."
+                ),
+            }
+        )
         _add_debt_review_inputs(root, run_dir, inputs)
     return inputs
 
@@ -347,7 +364,10 @@ def _prepare_plan(
                 "Decide only whether this shadow inventory is honest and safe to record as "
                 "inherited debt for no-regression ratcheting. Clear does not certify the "
                 "candidate, satisfy assurance, authorize release, or turn a failed measurement "
-                "into a pass. Block defects that make the inventory or ratchet unsafe or dishonest."
+                "into a pass. This initial-adoption floor describes the exact current committed "
+                "tree; do not require proof that items predate the bootstrap diff. Judge the exact "
+                "inventory, raw sources, deterministic reconciliation, and ratchet safety. Other "
+                "failures remain explicitly unresolved and outside this authority."
                 if purpose == "debt_baseline"
                 else (
                     "Decide only whether the exact protected control changes preserve or "
