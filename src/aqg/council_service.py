@@ -574,6 +574,12 @@ def _provider_routing(data_classification: str) -> dict[str, Any]:
     }
 
 
+def _completion_meaning(chunked: bool) -> str:
+    if chunked:
+        return "all_required_chunk_ballots_received"
+    return "all_required_candidate_ballots_received"
+
+
 def _plan_payload(
     tier: str,
     run_dir: Path,
@@ -608,11 +614,7 @@ def _plan_payload(
         "bundle_mode": "chunked" if chunked else "single",
         "bundle_count": len(series["bundles"]),
         "review_scope": "bounded_diff_chunk" if chunked else "candidate",
-        "completion_meaning": (
-            "all_required_chunk_ballots_received"
-            if chunked
-            else "all_required_candidate_ballots_received"
-        ),
+        "completion_meaning": _completion_meaning(chunked),
         "series_limitations": _series_limitations(chunked),
         "bundle_bytes": max(chunk["bundle_bytes"] for chunk in series["chunks"]),
         "total_bundle_bytes": sum(chunk["bundle_bytes"] for chunk in series["chunks"]),
