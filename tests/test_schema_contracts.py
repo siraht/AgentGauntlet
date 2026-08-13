@@ -195,6 +195,29 @@ def test_risk_and_debt_documents_conform_to_public_contracts() -> None:
         "reviewed_at": "2026-07-28T00:02:00Z",
     }
     assert validate_named_schema(root, "debt-baseline", baseline) == []
+    council = dict(baseline)
+    council.pop("reviewer")
+    council["review_authority"] = {
+        "kind": "agent_council",
+        "run_id": "council-exact",
+        "tier": "high",
+        "manifest_sha256": "sha256:" + "5" * 64,
+        "report_sha256": "sha256:" + "6" * 64,
+        "provider_groups": ["provider-a", "provider-b", "provider-c"],
+        "covered_roles": [
+            "operability_rollback",
+            "requirements_behavior",
+            "security_trust",
+            "test_evidence",
+        ],
+        "scope": {
+            "revision": "a" * 40,
+            "base_revision": "HEAD",
+            "change_fingerprint": "sha256:" + "3" * 64,
+            "control_fingerprint": "sha256:" + "2" * 64,
+        },
+    }
+    assert validate_named_schema(root, "debt-baseline", council) == []
 
 
 def test_document_path_validation_is_reusable_by_ci_and_integrations(tmp_path: Path) -> None:

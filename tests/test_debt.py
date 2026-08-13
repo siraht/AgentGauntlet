@@ -72,6 +72,29 @@ def _baseline(
     return document
 
 
+def _council_authority() -> dict:
+    return {
+        "kind": "agent_council",
+        "run_id": "council-verified",
+        "tier": "high",
+        "manifest_sha256": "sha256:" + "a" * 64,
+        "report_sha256": "sha256:" + "b" * 64,
+        "provider_groups": ["provider-a", "provider-b", "provider-c"],
+        "covered_roles": [
+            "operability_rollback",
+            "requirements_behavior",
+            "security_trust",
+            "test_evidence",
+        ],
+        "scope": {
+            "revision": "abc123",
+            "base_revision": "HEAD",
+            "change_fingerprint": "sha256:" + "c" * 64,
+            "control_fingerprint": "sha256:" + "d" * 64,
+        },
+    }
+
+
 class NormalizeInventoryTests(unittest.TestCase):
     def test_deterministic_ordering_and_path_normalization(self) -> None:
         items = [
@@ -172,6 +195,25 @@ class ValidateBaselineTests(unittest.TestCase):
         proposed = _baseline([_item("a")], state="proposed")
         with self.assertRaises(DebtError):
             validate_baseline(proposed)
+
+    def test_reviewed_baseline_accepts_honest_council_authority_identity(self) -> None:
+        document = _baseline([_item("a")], reviewer=None)
+        document["review_authority"] = _council_authority()
+        validated = validate_baseline(document)
+
+        self.assertNotIn("reviewer", validated)
+        self.assertEqual(validated["review_authority"], _council_authority())
+        self.assertEqual(validate_baseline(validated), validated)
+
+        impersonating = copy.deepcopy(document)
+        impersonating["reviewer"] = "not-a-human"
+        with self.assertRaisesRegex(DebtError, "must not claim a human reviewer"):
+            validate_baseline(impersonating)
+
+        malformed = copy.deepcopy(document)
+        malformed["review_authority"]["provider_groups"] = ["one", "one"]
+        with self.assertRaisesRegex(DebtError, "sorted and unique"):
+            validate_baseline(malformed)
 
 
 class CompareTests(unittest.TestCase):

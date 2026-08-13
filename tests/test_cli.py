@@ -206,11 +206,42 @@ class CliControlSurfaceTests(unittest.TestCase):
             "review",
             "--proposal",
             "debt-example",
+            "--authority",
+            "human",
             "--reviewer",
             "owner@example.test",
         )
         self.assertEqual(code, CONFIGURATION_ERROR)
         self.assertIn("--confirm-reviewed", payload["error"]["message"])
+
+    def test_debt_review_routes_normal_authority_to_an_explicit_council_run(self) -> None:
+        report = {
+            "path": "quality/baselines/debt.json",
+            "document_fingerprint": "sha256:reviewed",
+            "baseline": {
+                "review_authority": {"run_id": "council-exact"},
+            },
+        }
+        with patch("aqg.cli.review_debt_proposal", return_value=report) as review:
+            code, payload, stderr = self._json_command(
+                "baseline",
+                "debt",
+                "review",
+                "--proposal",
+                "debt-example",
+                "--review-run-id",
+                "council-exact",
+            )
+
+        self.assertEqual(code, PASS, stderr)
+        self.assertEqual(payload, report)
+        review.assert_called_once_with(
+            self.root,
+            "debt-example",
+            authority="council",
+            reviewer=None,
+            review_run_id="council-exact",
+        )
 
     def test_global_flags_work_after_the_subcommand(self) -> None:
         stdout = io.StringIO()

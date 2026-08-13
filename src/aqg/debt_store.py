@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .council import ROLES, fingerprint
 from .debt import DebtError, document_fingerprint, validate_baseline
 from .errors import ConfigurationError, InfrastructureError
 from .evidence_manifest import (
@@ -182,24 +183,102 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
     }
 
 
-def review_debt_proposal(
-    root: Path,
-    proposal_id: str,
-    *,
-    reviewer: str,
-) -> dict[str, Any]:
-    """Install a human-reviewed proposal under scoped local maintenance.
+def _council_scope_errors(
+    report: dict[str, Any], proposal: dict[str, Any], summary: dict[str, Any]
+) -> list[str]:
+    scope = report.get("scope")
+    expected = {
+        "revision": proposal["source_revision"],
+        "base_revision": summary.get("base_ref"),
+        "change_fingerprint": proposal["measurement"]["change_fingerprint"],
+        "control_fingerprint": proposal["control_fingerprint"],
+    }
+    if not isinstance(scope, dict):
+        return ["council candidate scope is missing"]
+    return [
+        f"council {name} does not match the immutable shadow candidate"
+        for name, expected_value in expected.items()
+        if scope.get(name) != expected_value
+    ]
 
-    Repository code-owner enforcement remains the external identity and merge
-    authority; this command only records the declared reviewer and exact bytes.
-    """
-    proposal_id = validate_run_id(proposal_id)
-    if not reviewer.strip():
-        raise ConfigurationError("reviewer must identify the human debt reviewer")
-    proposal_path = root / ".aqg" / "proposals" / "debt" / f"{proposal_id}.json"
-    proposal = validate_baseline(_object(proposal_path, "debt proposal"))
-    if proposal["state"] != "proposed":
-        raise ConfigurationError("only a proposed debt baseline can be reviewed")
+
+def _council_quality_errors(report: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    checks = (
+        (report.get("tier") == "high", "council tier must be high"),
+        (report.get("status") == "advisory_clear", "council status must be advisory_clear"),
+        (report.get("complete") is True, "council must be complete"),
+        (not report.get("blockers"), "council must contain no blockers"),
+        (
+            isinstance(report.get("dissent"), dict) and report["dissent"].get("present") is False,
+            "council must contain no dissent",
+        ),
+        (not report.get("incomplete_reasons"), "council must contain no incomplete reasons"),
+    )
+    errors.extend(message for passed, message in checks if not passed)
+    groups = report.get("provider_groups")
+    roles = report.get("covered_roles")
+    if not isinstance(groups, list) or len(set(groups)) < 3:
+        errors.append("council must include at least three independent provider groups")
+    if not isinstance(roles, list) or set(roles) != set(ROLES):
+        errors.append("council must cover every required review role")
+    return errors
+
+
+def _council_authority(
+    root: Path,
+    proposal: dict[str, Any],
+    summary: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    # Imported lazily because council_service uses review -> runner -> debt_store.
+    from .council_service import report_council
+
+    report = report_council(root, validate_run_id(run_id))
+    errors = _council_scope_errors(report, proposal, summary) + _council_quality_errors(report)
+    if errors:
+        raise ConfigurationError("debt review council is not authoritative: " + "; ".join(errors))
+    resolved = str(report["run_id"])
+    manifest_path = root / ".aqg" / "council" / resolved / "manifest.json"
+    return {
+        "kind": "agent_council",
+        "run_id": resolved,
+        "tier": "high",
+        "manifest_sha256": f"sha256:{sha256_file(manifest_path)}",
+        "report_sha256": fingerprint(report),
+        "provider_groups": sorted(str(value) for value in report["provider_groups"]),
+        "covered_roles": sorted(str(value) for value in report["covered_roles"]),
+        "scope": dict(report["scope"]),
+    }
+
+
+def _review_identity(
+    root: Path,
+    proposal: dict[str, Any],
+    summary: dict[str, Any],
+    *,
+    authority: str,
+    reviewer: str | None,
+    review_run_id: str | None,
+) -> dict[str, Any]:
+    if authority == "council":
+        if reviewer:
+            raise ConfigurationError("--reviewer is only valid with --authority human")
+        if not review_run_id:
+            raise ConfigurationError("council debt review requires --review-run-id")
+        return {"review_authority": _council_authority(root, proposal, summary, review_run_id)}
+    if authority != "human":
+        raise ConfigurationError("debt review authority must be 'council' or 'human'")
+    if review_run_id:
+        raise ConfigurationError("--review-run-id is only valid with --authority council")
+    if not reviewer or not reviewer.strip():
+        raise ConfigurationError("human debt review requires --reviewer")
+    return {"reviewer": reviewer.strip()}
+
+
+def _proposal_source_documents(
+    root: Path, proposal: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any], Path]:
     run_id = proposal["measurement"]["run_id"]
     run_dir = root / ".aqg" / "runs" / run_id
     verification = verify_run_manifest(run_dir)
@@ -208,23 +287,53 @@ def review_debt_proposal(
             f"proposal source run {run_id} failed manifest verification: "
             + "; ".join(verification["errors"])
         )
-    summary = _object(run_dir / "summary.json", "run summary")
-    retrospective = _object(run_dir / "retrospective.json", "retrospective evidence")
-    expected_manifest = f"sha256:{sha256_file(run_dir / 'manifest.json')}"
-    expected_policy = f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}"
-    expected_controls = control_fingerprint(root, exclude_patterns=["quality/baselines/debt.json"])
-    if (
-        summary.get("mode") != "shadow"
-        or summary.get("revision") != proposal["source_revision"]
-        or summary.get("change_fingerprint") != proposal["measurement"]["change_fingerprint"]
-        or expected_manifest != proposal["measurement"]["manifest_fingerprint"]
-        or retrospective.get("inventory") != proposal["inventory"]
-        or expected_policy != proposal["policy_fingerprint"]
-        or expected_controls != proposal["control_fingerprint"]
-    ):
+    return (
+        _object(run_dir / "summary.json", "run summary"),
+        _object(run_dir / "retrospective.json", "retrospective evidence"),
+        run_dir,
+    )
+
+
+def _require_current_proposal_source(
+    root: Path,
+    proposal: dict[str, Any],
+    summary: dict[str, Any],
+    retrospective: dict[str, Any],
+    run_dir: Path,
+) -> None:
+    expected = (
+        summary.get("mode") == "shadow",
+        summary.get("revision") == proposal["source_revision"],
+        summary.get("change_fingerprint") == proposal["measurement"]["change_fingerprint"],
+        f"sha256:{sha256_file(run_dir / 'manifest.json')}"
+        == proposal["measurement"]["manifest_fingerprint"],
+        retrospective.get("inventory") == proposal["inventory"],
+        f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}" == proposal["policy_fingerprint"],
+        control_fingerprint(root, exclude_patterns=["quality/baselines/debt.json"])
+        == proposal["control_fingerprint"],
+    )
+    if not all(expected):
         raise ConfigurationError(
             "debt proposal no longer matches its immutable shadow evidence and current controls"
         )
+
+
+def review_debt_proposal(
+    root: Path,
+    proposal_id: str,
+    *,
+    authority: str = "council",
+    reviewer: str | None = None,
+    review_run_id: str | None = None,
+) -> dict[str, Any]:
+    """Install a proposal after exact-candidate council or reserved human review."""
+    proposal_id = validate_run_id(proposal_id)
+    proposal_path = root / ".aqg" / "proposals" / "debt" / f"{proposal_id}.json"
+    proposal = validate_baseline(_object(proposal_path, "debt proposal"))
+    if proposal["state"] != "proposed":
+        raise ConfigurationError("only a proposed debt baseline can be reviewed")
+    summary, retrospective, run_dir = _proposal_source_documents(root, proposal)
+    _require_current_proposal_source(root, proposal, summary, retrospective, run_dir)
     target = root / "quality" / "baselines" / "debt.json"
     if target.exists():
         raise ConfigurationError(
@@ -235,12 +344,20 @@ def review_debt_proposal(
         "quality/baselines/debt.json",
         "add",
     )
+    identity = _review_identity(
+        root,
+        proposal,
+        summary,
+        authority=authority,
+        reviewer=reviewer,
+        review_run_id=review_run_id,
+    )
     reviewed = copy.deepcopy(proposal)
     reviewed.update(
         {
             "state": "reviewed",
-            "reviewer": reviewer.strip(),
             "reviewed_at": utc_now(),
+            **identity,
         }
     )
     reviewed = validate_baseline(reviewed)

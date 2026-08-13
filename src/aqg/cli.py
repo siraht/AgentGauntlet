@@ -539,14 +539,27 @@ def _add_evidence_parsers(sub: Any) -> None:
         help="completed shadow run identifier; defaults to the newest shadow run",
     )
     baseline_review = baseline_debt_sub.add_parser(
-        "review", help="install a proposal after explicit human debt review"
+        "review", help="install a proposal after exact-candidate council or reserved human review"
     )
     baseline_review.add_argument("--proposal", required=True)
-    baseline_review.add_argument("--reviewer", required=True)
+    baseline_review.add_argument(
+        "--authority",
+        choices=("council", "human"),
+        default="council",
+        help="review authority; a verified high-tier council is the normal path",
+    )
+    baseline_review.add_argument(
+        "--review-run-id",
+        help="immutable high-tier council run for --authority council",
+    )
+    baseline_review.add_argument(
+        "--reviewer",
+        help="human identity, only for an explicit --authority human boundary",
+    )
     baseline_review.add_argument(
         "--confirm-reviewed",
         action="store_true",
-        help="assert the named human reviewed every proposed debt item",
+        help="for --authority human, assert item-by-item review",
     )
 
     maintenance = sub.add_parser(
@@ -1351,14 +1364,16 @@ def _dispatch_baseline(args: argparse.Namespace, root: Path) -> int:
         if args.debt_command == "propose":
             report = propose_debt_baseline(root, args.run_id)
         elif args.debt_command == "review":
-            if not args.confirm_reviewed:
+            if args.authority == "human" and not args.confirm_reviewed:
                 raise ConfigurationError(
-                    "baseline review requires --confirm-reviewed after human item-by-item review"
+                    "human baseline review requires --confirm-reviewed after item-by-item review"
                 )
             report = review_debt_proposal(
                 root,
                 args.proposal,
+                authority=args.authority,
                 reviewer=args.reviewer,
+                review_run_id=args.review_run_id,
             )
         else:
             raise ConfigurationError("unknown debt baseline command")
@@ -1371,7 +1386,11 @@ def _dispatch_baseline(args: argparse.Namespace, root: Path) -> int:
         else:
             print(f"Reviewed debt baseline: {report['path']}")
             print(f"Fingerprint: {report['document_fingerprint']}")
-            print("External code-owner approval remains required before merge.")
+            authority = report["baseline"].get("review_authority")
+            if authority:
+                print(f"Authority: verified high-tier council {authority['run_id']}")
+            else:
+                print(f"Authority: reserved human reviewer {report['baseline']['reviewer']}")
         return PASS
     report = scan_test_integrity(root, load_project(root))
     if not args.confirm:

@@ -174,6 +174,97 @@ def _measurement(value: Any) -> dict[str, str]:
     }
 
 
+def _string_list(value: Any, field: str) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise DebtError(f"{field} must be a non-empty array")
+    items = [_require_text(item, f"{field} item") for item in value]
+    if len(items) != len(set(items)) or items != sorted(items):
+        raise DebtError(f"{field} must be sorted and unique")
+    return items
+
+
+def _sha256(value: Any, field: str) -> str:
+    text = _require_text(value, field)
+    if len(text) != 71 or not text.startswith("sha256:"):
+        raise DebtError(f"{field} must be a sha256 fingerprint")
+    try:
+        int(text[7:], 16)
+    except ValueError as exc:
+        raise DebtError(f"{field} must be a sha256 fingerprint") from exc
+    return text
+
+
+def _authority_scope(value: Any) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise DebtError("review_authority.scope must be an object")
+    expected = {"revision", "base_revision", "change_fingerprint", "control_fingerprint"}
+    if set(value) != expected:
+        raise DebtError("review_authority.scope must contain exact candidate identity fields")
+    return {
+        "revision": _require_text(value.get("revision"), "review_authority.scope.revision"),
+        "base_revision": _require_text(
+            value.get("base_revision"), "review_authority.scope.base_revision"
+        ),
+        "change_fingerprint": _sha256(
+            value.get("change_fingerprint"), "review_authority.scope.change_fingerprint"
+        ),
+        "control_fingerprint": _sha256(
+            value.get("control_fingerprint"), "review_authority.scope.control_fingerprint"
+        ),
+    }
+
+
+def _review_authority(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise DebtError("review_authority must be an object")
+    expected = {
+        "kind",
+        "run_id",
+        "tier",
+        "manifest_sha256",
+        "report_sha256",
+        "provider_groups",
+        "covered_roles",
+        "scope",
+    }
+    if set(value) != expected:
+        raise DebtError("review_authority fields are incomplete or unknown")
+    if value.get("kind") != "agent_council" or value.get("tier") != "high":
+        raise DebtError("review_authority must identify a high-tier agent council")
+    return {
+        "kind": "agent_council",
+        "run_id": _require_text(value.get("run_id"), "review_authority.run_id"),
+        "tier": "high",
+        "manifest_sha256": _sha256(
+            value.get("manifest_sha256"), "review_authority.manifest_sha256"
+        ),
+        "report_sha256": _sha256(value.get("report_sha256"), "review_authority.report_sha256"),
+        "provider_groups": _string_list(
+            value.get("provider_groups"), "review_authority.provider_groups"
+        ),
+        "covered_roles": _string_list(value.get("covered_roles"), "review_authority.covered_roles"),
+        "scope": _authority_scope(value.get("scope")),
+    }
+
+
+def _review_fields(document: Mapping[str, Any], state: str) -> dict[str, Any]:
+    reviewer = document.get("reviewer")
+    reviewed_at = document.get("reviewed_at")
+    authority = document.get("review_authority")
+    if state == "proposed":
+        if reviewer is not None or reviewed_at is not None or authority is not None:
+            raise DebtError("proposed baseline cannot contain review authority fields")
+        return {}
+    result: dict[str, Any] = {"reviewed_at": _timestamp(reviewed_at, "reviewed_at")}
+    if authority is None:
+        result["reviewer"] = _require_text(reviewer, "reviewer")
+    else:
+        if reviewer is not None:
+            raise DebtError("council-reviewed baseline must not claim a human reviewer")
+        result["review_authority"] = _review_authority(authority)
+    return result
+
+
 def validate_baseline(document: Mapping[str, Any]) -> dict[str, Any]:
     """Validate and normalize a proposed or reviewed baseline document."""
     if not isinstance(document, Mapping):
@@ -198,14 +289,7 @@ def validate_baseline(document: Mapping[str, Any]) -> dict[str, Any]:
         "measurement": _measurement(document.get("measurement")),
         "inventory": inventory,
     }
-    reviewer = document.get("reviewer")
-    reviewed_at = document.get("reviewed_at")
-    if state == "reviewed":
-        result["reviewer"] = _require_text(reviewer, "reviewer")
-        result["reviewed_at"] = _timestamp(reviewed_at, "reviewed_at")
-    else:
-        if reviewer is not None or reviewed_at is not None:
-            raise DebtError("proposed baseline cannot contain review approval fields")
+    result.update(_review_fields(document, state))
     return result
 
 

@@ -52,7 +52,68 @@
     },
     "inventory": { "type": "array", "items": { "type": "object" } },
     "reviewer": { "type": "string", "minLength": 1 },
-    "reviewed_at": { "type": "string", "format": "date-time" }
+    "reviewed_at": { "type": "string", "format": "date-time" },
+    "review_authority": {
+      "type": "object",
+      "required": [
+        "kind",
+        "run_id",
+        "tier",
+        "manifest_sha256",
+        "report_sha256",
+        "provider_groups",
+        "covered_roles",
+        "scope"
+      ],
+      "properties": {
+        "kind": { "const": "agent_council" },
+        "run_id": { "type": "string", "minLength": 1 },
+        "tier": { "const": "high" },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "report_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "provider_groups": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "covered_roles": {
+          "type": "array",
+          "minItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "scope": {
+          "type": "object",
+          "required": [
+            "revision",
+            "base_revision",
+            "change_fingerprint",
+            "control_fingerprint"
+          ],
+          "properties": {
+            "revision": { "type": "string", "minLength": 1 },
+            "base_revision": { "type": "string", "minLength": 1 },
+            "change_fingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "control_fingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

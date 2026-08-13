@@ -10,9 +10,20 @@ Run from a clean revision, inventory existing tests and collection, coverage, co
 
 In adopt mode, formatting, lint, structural limits, changed-line coverage, and mutation focus on changed production scope while type checks may need the full dependency graph. New and materially changed functions meet current thresholds; existing untouched debt cannot increase.
 
-## Baselines and waivers
+## Review and install the baseline
 
-A baseline is machine-readable, location-specific, reviewed, and protected. It records exact findings, source fingerprint, owner, reason, expiry/retirement target, and compensating evidence. It never suppresses future findings at new locations. A waiver is narrower and temporary.
+A baseline is machine-readable, location-specific, reviewed, and protected. The normal review authority is an immutable, high-tier agent council for the exact shadow-audit candidate: all four roles, at least three independent provider groups, a clear complete result, no blocker, and no dissent. Install it with:
+
+```sh
+python3 quality/qg.py baseline debt review \
+  --proposal <proposal-id> \
+  --authority council \
+  --review-run-id <council-run-id>
+```
+
+The reviewed baseline stores the council run, manifest and report fingerprints, provider groups, roles, and exact candidate scope. A legacy human reviewer remains available only for an explicit reserved human-authority boundary with `--authority human --reviewer <identity> --confirm-reviewed`.
+
+The baseline never suppresses future findings at new locations. A waiver is narrower and temporary.
 
 ## Characterize before refactor
 

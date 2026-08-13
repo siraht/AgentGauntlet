@@ -15,6 +15,9 @@ from aqg.cli import main
 from aqg.constants import PASS
 from aqg.debt import DebtError, compare, validate_baseline
 from aqg.debt_store import (
+    _council_authority,
+    _council_quality_errors,
+    _council_scope_errors,
     _measurement_values,
     _proposed_baseline,
     _validate_shadow_scope,
@@ -76,6 +79,90 @@ def _policy(root: Path) -> None:
     path = root / "quality" / "policy.toml"
     path.parent.mkdir(parents=True)
     path.write_text("version = 2\n", encoding="utf-8")
+
+
+def _clear_council_report(proposal: dict, *, run_id: str = "council-exact") -> dict:
+    return {
+        "run_id": run_id,
+        "tier": "high",
+        "scope": {
+            "revision": proposal["source_revision"],
+            "base_revision": "HEAD",
+            "change_fingerprint": proposal["measurement"]["change_fingerprint"],
+            "control_fingerprint": proposal["control_fingerprint"],
+        },
+        "status": "advisory_clear",
+        "complete": True,
+        "provider_groups": ["provider-a", "provider-b", "provider-c"],
+        "covered_roles": [
+            "operability_rollback",
+            "requirements_behavior",
+            "security_trust",
+            "test_evidence",
+        ],
+        "blockers": [],
+        "dissent": {"present": False},
+        "incomplete_reasons": [],
+    }
+
+
+def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proposal = _proposed_baseline(
+        revision="a" * 40,
+        baseline_controls="sha256:" + "b" * 64,
+        source_manifest_fingerprint="sha256:" + "c" * 64,
+        resolved="shadow-source",
+        profile="fast",
+        measured_at="2026-08-13T00:00:00+00:00",
+        measured_change="sha256:" + "d" * 64,
+        inventory=[],
+        policy_fingerprint="sha256:" + "e" * 64,
+    )
+    summary = {"base_ref": "HEAD"}
+    report = _clear_council_report(proposal)
+    manifest = tmp_path / ".aqg" / "council" / "council-exact" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"immutable":true}\n', encoding="utf-8")
+    monkeypatch.setattr("aqg.council_service.report_council", lambda root, run_id: report)
+
+    authority = _council_authority(tmp_path, proposal, summary, "council-exact")
+
+    assert authority["kind"] == "agent_council"
+    assert authority["run_id"] == "council-exact"
+    assert authority["tier"] == "high"
+    assert authority["manifest_sha256"].startswith("sha256:")
+    assert authority["report_sha256"].startswith("sha256:")
+    assert authority["scope"] == report["scope"]
+
+    wrong_scope = json.loads(json.dumps(report))
+    wrong_scope["scope"]["revision"] = "other"
+    assert _council_scope_errors(wrong_scope, proposal, summary) == [
+        "council revision does not match the immutable shadow candidate"
+    ]
+
+    weak = json.loads(json.dumps(report))
+    weak.update(
+        {
+            "tier": "fast",
+            "status": "advisory_concerns",
+            "complete": False,
+            "provider_groups": ["provider-a"],
+            "covered_roles": ["test_evidence"],
+            "blockers": [{"id": "blocker"}],
+            "dissent": {"present": True},
+            "incomplete_reasons": ["missing"],
+        }
+    )
+    errors = _council_quality_errors(weak)
+    assert "council tier must be high" in errors
+    assert "council status must be advisory_clear" in errors
+    assert "council must be complete" in errors
+    assert "council must contain no blockers" in errors
+    assert "council must contain no dissent" in errors
+    assert "council must include at least three independent provider groups" in errors
+    assert "council must cover every required review role" in errors
 
 
 def test_proposal_preserves_complete_manifested_measurement(
@@ -378,6 +465,7 @@ def test_reviewed_baseline_install_and_freshness_lifecycle(
     reviewed = review_debt_proposal(
         tmp_path,
         proposal["proposal_id"],
+        authority="human",
         reviewer="owner@example.test",
     )
     baseline_path = Path(reviewed["path"])
