@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -83,38 +84,106 @@ def test_source_only_change_needs_no_policy_approval(project: Path) -> None:
     }
 
 
-def test_protected_change_fails_until_exact_independent_approval(project: Path) -> None:
+def _request(root: Path, changes: list[dict[str, str]], monkeypatch: pytest.MonkeyPatch) -> str:
+    report = create_maintenance_request(
+        root,
+        changes,
+        reason="Apply an exact no-weakening maintenance change",
+        requester="builder@example.test",
+    )
+    monkeypatch.setenv("AQG_MAINTENANCE_REQUEST", report["request_id"])
+    return str(report["request_id"])
+
+
+def test_comment_only_policy_change_passes_with_exact_request(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "quality/policy.toml", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
     policy_path = project / "quality" / "policy.toml"
     policy_path.write_text(policy_path.read_text() + "\n# reviewed candidate change\n")
     policy = load_policy(project)
-    changes = protected_changes(project, policy, "HEAD")
-    assert changes == [{"path": "quality/policy.toml", "operation": "modify"}]
+    assert protected_changes(project, policy, "HEAD") == changes
 
-    missing = validate_policy_maintenance(project, policy, "HEAD")
-    assert missing["exit_code"] == QUALITY_FAILURE
-    assert any("missing" in error for error in missing["errors"])
-
-    _approve(project, changes)
     approved = validate_policy_maintenance(project, policy, "HEAD")
     assert approved["exit_code"] == PASS
+    assert approved["human_authority_required"] is False
+    assert approved["classifications"][0]["classification"] == "neutral"
     code, adapter = run_adapter(project, "policy_maintenance")
     assert code == PASS
     assert adapter["changes"] == changes
 
 
-def test_approval_cannot_authorize_a_different_operation_or_path(project: Path) -> None:
+def test_request_cannot_authorize_a_different_operation_or_path(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     candidate = project / "quality" / "config" / "new-policy.txt"
+    _request(
+        project,
+        [{"path": "quality/config/new-policy.txt", "operation": "modify"}],
+        monkeypatch,
+    )
     candidate.write_text("candidate\n", encoding="utf-8")
     policy = load_policy(project)
     actual = protected_changes(project, policy, "HEAD")
     assert actual == [{"path": "quality/config/new-policy.txt", "operation": "add"}]
-    _approve(
-        project,
-        [{"path": "quality/config/new-policy.txt", "operation": "modify"}],
-    )
     report = validate_policy_maintenance(project, policy, "HEAD")
     assert report["exit_code"] == QUALITY_FAILURE
     assert any("exactly match" in error for error in report["errors"])
+
+
+def test_stronger_threshold_passes_without_human_authority(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "quality/project.json", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "quality" / "project.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["thresholds"]["structure"]["max_cyclomatic_complexity"] -= 1
+    write_json(path, payload)
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+    assert report["exit_code"] == PASS
+    assert report["classifications"][0]["classification"] == "strengthening"
+
+
+def test_weaker_threshold_requires_real_human_authority(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "quality/project.json", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "quality" / "project.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["thresholds"]["coverage"]["lines"] -= 1
+    write_json(path, payload)
+
+    rejected = validate_policy_maintenance(project, load_policy(project), "HEAD")
+    assert rejected["exit_code"] == QUALITY_FAILURE
+    assert rejected["human_authority_required"] is True
+    assert rejected["classifications"][0]["classification"] == "weakening"
+    assert any("missing" in error for error in rejected["human_authority_errors"])
+
+    _approve(project, changes)
+    accepted = validate_policy_maintenance(project, load_policy(project), "HEAD")
+    assert accepted["exit_code"] == PASS
+
+
+def test_removing_required_gate_or_protected_path_is_weakening(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "quality/policy.toml", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "quality" / "policy.toml"
+    text = path.read_text(encoding="utf-8")
+    text = text.replace('gates = ["format", "lint", "typecheck"]', 'gates = ["format", "lint"]')
+    text = text.replace('  "CLAUDE.md",\n', "")
+    path.write_text(text, encoding="utf-8")
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+    assert report["exit_code"] == QUALITY_FAILURE
+    assert report["classifications"][0]["classification"] == "weakening"
+    assert any(
+        "profiles.inner.gates: weakening" in reason
+        for reason in report["classifications"][0]["reasons"]
+    )
 
 
 def test_local_request_is_scoped_and_explicitly_non_authorizing(project: Path) -> None:
@@ -137,3 +206,23 @@ def test_local_request_is_scoped_and_explicitly_non_authorizing(project: Path) -
             [{"path": "app.py", "operation": "modify"}],
             reason="invalid broad request",
         )
+
+
+def test_pre_edit_request_remains_valid_after_candidate_commit(project: Path) -> None:
+    change = parse_change_spec("modify:quality/policy.toml")
+    created = create_maintenance_request(
+        project,
+        [change],
+        reason="Prepare a comment-only policy clarification",
+    )
+    policy_path = project / "quality" / "policy.toml"
+    policy_path.write_text(policy_path.read_text() + "\n# clarified\n", encoding="utf-8")
+    _git(project, "add", "quality/policy.toml")
+    _git(project, "commit", "-qm", "clarify policy")
+    loaded = load_maintenance_request(project, created["request_id"])
+    assert (
+        loaded["source_revision"]
+        != subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=project, text=True, capture_output=True, check=True
+        ).stdout.strip()
+    )

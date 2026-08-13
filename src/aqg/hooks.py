@@ -98,10 +98,7 @@ def _direct_write_changes(root: Path, tool_name: str, tool_input: Any) -> list[d
                 if changes:
                     return changes
     canonical = tool_name.lower()
-    if any(token in canonical for token in ("delete", "remove")):
-        operation = "delete"
-    else:
-        operation = "modify"
+    operation = "delete" if any(token in canonical for token in ("delete", "remove")) else "modify"
     changes = []
     for path in _direct_write_paths(tool_name, tool_input):
         normalized = _normalize(root, path)
@@ -137,80 +134,148 @@ def _command_policy_writes(command: str, patterns: list[str]) -> list[str]:
     return sorted(set(touched))
 
 
-def hook_pretool(root: Path) -> int:
-    policy = load_policy(root)
+def _maintenance_scope(
+    root: Path, policy: dict[str, Any]
+) -> tuple[int | None, set[tuple[str, str]]]:
+    if not policy_override_enabled(policy):
+        return None, set()
+    request_env = str(
+        policy.get("policy", {}).get("maintenance_request_env", "AQG_MAINTENANCE_REQUEST")
+    )
+    request_id = os.environ.get(request_env, "")
+    if not request_id:
+        print(
+            f"AQG policy maintenance requires a scoped request in {request_env}.", file=sys.stderr
+        )
+        return CONFIGURATION_ERROR, set()
+    try:
+        request = load_maintenance_request(root, request_id)
+    except ConfigurationError as exc:
+        print(f"AQG policy maintenance request is invalid: {exc}", file=sys.stderr)
+        return CONFIGURATION_ERROR, set()
+    authorized = {
+        (str(item["path"]), str(item["operation"])) for item in request["authorized_changes"]
+    }
+    return None, authorized
+
+
+def _direct_violations(
+    root: Path,
+    tool_name: str,
+    tool_input: dict[str, Any],
+    protected: list[str],
+    expected: list[str],
+    maintenance_enabled: bool,
+    authorized: set[tuple[str, str]],
+    allow_golden: bool,
+) -> list[str]:
+    violations: list[str] = []
+    for change in _direct_write_changes(root, tool_name, tool_input):
+        normalized = _normalize(root, change["path"])
+        identity = (normalized, change["operation"])
+        if matches_any(normalized, protected) and (
+            not maintenance_enabled or identity not in authorized
+        ):
+            violations.append(
+                f"{change['operation']} to protected policy path {normalized} "
+                "is outside the scoped maintenance request"
+            )
+        elif matches_any(normalized, expected) and not allow_golden:
+            violations.append(f"write to expected-output artifact {normalized}")
+    return violations
+
+
+def _command_violations(
+    command: str,
+    policy: dict[str, Any],
+    protected: list[str],
+    expected: list[str],
+    allow_golden: bool,
+) -> list[str]:
+    if not command:
+        return []
+    violations = [
+        f"command matches blocked policy {expression}"
+        for expression in policy.get("policy", {}).get("blocked_command_regex", [])
+        if re.search(str(expression), command, re.IGNORECASE | re.MULTILINE)
+    ]
+    violations.extend(
+        f"command may modify protected policy path {path}; "
+        "scoped maintenance requires a structured file-edit tool"
+        for path in _command_policy_writes(command, protected)
+    )
+    if not allow_golden:
+        violations.extend(
+            f"command may modify expected-output artifact {path}"
+            for path in _command_policy_writes(command, expected)
+        )
+    return violations
+
+
+def _hook_payload() -> tuple[int | None, dict[str, Any]]:
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError as exc:
         print(f"AQG hook received invalid JSON: {exc}", file=sys.stderr)
-        return CONFIGURATION_ERROR
-    maintenance_enabled = policy_override_enabled(policy)
-    authorized: set[tuple[str, str]] = set()
-    if maintenance_enabled:
-        request_env = str(
-            policy.get("policy", {}).get(
-                "maintenance_request_env",
-                "AQG_MAINTENANCE_REQUEST",
-            )
-        )
-        request_id = os.environ.get(request_env, "")
-        if not request_id:
-            print(
-                f"AQG policy maintenance requires a scoped request in {request_env}.",
-                file=sys.stderr,
-            )
-            return CONFIGURATION_ERROR
-        try:
-            request = load_maintenance_request(root, request_id)
-        except ConfigurationError as exc:
-            print(f"AQG policy maintenance request is invalid: {exc}", file=sys.stderr)
-            return CONFIGURATION_ERROR
-        authorized = {
-            (str(item["path"]), str(item["operation"])) for item in request["authorized_changes"]
-        }
+        return CONFIGURATION_ERROR, {}
+    return None, payload
+
+
+def _tool_context(payload: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
     tool_name = str(payload.get("tool_name") or payload.get("tool") or payload.get("name") or "")
-    tool_input = payload.get("tool_input") or payload.get("input") or payload.get("arguments") or {}
-    protected = protected_patterns(policy)
-    expected_output_patterns = [
+    raw_input = payload.get("tool_input") or payload.get("input") or payload.get("arguments") or {}
+    tool_input = raw_input if isinstance(raw_input, dict) else {}
+    return tool_name, tool_input, str(tool_input.get("command", ""))
+
+
+def _expected_output_patterns(policy: dict[str, Any]) -> list[str]:
+    return [
         pattern
         for pattern in human_review_patterns(policy)
         if any(token in pattern.lower() for token in ("golden", "snapshot", "__snapshots__"))
     ]
+
+
+def _report_violations(violations: list[str]) -> int:
+    if not violations:
+        return PASS
+    print(
+        "Blocked by Agent Quality Gauntlet. Use an exact scoped maintenance request; "
+        "weakening or unclassified changes also require human authority:\n- "
+        + "\n- ".join(sorted(set(violations))),
+        file=sys.stderr,
+    )
+    return CONFIGURATION_ERROR
+
+
+def hook_pretool(root: Path) -> int:
+    policy = load_policy(root)
+    payload_error, payload = _hook_payload()
+    if payload_error is not None:
+        return payload_error
+    maintenance_enabled = policy_override_enabled(policy)
+    scope_error, authorized = _maintenance_scope(root, policy)
+    if scope_error is not None:
+        return scope_error
+    tool_name, tool_input, command = _tool_context(payload)
+    protected = protected_patterns(policy)
+    expected_output_patterns = _expected_output_patterns(policy)
     golden_env = str(policy.get("policy", {}).get("golden_update_env", "AQG_ALLOW_GOLDEN_UPDATE"))
     allow_golden = os.environ.get(golden_env) == "1"
-    violations: list[str] = []
-    for change in _direct_write_changes(root, tool_name, tool_input):
-        normalized = _normalize(root, change["path"])
-        if matches_any(normalized, protected):
-            identity = (normalized, change["operation"])
-            if not maintenance_enabled or identity not in authorized:
-                violations.append(
-                    f"{change['operation']} to protected policy path {normalized} "
-                    "is outside the scoped maintenance request"
-                )
-        elif matches_any(normalized, expected_output_patterns) and not allow_golden:
-            violations.append(f"write to expected-output artifact {normalized}")
-    command = str(tool_input.get("command", "")) if isinstance(tool_input, dict) else ""
-    if command:
-        for expression in policy.get("policy", {}).get("blocked_command_regex", []):
-            if re.search(str(expression), command, re.IGNORECASE | re.MULTILINE):
-                violations.append(f"command matches blocked policy {expression}")
-        for path in _command_policy_writes(command, protected):
-            violations.append(
-                f"command may modify protected policy path {path}; "
-                "scoped maintenance requires a structured file-edit tool"
-            )
-        if not allow_golden:
-            for path in _command_policy_writes(command, expected_output_patterns):
-                violations.append(f"command may modify expected-output artifact {path}")
-    if violations:
-        print(
-            "Blocked by Agent Quality Gauntlet. An explicit policy-maintenance task and human approval are required:\n- "
-            + "\n- ".join(sorted(set(violations))),
-            file=sys.stderr,
-        )
-        return CONFIGURATION_ERROR
-    return PASS
+    violations = _direct_violations(
+        root,
+        tool_name,
+        tool_input,
+        protected,
+        expected_output_patterns,
+        maintenance_enabled,
+        authorized,
+        allow_golden,
+    )
+    violations.extend(
+        _command_violations(command, policy, protected, expected_output_patterns, allow_golden)
+    )
+    return _report_violations(violations)
 
 
 def hook_stop(root: Path) -> int:
