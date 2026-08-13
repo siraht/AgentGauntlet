@@ -167,6 +167,26 @@ def test_weaker_threshold_requires_real_human_authority(
     assert accepted["exit_code"] == PASS
 
 
+def test_agent_record_cannot_impersonate_human_weakening_authority(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "quality/project.json", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "quality" / "project.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["thresholds"]["coverage"]["lines"] -= 1
+    write_json(path, payload)
+    _approve(project, changes)
+    approval_path = project / "quality" / "approvals" / "policy-maintenance.json"
+    approval = json.loads(approval_path.read_text(encoding="utf-8"))
+    approval["actor_type"] = "agent"
+    write_json(approval_path, approval)
+
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+    assert report["exit_code"] == QUALITY_FAILURE
+    assert any("actor_type must be 'human'" in error for error in report["errors"])
+
+
 def test_removing_required_gate_or_protected_path_is_weakening(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
