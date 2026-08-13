@@ -101,6 +101,18 @@ class FunctionalRehearsalContractTests(unittest.TestCase):
             self.assertEqual(json.loads(output.read_text(encoding="utf-8")), payload)
             self.assertEqual(json.loads(printed.call_args.args[0]), payload)
 
+    def test_nested_cli_does_not_inherit_outer_gauntlet_authority(self) -> None:
+        completed = _DOGFOOD.subprocess.CompletedProcess([str(_DOGFOOD.QG)], 0, "", "")
+        with (
+            patch.dict(_DOGFOOD.os.environ, {"AQG_DIFF_BASE": "outer-base"}),
+            patch.object(_DOGFOOD.subprocess, "run", return_value=completed) as run,
+        ):
+            _DOGFOOD._run(["status"], cwd=Path("/tmp"))
+
+        environment = run.call_args.kwargs["env"]
+        self.assertEqual(environment["AQG_DIFF_BASE"], "")
+        self.assertEqual(environment["AQG_POLICY_MAINTENANCE"], "")
+
 
 def _valid_payload() -> dict[str, Any]:
     evidence = {

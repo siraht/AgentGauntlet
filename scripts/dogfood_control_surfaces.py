@@ -31,6 +31,20 @@ class DogfoodFailure(RuntimeError):
     """A public control surface violated its expected contract."""
 
 
+def _nested_environment(**values: str) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "AQG_DIFF_BASE": "",
+            "AQG_GATE": "",
+            "AQG_POLICY_MAINTENANCE": "",
+            "AQG_RUN_ID": "",
+            **values,
+        }
+    )
+    return environment
+
+
 def _canonical(payload: Any) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
@@ -112,6 +126,7 @@ def _run(
     completed = subprocess.run(
         [str(QG), *arguments],
         cwd=cwd,
+        env=_nested_environment(),
         text=True,
         capture_output=True,
         check=False,
@@ -384,7 +399,7 @@ def _dashboard_start(
     arguments = [str(QG), "--root", str(project), "dashboard", "--port", "0"]
     if allow_actions:
         arguments.append("--allow-actions")
-    environment = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    environment = _nested_environment(PYTHONUNBUFFERED="1")
     process = subprocess.Popen(
         arguments,
         cwd=project,
@@ -393,29 +408,47 @@ def _dashboard_start(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    url, token = _dashboard_announcement(process)
+    return process, url, token
+
+
+def _dashboard_output(process: subprocess.Popen[str]) -> str:
     assert process.stdout is not None
     lines: list[str] = []
     deadline = time.monotonic() + 10
     while not lines and time.monotonic() < deadline:
-        ready, _, _ = select.select([process.stdout], [], [], 0.25)
-        if ready:
-            line = process.stdout.readline()
-            if line:
-                lines.append(line.strip())
-        if process.poll() is not None:
-            break
-    if lines:
-        second = process.stdout.readline()
-        if second:
-            lines.append(second.strip())
-    output = "\n".join(lines)
+        line = _ready_line(process)
+        if line:
+            lines.append(line)
+        deadline = 0 if not line and process.poll() is not None else deadline
+    _append_second_dashboard_line(process, lines)
+    return "\n".join(lines)
+
+
+def _append_second_dashboard_line(process: subprocess.Popen[str], lines: list[str]) -> None:
+    assert process.stdout is not None
+    if not lines:
+        return
+    second = process.stdout.readline()
+    if second:
+        lines.append(second.strip())
+
+
+def _ready_line(process: subprocess.Popen[str]) -> str:
+    assert process.stdout is not None
+    ready, _, _ = select.select([process.stdout], [], [], 0.25)
+    return process.stdout.readline().strip() if ready else ""
+
+
+def _dashboard_announcement(process: subprocess.Popen[str]) -> tuple[str, str]:
+    output = _dashboard_output(process)
     match = re.search(r"AQG dashboard: (http://\S+)", output)
     if not match:
         stderr = process.stderr.read() if process.stderr is not None else ""
         process.kill()
         raise DogfoodFailure(f"dashboard did not announce its URL: {output!r} {stderr!r}")
     token_match = re.search(r"Browser token: (\S+)", output)
-    return process, match.group(1), token_match.group(1) if token_match else ""
+    return match.group(1), token_match.group(1) if token_match else ""
 
 
 def _dashboard_stop(process: subprocess.Popen[str]) -> None:
@@ -478,7 +511,7 @@ def _dogfood_dashboard(project: Path) -> dict[str, Any]:
 
 def _dogfood_tui(project: Path) -> dict[str, Any]:
     master, slave = pty.openpty()
-    environment = {**os.environ, "TERM": "xterm", "NO_COLOR": "1"}
+    environment = _nested_environment(TERM="xterm", NO_COLOR="1")
     process = subprocess.Popen(
         [str(QG), "--root", str(project), "tui"],
         cwd=project,
