@@ -64,7 +64,7 @@ REVIEW_PURPOSES = ("candidate", "debt_baseline", "policy_maintenance")
 
 def _high_operability_model() -> str:
     """Return the no-cost third-provider route sized for high-tier bundles."""
-    return "gemini/gemini-3-flash-preview"
+    return "claude/sonnet"
 
 
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -663,7 +663,7 @@ def council_doctor(
     """Report council tools and exact configured model identifiers without secrets."""
     tools = {
         name: _tool_version(name, which=which, executor=executor)
-        for name in ("codex", "gemini", "grok", "opencode")
+        for name in ("claude", "codex", "gemini", "grok", "opencode")
     }
     models = {tier: [model for _, model in _tier_members(tier)] for tier in TIER_MEMBERS}
     missing = sorted(name for name, item in tools.items() if not item["available"])

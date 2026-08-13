@@ -74,16 +74,15 @@ The dashboard should translate the verified result into:
 | ------- | --------------------------------------- | ------------------------------------------------- | ------------------------------------------- |
 | `smoke` | Adapter health and cheap early feedback | GLM-4.7-Flash, DeepSeek V4 Flash                  | Intentionally incomplete for High assurance |
 | `pr`    | Routine checkpoint advice               | Grok 4.5, GLM-5.2, DeepSeek V4 Flash              | Three provider groups and three roles       |
-| `high`  | High-assurance technical advice         | Grok 4.5 ×2, Codex GPT-5.6 Sol ×2, Gemini 3 Flash | Five roles and three provider groups        |
+| `high`  | High-assurance technical advice         | Grok 4.5 ×2, Codex GPT-5.6 Sol ×2, Claude Sonnet | Five roles and three provider groups        |
 
 The actual installed OpenCode identifier is
 `opencode/deepseek-v4-flash-free`; there is no configured model named
 “DeepSeek 4.7 Flash.” The inexpensive Synthetic model is
-`synthetic/hf:zai-org/GLM-4.7-Flash`. High tier uses the existing Grok and
-Codex subscriptions plus Gemini CLI's personal free quota; it does not call
-Synthetic. DeepSeek remains in the smaller smoke and PR bundles but is not
-used for the substantially larger high-tier evidence bundle because it may
-not finish that workload reliably.
+`synthetic/hf:zai-org/GLM-4.7-Flash`. High tier uses existing Grok, Codex, and
+Claude subscriptions; it does not call Synthetic. DeepSeek remains in the
+smaller smoke and PR bundles but is not used for the substantially larger
+high-tier evidence bundle because it may not finish that workload reliably.
 The Codex adapter runs in an isolated directory, ignores user configuration
 and rules, disables tools and web capabilities, uses a read-only sandbox, and
 binds the final response to the council JSON schema.

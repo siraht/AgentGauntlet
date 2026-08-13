@@ -66,6 +66,7 @@ def _clear_executor(command: list[str], **kwargs: Any) -> subprocess.CompletedPr
 
 def test_doctor_reports_exact_models_versions_and_missing_tools_without_credentials() -> None:
     paths = {
+        "claude": "/tools/claude",
         "codex": "/tools/codex",
         "gemini": "/tools/gemini",
         "grok": "/tools/grok",
@@ -93,7 +94,7 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "gemini/gemini-3-flash-preview",
+        "claude/sonnet",
     ]
 
     paths["opencode"] = "/tools/opencode"
@@ -169,18 +170,18 @@ def test_high_tier_uses_no_cost_reviewers_without_synthetic_spend(
 ) -> None:
     plan, _series = _prepared(tmp_path, "high")
 
-    assert service._high_operability_model() == "gemini/gemini-3-flash-preview"
+    assert service._high_operability_model() == "claude/sonnet"
     assert [member["model_id"] for member in plan["members"]] == [
         "grok-4.5",
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "gemini/gemini-3-flash-preview",
+        "claude/sonnet",
     ]
     assert {member["provider_group"] for member in plan["members"]} == {
         "xai:grok.com",
         "openai:codex",
-        "google:gemini-cli",
+        "anthropic:claude-cli",
     }
     assert not any(member["provider_id"] == "synthetic" for member in plan["members"])
 
