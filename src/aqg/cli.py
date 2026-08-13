@@ -478,6 +478,9 @@ def _add_council_parsers(sub: Any) -> None:
     plan.add_argument("--tier", choices=("smoke", "pr", "high"), default="high")
     plan.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
     plan.add_argument(
+        "--purpose", choices=("candidate", "debt-baseline"), default="candidate"
+    )
+    plan.add_argument(
         "--data-classification",
         choices=DATA_CLASSIFICATIONS,
         default="unclassified",
@@ -487,6 +490,9 @@ def _add_council_parsers(sub: Any) -> None:
     run.add_argument("--tier", choices=("smoke", "pr", "high"), default="high")
     run.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     run.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
+    run.add_argument(
+        "--purpose", choices=("candidate", "debt-baseline"), default="candidate"
+    )
     run.add_argument(
         "--data-classification",
         choices=DATA_CLASSIFICATIONS[1:],
@@ -1163,7 +1169,13 @@ def _dispatch_council(args: argparse.Namespace, root: Path) -> int:
         payload = council_doctor()
         code = PASS if not payload["missing_tools"] else CONFIGURATION_ERROR
     elif args.council_command == "plan":
-        payload = plan_council(root, args.tier, args.max_bundle_bytes, args.data_classification)
+        payload = plan_council(
+            root,
+            args.tier,
+            args.max_bundle_bytes,
+            args.data_classification,
+            args.purpose.replace("-", "_"),
+        )
         code = PASS
     elif args.council_command == "run":
         code, payload = run_council(
@@ -1172,6 +1184,7 @@ def _dispatch_council(args: argparse.Namespace, root: Path) -> int:
             timeout_seconds=args.timeout_seconds,
             max_bundle_bytes=args.max_bundle_bytes,
             data_classification=args.data_classification,
+            purpose=args.purpose.replace("-", "_"),
         )
     elif args.council_command == "verify":
         payload = verify_council_run(root, args.run_id)

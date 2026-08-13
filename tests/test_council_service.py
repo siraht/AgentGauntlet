@@ -126,6 +126,7 @@ def test_plan_contract_is_exact(tmp_path: Path) -> None:
         "advisory_only": True,
         "banner": service.ADVISORY_BANNER,
         "tier": "pr",
+        "purpose": "candidate",
         "provider_calls": False,
         "data_classification": "public",
         "provider_routing": service._provider_routing("public"),
@@ -307,7 +308,9 @@ def test_prepare_plan_preserves_every_evidence_binding(
         inputs=inputs,
         max_bundle_bytes=1,
     )
-    plan_payload.assert_called_once_with("high", run_dir, series, 1, "public", routing)
+    plan_payload.assert_called_once_with(
+        "high", run_dir, series, 1, "public", routing, "candidate"
+    )
 
 
 def test_fake_run_publishes_only_verified_immutable_evidence(
@@ -333,6 +336,7 @@ def test_fake_run_publishes_only_verified_immutable_evidence(
         "banner": service.ADVISORY_BANNER,
         "run_id": "council-test",
         "tier": "pr",
+        "purpose": "candidate",
         "scope": series["scope"],
         "status": "advisory_clear",
         "summary": (
@@ -450,7 +454,7 @@ def test_run_council_wires_all_authoritative_inputs(
     )
 
     assert actual == (7, report)
-    prepare.assert_called_once_with(tmp_path, "pr", 123, "public")
+    prepare.assert_called_once_with(tmp_path, "pr", 123, "public", "candidate")
     route.assert_called_once_with(plan, "public")
     assert environment_filter.call_args.args[0] is service.os.environ
     rules.assert_called_once_with("pr")

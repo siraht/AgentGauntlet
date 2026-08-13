@@ -91,6 +91,7 @@ def _clear_council_report(
     return {
         "run_id": run_id,
         "tier": "high",
+        "purpose": "debt_baseline",
         "scope": {
             "revision": proposal["source_revision"],
             "base_revision": "HEAD",
@@ -145,6 +146,12 @@ def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
     assert authority["manifest_sha256"].startswith("sha256:")
     assert authority["report_sha256"].startswith("sha256:")
     assert authority["scope"] == report["scope"]
+
+    candidate_review = json.loads(json.dumps(report))
+    candidate_review["purpose"] = "candidate"
+    assert "council purpose must be debt_baseline" in _council_quality_errors(
+        candidate_review
+    )
 
     wrong_scope = json.loads(json.dumps(report))
     wrong_scope["scope"]["revision"] = "other"

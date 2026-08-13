@@ -228,6 +228,10 @@ def _council_scope_errors(
 def _council_quality_errors(report: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     checks = (
+        (
+            report.get("purpose") == "debt_baseline",
+            "council purpose must be debt_baseline",
+        ),
         (report.get("tier") == "high", "council tier must be high"),
         (report.get("status") == "advisory_clear", "council status must be advisory_clear"),
         (report.get("complete") is True, "council must be complete"),

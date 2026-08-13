@@ -152,8 +152,33 @@ def test_aqg_council_001_candidate_bundle_is_canonical_and_content_addressed() -
     ]
     assert validate_candidate_bundle(first) == first
     assert (
-        _bundle(source="def answer():\n    return 41\n")["bundle_sha256"] != first["bundle_sha256"]
+        _bundle(source="def answer():\n    return 41\n")["bundle_sha256"]
+        != first["bundle_sha256"]
     )
+
+
+def test_debt_baseline_purpose_is_explicit_and_cannot_authorize_release() -> None:
+    purpose = json.dumps(
+        {
+            "purpose": "debt_baseline",
+            "decision": "Review inherited debt only; this does not authorize release.",
+        }
+    )
+    bundle = build_candidate_bundle(
+        revision="candidate-123",
+        base_revision="base-456",
+        change_fingerprint=SHA_A,
+        control_fingerprint=SHA_B,
+        evidence_manifest_sha256=SHA_C,
+        inputs={
+            "controller/review-purpose.json": purpose,
+            "current.diff.patch": "diff --git a/app.py b/app.py\n",
+        },
+    )
+
+    prompt = build_review_prompt(bundle, "test_evidence")
+    assert "REVIEW_PURPOSE=debt_baseline" in prompt
+    assert "this does not authorize release" in prompt
 
 
 def test_aqg_council_002_prompt_injection_is_inert_data_and_never_a_shell_command() -> None:

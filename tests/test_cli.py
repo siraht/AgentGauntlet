@@ -484,12 +484,14 @@ class CliControlSurfaceTests(unittest.TestCase):
                 "plan",
                 "--tier",
                 "pr",
+                "--purpose",
+                "debt-baseline",
                 "--data-classification",
                 "public",
             )
         self.assertEqual(code, PASS, stderr)
         self.assertEqual(payload, report)
-        self.assertEqual(plan.call_args.args[-1], "public")
+        self.assertEqual(plan.call_args.args[-2:], ("public", "debt_baseline"))
 
     def test_council_run_routes_classification_and_returns_advisory_code(self) -> None:
         report = {
@@ -506,12 +508,15 @@ class CliControlSurfaceTests(unittest.TestCase):
                 "run",
                 "--tier",
                 "pr",
+                "--purpose",
+                "debt-baseline",
                 "--data-classification",
                 "public",
             )
         self.assertEqual(code, QUALITY_FAILURE, stderr)
         self.assertEqual(payload, report)
         self.assertEqual(run.call_args.kwargs["data_classification"], "public")
+        self.assertEqual(run.call_args.kwargs["purpose"], "debt_baseline")
 
     def test_council_verify_and_report_are_routed(self) -> None:
         verification = {

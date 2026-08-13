@@ -59,6 +59,7 @@ ADVISORY_BANNER = "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY"
 DATA_CLASSIFICATIONS = ("unclassified", "public", "internal", "confidential", "regulated")
 PROFILE_ORDER = ("inner", "fast", "pr", "deep", "release")
 TIER_EVIDENCE_PROFILE = {"smoke": "fast", "pr": "pr", "high": "deep"}
+REVIEW_PURPOSES = ("candidate", "debt_baseline")
 
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
     "smoke": (
@@ -205,13 +206,32 @@ def _scope(root: Path, base: str) -> dict[str, str]:
 
 
 def _prepare_plan(
-    root: Path, tier: str, max_bundle_bytes: int, data_classification: str
+    root: Path,
+    tier: str,
+    max_bundle_bytes: int,
+    data_classification: str,
+    purpose: str = "candidate",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    if purpose not in REVIEW_PURPOSES:
+        raise ConfigurationError(f"unknown council review purpose: {purpose!r}")
     base = _base_ref(root)
     routing = _provider_routing(data_classification)
     scope = _scope(root, base)
     run_dir, summary = _matching_quality_run(root, scope, TIER_EVIDENCE_PROFILE[tier])
     inputs = _bundle_inputs(root, base, run_dir, summary)
+    inputs["controller/review-purpose.json"] = _json_text(
+        {
+            "purpose": purpose,
+            "decision": (
+                "Decide only whether this shadow inventory is honest and safe to record as "
+                "inherited debt for no-regression ratcheting. Clear does not certify the "
+                "candidate, satisfy assurance, authorize release, or turn a failed measurement "
+                "into a pass. Block defects that make the inventory or ratchet unsafe or dishonest."
+                if purpose == "debt_baseline"
+                else "Review the exact candidate for ordinary technical assurance."
+            ),
+        }
+    )
     series = build_bundle_series(
         scope=scope,
         evidence_manifest_sha256="sha256:" + sha256_file(run_dir / "manifest.json"),
@@ -226,6 +246,7 @@ def _prepare_plan(
             max_bundle_bytes,
             data_classification,
             routing,
+            purpose,
         ),
         series,
     )
@@ -256,6 +277,7 @@ def _plan_payload(
     max_bundle_bytes: int,
     data_classification: str,
     routing: Mapping[str, Any],
+    purpose: str = "candidate",
 ) -> dict[str, Any]:
     roles, groups = _tier_rules(tier)
     chunked = len(series["bundles"]) > 1
@@ -268,6 +290,7 @@ def _plan_payload(
         "advisory_only": True,
         "banner": ADVISORY_BANNER,
         "tier": tier,
+        "purpose": purpose,
         "provider_calls": False,
         "data_classification": data_classification,
         "provider_routing": dict(routing),
@@ -298,9 +321,10 @@ def plan_council(
     tier: str = "high",
     max_bundle_bytes: int = DEFAULT_BUNDLE_BYTES,
     data_classification: str = "unclassified",
+    purpose: str = "candidate",
 ) -> dict[str, Any]:
     """Build a provider-free plan from current, finalized candidate evidence."""
-    plan, _ = _prepare_plan(Path(root), tier, max_bundle_bytes, data_classification)
+    plan, _ = _prepare_plan(Path(root), tier, max_bundle_bytes, data_classification, purpose)
     return plan
 
 
@@ -489,12 +513,13 @@ def run_council(
     executor: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     run_id: str | None = None,
     data_classification: str,
+    purpose: str = "candidate",
 ) -> tuple[int, dict[str, Any]]:
     """Run council members sequentially and publish only verified immutable evidence."""
     if timeout_seconds <= 0:
         raise ConfigurationError("council member timeout must be positive")
     root = Path(root)
-    plan, series = _prepare_plan(root, tier, max_bundle_bytes, data_classification)
+    plan, series = _prepare_plan(root, tier, max_bundle_bytes, data_classification, purpose)
     _require_provider_route(plan, data_classification)
     selected_id = validate_run_id(run_id) if run_id else _new_run_id()
     environment = minimal_environment(os.environ)
@@ -723,6 +748,7 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "banner": ADVISORY_BANNER,
         "run_id": selected,
         "tier": plan["tier"],
+        "purpose": plan.get("purpose", "candidate"),
         "scope": bundle["scope"],
         "status": result["status"],
         "summary": result["summary"],
