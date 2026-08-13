@@ -13,7 +13,7 @@ import pytest
 
 import aqg.council_service as service
 from aqg.constants import INFRASTRUCTURE_ERROR, PASS
-from aqg.council import aggregate_ballots, build_candidate_bundle, provider_identity
+from aqg.council import ROLES, aggregate_ballots, build_candidate_bundle, provider_identity
 from aqg.council_chunks import build_bundle_series
 from aqg.debt import document_fingerprint
 from aqg.errors import ConfigurationError
@@ -181,6 +181,7 @@ def test_smoke_plan_marks_high_assurance_as_incomplete(tmp_path: Path) -> None:
     plan, _series = _prepared(tmp_path, "smoke")
 
     assert plan["expected_standard"] == "high_assurance_incomplete"
+    assert plan["required_roles"] == sorted(ROLES)
 
 
 def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
