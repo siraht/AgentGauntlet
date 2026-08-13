@@ -22,6 +22,12 @@
     "supply_chain": false,
     "safety": false
   },
+  "authority_triggers": {
+    "guardrail_weakening": false,
+    "paid_external_action": false,
+    "private_data_exposure": false,
+    "irreversible_execution": false
+  },
   "failure_detection": "Describe tests, monitoring, or manual evidence.",
   "rollback": "Describe how to restore the previous safe state.",
   "human_review": ["Feature requirements", "Gherkin examples"]

@@ -22,6 +22,12 @@
     "supply_chain": false,
     "safety": false
   },
+  "authority_triggers": {
+    "guardrail_weakening": false,
+    "paid_external_action": false,
+    "private_data_exposure": false,
+    "irreversible_execution": false
+  },
   "failure_detection": "Name the automated signal or manual observation that detects failure.",
   "rollback": "Name the tested rollback, kill switch, or forward-fix procedure.",
   "human_review": ["behavior contract", "QA procedure", "review packet"]

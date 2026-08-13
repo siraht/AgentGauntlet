@@ -17,6 +17,13 @@ from .constants import PLACEHOLDER, RISK_ORDER
 from .errors import ConfigurationError
 from .util import read_json
 
+AUTHORITY_TRIGGER_NAMES = (
+    "guardrail_weakening",
+    "paid_external_action",
+    "private_data_exposure",
+    "irreversible_execution",
+)
+
 POLICY_TEMPLATE = r"""version = 2
 initialized = true
 default_risk_profile = "standard"
@@ -434,6 +441,19 @@ def risk_card_errors(card: dict[str, Any], policy: dict[str, Any]) -> list[str]:
         for name in known:
             if name not in factors:
                 errors.append(f"risk card is missing risk factor {name!r}")
+    if "authority_triggers" in card:
+        triggers = card["authority_triggers"]
+        if not isinstance(triggers, dict):
+            errors.append("risk card field 'authority_triggers' must be dict")
+        else:
+            for name, value in triggers.items():
+                if name not in AUTHORITY_TRIGGER_NAMES:
+                    errors.append(f"unknown authority trigger {name!r}")
+                if not isinstance(value, bool):
+                    errors.append(f"authority trigger {name!r} must be boolean")
+            for name in AUTHORITY_TRIGGER_NAMES:
+                if name not in triggers:
+                    errors.append(f"risk card is missing authority trigger {name!r}")
     return errors
 
 

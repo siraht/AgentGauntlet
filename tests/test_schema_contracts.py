@@ -170,6 +170,12 @@ def test_risk_and_debt_documents_conform_to_public_contracts() -> None:
     root = Path(__file__).resolve().parents[1]
     risk = json.loads((root / "quality" / "change-risk.json").read_text())
     assert validate_named_schema(root, "change-risk", risk) == []
+    assert risk["authority_triggers"] == {
+        "guardrail_weakening": False,
+        "paid_external_action": False,
+        "private_data_exposure": False,
+        "irreversible_execution": False,
+    }
     baseline = {
         "schema_version": 1,
         "state": "reviewed",

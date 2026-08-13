@@ -110,6 +110,35 @@
       },
       "additionalProperties": false
     },
+    "authority_triggers": {
+      "type": "object",
+      "description": "Explicit declarations of actions that require human authority. Legacy schema-version-1 cards may omit this object; newly generated cards always include it.",
+      "required": [
+        "guardrail_weakening",
+        "paid_external_action",
+        "private_data_exposure",
+        "irreversible_execution"
+      ],
+      "properties": {
+        "guardrail_weakening": {
+          "type": "boolean",
+          "description": "True when the proposed work weakens a threshold, required gate, protected boundary, evidence rule, or test oracle."
+        },
+        "paid_external_action": {
+          "type": "boolean",
+          "description": "True when carrying out the proposed work can incur an external monetary charge."
+        },
+        "private_data_exposure": {
+          "type": "boolean",
+          "description": "True when the proposed work can disclose private or confidential data outside its approved boundary."
+        },
+        "irreversible_execution": {
+          "type": "boolean",
+          "description": "True when the proposed work executes an action that cannot be reliably undone."
+        }
+      },
+      "additionalProperties": false
+    },
     "failure_detection": {
       "type": "string",
       "minLength": 1

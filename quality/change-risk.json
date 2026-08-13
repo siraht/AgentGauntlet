@@ -61,6 +61,12 @@
     "supply_chain": true,
     "safety": false
   },
+  "authority_triggers": {
+    "guardrail_weakening": false,
+    "paid_external_action": false,
+    "private_data_exposure": false,
+    "irreversible_execution": false
+  },
   "failure_detection": "Focused owner-status and council contract tests, malformed and stale evidence cases, provider timeout and schema-failure cases, fast and deep AQG profiles, changed-code mutation, a connected TypeScript/web pilot, browser accessibility smoke tests, deterministic builds, clean-clone dogfooding, GitHub required checks, and independent verification.",
   "rollback": "Revert granular commits or the productionization pull request; restore the prior main ruleset export; delete an unpublished draft release or supersede a published beta with the prior checksummed artifacts.",
   "human_review": [
