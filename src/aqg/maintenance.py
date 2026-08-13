@@ -471,8 +471,95 @@ def _active_authority_triggers(root: Path) -> list[str]:
     return sorted(str(key) for key, value in triggers.items() if value is True)
 
 
+def _expected_council_scope(root: Path, base: str) -> dict[str, str]:
+    return {
+        "revision": git_revision(root),
+        "base_revision": base,
+        "change_fingerprint": change_fingerprint(root, base),
+        "control_fingerprint": control_fingerprint(root),
+    }
+
+
+def _council_scope_errors(report: dict[str, Any], expected: dict[str, str]) -> list[str]:
+    scope = report.get("scope")
+    if scope == expected:
+        return []
+    return ["policy-maintenance council scope is stale or belongs to another candidate"]
+
+
+def _council_quality_errors(report: dict[str, Any]) -> list[str]:
+    from .council import ROLES
+
+    verification = report.get("verification")
+    manifest = verification.get("manifest") if isinstance(verification, dict) else None
+    groups = report.get("provider_groups")
+    roles = report.get("covered_roles")
+    dissent = report.get("dissent")
+    checks = (
+        (report.get("tier") == "high", "council tier must be high"),
+        (report.get("status") == "advisory_clear", "council status must be advisory_clear"),
+        (report.get("complete") is True, "council must be complete"),
+        (not report.get("blockers"), "council must contain no blockers"),
+        (
+            isinstance(dissent, dict) and dissent.get("present") is False,
+            "council must contain no dissent",
+        ),
+        (
+            not report.get("incomplete_reasons"),
+            "council must contain no incomplete reasons",
+        ),
+        (
+            isinstance(groups, list) and len(set(groups)) >= 3,
+            "council must include at least three independent provider groups",
+        ),
+        (
+            isinstance(roles, list) and set(roles) == set(ROLES),
+            "council must cover every required review role",
+        ),
+        (
+            isinstance(verification, dict) and verification.get("ok") is True,
+            "council evidence verification must pass",
+        ),
+        (
+            isinstance(manifest, dict) and manifest.get("ok") is True,
+            "council evidence manifest must be verified",
+        ),
+    )
+    return [message for valid, message in checks if not valid]
+
+
+def _council_authority(root: Path, base: str) -> tuple[dict[str, Any] | None, list[str]]:
+    # Imported lazily because council_service reaches maintenance through review adapters.
+    from .council import fingerprint
+    from .council_service import report_council
+
+    try:
+        report = report_council(root)
+    except (ConfigurationError, OSError) as exc:
+        return None, [f"exact-candidate policy-maintenance council is unavailable: {exc}"]
+    errors = _council_scope_errors(report, _expected_council_scope(root, base))
+    errors.extend(_council_quality_errors(report))
+    if errors:
+        return None, errors
+    return (
+        {
+            "kind": "agent_council",
+            "purpose": "policy_maintenance_unknown_change_review",
+            "run_id": str(report["run_id"]),
+            "tier": "high",
+            "status": "advisory_clear",
+            "manifest_verified": True,
+            "report_sha256": fingerprint(report),
+            "provider_groups": sorted(str(value) for value in report["provider_groups"]),
+            "covered_roles": sorted(str(value) for value in report["covered_roles"]),
+            "scope": dict(report["scope"]),
+        },
+        [],
+    )
+
+
 def validate_policy_maintenance(root: Path, policy: dict[str, Any], base: str) -> dict[str, Any]:
-    """Accept exact neutral/stronger maintenance; reserve ambiguity for humans."""
+    """Accept exact neutral/stronger maintenance and independently reviewed ambiguity."""
     actual = protected_changes(root, policy, base)
     if not actual:
         return {
@@ -486,10 +573,17 @@ def validate_policy_maintenance(root: Path, policy: dict[str, Any], base: str) -
     classifications = classify_policy_changes(root, base, actual)
     authority_triggers = _active_authority_triggers(root)
     human_required = bool(authority_triggers) or any(
-        item["classification"] in {"weakening", "unknown"} for item in classifications
+        item["classification"] == "weakening" for item in classifications
+    )
+    council_required = not human_required and any(
+        item["classification"] == "unknown" for item in classifications
     )
     human_errors = _human_override_errors(root, actual) if human_required else []
+    council_authority, council_errors = (
+        _council_authority(root, base) if council_required else (None, [])
+    )
     errors.extend(human_errors)
+    errors.extend(council_errors)
     return {
         "required": True,
         "changes": actual,
@@ -498,6 +592,9 @@ def validate_policy_maintenance(root: Path, policy: dict[str, Any], base: str) -
         "authority_triggers": authority_triggers,
         "human_authority_required": human_required,
         "human_authority_errors": human_errors,
+        "agent_council_authority_required": council_required,
+        "agent_council_authority": council_authority,
+        "agent_council_authority_errors": council_errors,
         "errors": errors,
         "exit_code": QUALITY_FAILURE if errors else PASS,
     }

@@ -23,7 +23,7 @@ from aqg.maintenance import (
 )
 from aqg.policy import load_policy
 from aqg.scaffold import initialize_project
-from aqg.util import write_json
+from aqg.util import change_fingerprint, control_fingerprint, git_revision, write_json
 
 
 def _git(root: Path, *arguments: str) -> None:
@@ -93,6 +93,32 @@ def _request(root: Path, changes: list[dict[str, str]], monkeypatch: pytest.Monk
     )
     monkeypatch.setenv("AQG_MAINTENANCE_REQUEST", report["request_id"])
     return str(report["request_id"])
+
+
+def _clear_council(root: Path, base: str = "HEAD") -> dict[str, object]:
+    return {
+        "run_id": "council-current",
+        "tier": "high",
+        "scope": {
+            "revision": git_revision(root),
+            "base_revision": base,
+            "change_fingerprint": change_fingerprint(root, base),
+            "control_fingerprint": control_fingerprint(root),
+        },
+        "status": "advisory_clear",
+        "complete": True,
+        "provider_groups": ["grok", "opencode", "synthetic"],
+        "covered_roles": [
+            "operability_rollback",
+            "requirements_behavior",
+            "security_trust",
+            "test_evidence",
+        ],
+        "blockers": [],
+        "dissent": {"present": False},
+        "incomplete_reasons": [],
+        "verification": {"ok": True, "manifest": {"ok": True}},
+    }
 
 
 def test_comment_only_policy_change_passes_with_exact_request(
@@ -165,6 +191,125 @@ def test_weaker_threshold_requires_real_human_authority(
     _approve(project, changes)
     accepted = validate_policy_maintenance(project, load_policy(project), "HEAD")
     assert accepted["exit_code"] == PASS
+
+
+def test_unknown_policy_change_fails_without_agent_council(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "QUALITY.md", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "QUALITY.md"
+    path.write_text(path.read_text() + "\nClarified without changing a machine rule.\n")
+
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+
+    assert report["exit_code"] == QUALITY_FAILURE
+    assert report["human_authority_required"] is False
+    assert report["agent_council_authority_required"] is True
+    assert report["agent_council_authority"] is None
+    assert any("council is unavailable" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize("fault", ["wrong_tier", "stale_scope", "dissent"])
+def test_unknown_policy_change_rejects_wrong_stale_or_dissenting_council(
+    project: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    import aqg.council_service as council_service
+
+    changes = [{"path": "QUALITY.md", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "QUALITY.md"
+    path.write_text(path.read_text() + "\nClarified unknown policy prose.\n")
+    council = _clear_council(project)
+    if fault == "wrong_tier":
+        council["tier"] = "pr"
+    elif fault == "stale_scope":
+        council["scope"] = {**dict(council["scope"]), "revision": "stale"}
+    else:
+        council["dissent"] = {"present": True}
+    monkeypatch.setattr(council_service, "report_council", lambda _root: council)
+
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+
+    assert report["exit_code"] == QUALITY_FAILURE
+    assert report["agent_council_authority"] is None
+    assert report["agent_council_authority_errors"]
+
+
+def test_unknown_policy_change_accepts_exact_verified_high_council(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.council_service as council_service
+
+    changes = [{"path": "QUALITY.md", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "QUALITY.md"
+    path.write_text(path.read_text() + "\nClarified unknown policy prose.\n")
+    monkeypatch.setattr(council_service, "report_council", lambda _root: _clear_council(project))
+
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+
+    assert report["exit_code"] == PASS
+    assert report["human_authority_required"] is False
+    assert report["agent_council_authority_required"] is True
+    assert report["agent_council_authority_errors"] == []
+    authority = report["agent_council_authority"]
+    assert authority["kind"] == "agent_council"
+    assert authority["manifest_verified"] is True
+    assert authority["scope"] == _clear_council(project)["scope"]
+
+
+def test_weakened_policy_cannot_be_overridden_by_agent_council(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.council_service as council_service
+
+    changes = [{"path": "quality/project.json", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "quality" / "project.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["thresholds"]["coverage"]["lines"] -= 1
+    write_json(path, payload)
+
+    def unexpected_council(_root: Path) -> dict[str, object]:
+        raise AssertionError("a classified weakening must not consult agent authority")
+
+    monkeypatch.setattr(council_service, "report_council", unexpected_council)
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+
+    assert report["exit_code"] == QUALITY_FAILURE
+    assert report["human_authority_required"] is True
+    assert report["agent_council_authority_required"] is False
+    assert report["agent_council_authority"] is None
+
+
+def test_reserved_authority_trigger_cannot_be_overridden_by_agent_council(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.council_service as council_service
+
+    changes = [{"path": "QUALITY.md", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "QUALITY.md"
+    path.write_text(path.read_text() + "\nClarified unknown policy prose.\n")
+    risk_path = project / "quality" / "change-risk.json"
+    risk = json.loads(risk_path.read_text(encoding="utf-8"))
+    risk["authority_triggers"]["guardrail_weakening"] = True
+    write_json(risk_path, risk)
+
+    def unexpected_council(_root: Path) -> dict[str, object]:
+        raise AssertionError("a reserved human boundary must not consult agent authority")
+
+    monkeypatch.setattr(council_service, "report_council", unexpected_council)
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+
+    assert report["exit_code"] == QUALITY_FAILURE
+    assert report["human_authority_required"] is True
+    assert report["authority_triggers"] == ["guardrail_weakening"]
+    assert report["agent_council_authority_required"] is False
+    assert report["agent_council_authority"] is None
 
 
 def test_agent_record_cannot_impersonate_human_weakening_authority(

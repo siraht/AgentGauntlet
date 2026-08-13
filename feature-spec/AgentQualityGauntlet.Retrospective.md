@@ -35,8 +35,12 @@
 - `AQG-RETRO-012` Policy maintenance MUST be scoped to declared paths and
   operations, fingerprinted to the candidate and controls, checked by a trust
   anchor outside the candidate grading surface, and rejected during ordinary
-  authoritative checking when it weakens or cannot classify a guardrail
-  without explicit human authority.
+  authoritative checking when it weakens a guardrail without explicit human
+  authority. A change whose effect cannot be classified deterministically MAY
+  proceed only with a current, complete, manifest-verified high agent council
+  bound to the exact revision, base, change fingerprint, and control
+  fingerprint; council authority MUST NOT override a classified weakening or
+  a reserved human-authority trigger.
 - `AQG-RETRO-013` High-assurance completion MUST independently validate current
   executable behavior, functional QA, rollback, and trusted-verification
   evidence; prose-only or ceremonial approval records are insufficient.
