@@ -9,17 +9,10 @@ import pytest
 from aqg.policy import AUTHORITY_TRIGGER_NAMES, load_policy, risk_card_errors
 from aqg.schema_contracts import validate_instance, validate_named_schema
 
-
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "src" / "aqg" / "templates" / "common" / "change-risk.json"
 TEMPLATE_SCHEMA = (
-    ROOT
-    / "src"
-    / "aqg"
-    / "templates"
-    / "common"
-    / "schemas"
-    / "change-risk.schema.json"
+    ROOT / "src" / "aqg" / "templates" / "common" / "schemas" / "change-risk.schema.json"
 )
 
 
@@ -29,9 +22,7 @@ def _template_card() -> dict[str, object]:
 
 def test_new_template_declares_every_human_authority_trigger_false() -> None:
     card = _template_card()
-    assert card["authority_triggers"] == {
-        name: False for name in AUTHORITY_TRIGGER_NAMES
-    }
+    assert card["authority_triggers"] == dict.fromkeys(AUTHORITY_TRIGGER_NAMES, False)
     assert risk_card_errors(card, load_policy(ROOT)) == []
     assert validate_named_schema(ROOT, "change-risk", card) == []
 
@@ -53,12 +44,12 @@ def test_legacy_v1_card_without_authority_triggers_remains_valid() -> None:
             "$.authority_triggers: missing required property 'paid_external_action'",
         ),
         (
-            {name: "false" for name in AUTHORITY_TRIGGER_NAMES},
+            dict.fromkeys(AUTHORITY_TRIGGER_NAMES, "false"),
             "authority trigger 'guardrail_weakening' must be boolean",
             "$.authority_triggers.guardrail_weakening: expected type 'boolean'",
         ),
         (
-            {**{name: False for name in AUTHORITY_TRIGGER_NAMES}, "surprise": False},
+            {**dict.fromkeys(AUTHORITY_TRIGGER_NAMES, False), "surprise": False},
             "unknown authority trigger 'surprise'",
             "$.authority_triggers: unexpected property 'surprise'",
         ),
@@ -75,9 +66,7 @@ def test_declared_authority_triggers_fail_closed(
 
 def test_installed_and_source_change_risk_schemas_remain_identical() -> None:
     installed_schema = json.loads(
-        (ROOT / "quality" / "schemas" / "change-risk.schema.json").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "quality" / "schemas" / "change-risk.schema.json").read_text(encoding="utf-8")
     )
     template_schema = json.loads(TEMPLATE_SCHEMA.read_text(encoding="utf-8"))
     assert installed_schema == template_schema

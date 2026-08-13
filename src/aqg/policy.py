@@ -395,6 +395,42 @@ def load_risk_card(root: Path, card_path: str) -> dict[str, Any]:
     return payload
 
 
+def _risk_factor_errors(factors: Any, policy: dict[str, Any]) -> list[str]:
+    if not isinstance(factors, dict):
+        return []
+    known = policy.get("risk_rules", {}).get("minimum_profile_by_factor", {})
+    errors: list[str] = []
+    for name, value in factors.items():
+        if name not in known:
+            errors.append(f"unknown risk factor {name!r}")
+        if not isinstance(value, bool):
+            errors.append(f"risk factor {name!r} must be boolean")
+    errors.extend(
+        f"risk card is missing risk factor {name!r}" for name in known if name not in factors
+    )
+    return errors
+
+
+def _authority_trigger_errors(card: dict[str, Any]) -> list[str]:
+    if "authority_triggers" not in card:
+        return []
+    triggers = card["authority_triggers"]
+    if not isinstance(triggers, dict):
+        return ["risk card field 'authority_triggers' must be dict"]
+    errors: list[str] = []
+    for name, value in triggers.items():
+        if name not in AUTHORITY_TRIGGER_NAMES:
+            errors.append(f"unknown authority trigger {name!r}")
+        if not isinstance(value, bool):
+            errors.append(f"authority trigger {name!r} must be boolean")
+    errors.extend(
+        f"risk card is missing authority trigger {name!r}"
+        for name in AUTHORITY_TRIGGER_NAMES
+        if name not in triggers
+    )
+    return errors
+
+
 def risk_card_errors(card: dict[str, Any], policy: dict[str, Any]) -> list[str]:
     required: dict[str, type] = {
         "schema_version": str,
@@ -430,30 +466,8 @@ def risk_card_errors(card: dict[str, Any], policy: dict[str, Any]) -> list[str]:
     for field in ("summary", "failure_detection", "rollback"):
         if isinstance(card.get(field), str) and not card[field].strip():
             errors.append(f"risk card field {field!r} must not be blank")
-    factors = card.get("risk_factors", {})
-    known = policy.get("risk_rules", {}).get("minimum_profile_by_factor", {})
-    if isinstance(factors, dict):
-        for name, value in factors.items():
-            if name not in known:
-                errors.append(f"unknown risk factor {name!r}")
-            if not isinstance(value, bool):
-                errors.append(f"risk factor {name!r} must be boolean")
-        for name in known:
-            if name not in factors:
-                errors.append(f"risk card is missing risk factor {name!r}")
-    if "authority_triggers" in card:
-        triggers = card["authority_triggers"]
-        if not isinstance(triggers, dict):
-            errors.append("risk card field 'authority_triggers' must be dict")
-        else:
-            for name, value in triggers.items():
-                if name not in AUTHORITY_TRIGGER_NAMES:
-                    errors.append(f"unknown authority trigger {name!r}")
-                if not isinstance(value, bool):
-                    errors.append(f"authority trigger {name!r} must be boolean")
-            for name in AUTHORITY_TRIGGER_NAMES:
-                if name not in triggers:
-                    errors.append(f"risk card is missing authority trigger {name!r}")
+    errors.extend(_risk_factor_errors(card.get("risk_factors"), policy))
+    errors.extend(_authority_trigger_errors(card))
     return errors
 
 
