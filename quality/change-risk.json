@@ -1,6 +1,6 @@
 {
   "schema_version": "1",
-  "summary": "Complete the self-hosted Agent Quality Gauntlet v2 with an honest owner status, a provenance-bound multi-model review council, a faster guarded inner loop, and a greenfield TypeScript/web proof.",
+  "summary": "Replace ceremonial human approval requirements with verifiable functional artifacts and independent agent review, while preserving explicit human authority for weakened guardrails, spending money, private-data exposure, and irreversible actions.",
   "risk_profile": "high_assurance",
   "production_scope": true,
   "reversible": true,
@@ -23,13 +23,16 @@
     "Retrospective reports distinguish inherited debt, regressions, missing evidence, configuration errors, infrastructure errors, and unknown product intent.",
     "Each completed run snapshots detailed gate evidence into an immutable manifested run directory.",
     "Authoritative CI grades candidates with a base-controlled or immutable grader rather than trusting candidate-controlled checking code.",
-    "Policy maintenance uses scoped fingerprinted approval records, and high-assurance work requires independent verification, behavior approval, manual QA, and rollback evidence.",
+    "Policy maintenance uses scoped fingerprinted evidence and independent agent review; weakening a guardrail still requires explicit human authority.",
+    "High-assurance work requires current executable behavior, functional QA, rollback rehearsal, trusted verification, and independent agent-review artifacts instead of ceremonial human approval files.",
+    "Owner status reports works, broken, not tested, unusable evidence, and human decision needed as distinct states without relabeling missing ceremony as a functional defect.",
+    "Release workflows may publish automatically after all deterministic release gates and required independent agent reviews pass, without a separate human release form.",
     "All required test roots, requirement identifiers, semantic acceptance mutations, and stable repeated performance measurements are governed by executable contracts.",
     "CLI, dashboard, TUI, reports, and CI summaries derive Develop, Merge, and Release guidance from one fail-closed owner-status model.",
     "Owner status verifies run manifests and exact candidate fingerprints, distinguishes inherited debt from current regressions, and never promotes local evidence into external merge or release authority.",
     "A multi-model review council runs isolated role-specific reviews through explicit provider adapters, preserves dissent and unknowns, and stores prompt, model, scope, and response provenance as immutable evidence.",
     "Oversized council candidates use a content-addressed diff-only bundle series with repeated shared context, per-chunk quorum, conservative aggregation, exact reconstruction, and explicit cross-chunk visibility limitations.",
-    "Agent review remains advisory unless protected policy explicitly assigns it a gate; it cannot override deterministic failures, missing product intent, or required release authority.",
+    "Agent review remains advisory unless protected policy explicitly assigns it an assurance gate; even then it cannot override deterministic failures, missing product intent, or explicit human-authority boundaries.",
     "A connected greenfield TypeScript, HTML, and CSS pilot proves installation, unit/property testing, structure, coverage, acceptance behavior, and generation of browser/accessibility wiring; live browser and mutation evidence remain separate explicit controls.",
     "The development loop gains only conservative speedups whose selection and cache provenance are recorded and whose uncertainty falls back to the complete applicable suite."
   ],
@@ -37,12 +40,13 @@
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",
     "Missing, stale, malformed, or untrustworthy evidence fails closed.",
     "Existing JavaScript, TypeScript, HTML, CSS, and Python adapter behavior remains supported.",
-    "Policy, expected-output, waiver, and approval changes remain protected and reviewable.",
+    "Policy, expected-output, waiver, and authority-boundary changes remain protected and reviewable.",
     "The source runtime remains dependency-free on Python 3.11 or newer.",
     "Recovered baseline history and published main remain recoverable throughout the work.",
     "The stop hook remains disabled until the fast profile is green, stable, and acceptably quick.",
     "The existing 104-item inherited fast-baseline proposal remains unapproved and non-authoritative.",
-    "Agent review does not impersonate a human, code owner, hosted branch-protection rule, or release authority."
+    "Agent review does not impersonate a human or hosted branch-protection rule.",
+    "Agents do not weaken guardrails, spend money, expose private data, or perform irreversible actions without explicit human authority."
   ],
   "risk_factors": {
     "data_loss": false,
@@ -60,13 +64,9 @@
   "failure_detection": "Focused owner-status and council contract tests, malformed and stale evidence cases, provider timeout and schema-failure cases, fast and deep AQG profiles, changed-code mutation, a connected TypeScript/web pilot, browser accessibility smoke tests, deterministic builds, clean-clone dogfooding, GitHub required checks, and independent verification.",
   "rollback": "Revert granular commits or the productionization pull request; restore the prior main ruleset export; delete an unpublished draft release or supersede a published beta with the prior checksummed artifacts.",
   "human_review": [
-    "Public CLI, setup, review, and dashboard behavior",
-    "Changed coverage and complexity policy behavior",
-    "Cross-stack conformance applicability and expected failures",
-    "Release contents, SBOMs, signatures, provenance, and rollback",
-    "Required GitHub checks, bypass authority, and CODEOWNERS governance",
-    "Plain-language Develop, Merge, and Release decisions and their evidence freshness",
-    "Multi-model review roles, dissent, quorum, privacy boundaries, and residual unknowns",
-    "Greenfield TypeScript/web pilot behavior and the separate browser, accessibility, mutation, and release evidence boundaries"
+    "Any proposed weakening of a quality threshold, required gate, protected path, evidence rule, or test oracle",
+    "Any action that spends money",
+    "Any action that exposes private data",
+    "Any irreversible action"
   ]
 }
