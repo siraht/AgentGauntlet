@@ -33,6 +33,7 @@ from aqg.council_providers import (
     PROMPT_FILENAME,
     REVIEW_PAYLOAD_JSON_SCHEMA,
     SCHEMA_FILENAME,
+    _gemini_stdin_command,
     build_file_provider_spec,
     build_provider_spec,
     collect_ballot,
@@ -227,6 +228,7 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
         build_provider_spec("opencode/deepseek-v4-flash-free", prompt)
     )
     codex = validate_provider_spec(build_provider_spec("codex/gpt-5.6-sol", prompt))
+    gemini = validate_provider_spec(build_provider_spec("gemini/gemini-3-flash-preview", prompt))
 
     assert grok["command"][:3] == ["grok", "--single", prompt]
     assert grok["command"][-4:] == ["1", "--tools", "", "--verbatim"]
@@ -261,12 +263,32 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
         if argument == "--disable"
     }
     assert {"shell_tool", "unified_exec", "standalone_web_search"} <= disabled
+    assert gemini["provider_group"] == "google:gemini-cli"
+    assert gemini["endpoint_origin"] == "oauth-personal-free-quota"
+    assert gemini["command"] == [
+        "gemini",
+        "--prompt",
+        prompt,
+        "--model",
+        "gemini-3-flash-preview",
+        "--output-format",
+        "json",
+        "--approval-mode",
+        "plan",
+        "--allowed-tools",
+        "",
+        "--allowed-mcp-server-names",
+        "",
+        "--sandbox",
+        "--skip-trust",
+    ]
 
     grok_file = validate_provider_spec(build_file_provider_spec("grok-4.5"))
     synthetic_file = validate_provider_spec(
         build_file_provider_spec("synthetic/hf:zai-org/GLM-5.2")
     )
     codex_file = validate_provider_spec(build_file_provider_spec("codex/gpt-5.6-sol"))
+    gemini_file = validate_provider_spec(build_file_provider_spec("gemini/gemini-3-flash-preview"))
     assert grok_file["command"][:3] == ["grok", "--prompt-file", PROMPT_FILENAME]
     assert synthetic_file["command"][:3] == [
         "opencode",
@@ -275,6 +297,7 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     ]
     assert "--file" not in synthetic_file["command"]
     assert codex_file["command"][-1] == "-"
+    assert gemini_file["command"] == _gemini_stdin_command("gemini/gemini-3-flash-preview")
 
     tampered = dict(codex_file)
     tampered["command"] = list(codex_file["command"])

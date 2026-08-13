@@ -137,6 +137,10 @@ def build_provider_spec(model_id: str, prompt: str) -> dict[str, Any]:
         command = _opencode_command(model_id, prompt)
         protocol = "json-or-jsonl"
         executable = "opencode"
+    elif identity["provider_id"] == "gemini":
+        command = _gemini_command(model_id, prompt)
+        protocol = "json-document"
+        executable = "gemini"
     else:
         command = _codex_command(model_id, prompt)
         protocol = "jsonl"
@@ -166,6 +170,10 @@ def build_file_provider_spec(model_id: str, prompt_path: str = PROMPT_FILENAME) 
         command = _opencode_stdin_command(model_id)
         protocol = "json-or-jsonl"
         executable = "opencode"
+    elif identity["provider_id"] == "gemini":
+        command = _gemini_stdin_command(model_id)
+        protocol = "json-document"
+        executable = "gemini"
     else:
         command = _codex_stdin_command(model_id)
         protocol = "jsonl"
@@ -232,6 +240,31 @@ def _opencode_stdin_command(model_id: str) -> list[str]:
     command = _opencode_command(model_id, "")
     del command[2]
     return command
+
+
+def _gemini_command(model_id: str, prompt: str) -> list[str]:
+    model = model_id.split("/", 1)[1]
+    return [
+        "gemini",
+        "--prompt",
+        prompt,
+        "--model",
+        model,
+        "--output-format",
+        "json",
+        "--approval-mode",
+        "plan",
+        "--allowed-tools",
+        "",
+        "--allowed-mcp-server-names",
+        "",
+        "--sandbox",
+        "--skip-trust",
+    ]
+
+
+def _gemini_stdin_command(model_id: str) -> list[str]:
+    return _gemini_command(model_id, "")
 
 
 _CODEX_DISABLED_FEATURES = (
@@ -339,6 +372,10 @@ def _validate_exact_provider_command(value: Mapping[str, Any], command: list[str
         raise ConfigurationError(
             "Codex provider command does not match the protected argument shape"
         )
+    if value["executable"] == "gemini" and not _valid_gemini_command(value["model_id"], command):
+        raise ConfigurationError(
+            "Gemini provider command does not match the protected argument shape"
+        )
 
 
 def _valid_grok_command(model_id: str, command: list[str]) -> bool:
@@ -356,6 +393,12 @@ def _valid_opencode_command(model_id: str, command: list[str]) -> bool:
 def _valid_codex_command(model_id: str, command: list[str]) -> bool:
     inline = bool(command) and command == _codex_command(model_id, command[-1])
     stdin = command == _codex_stdin_command(model_id)
+    return inline or stdin
+
+
+def _valid_gemini_command(model_id: str, command: list[str]) -> bool:
+    inline = len(command) > 2 and command == _gemini_command(model_id, command[2])
+    stdin = command == _gemini_stdin_command(model_id)
     return inline or stdin
 
 
@@ -612,6 +655,8 @@ def _payload_children(value: Any, depth: int) -> list[tuple[Any, int]]:
     if isinstance(value, Mapping):
         keys = (
             "structuredOutput",
+            "structured_output",
+            "response",
             "result",
             "output",
             "content",

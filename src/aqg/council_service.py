@@ -75,7 +75,7 @@ TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
         ("requirements_behavior", "grok-4.5"),
         ("test_evidence", "codex/gpt-5.6-sol"),
         ("security_trust", "codex/gpt-5.6-sol"),
-        ("operability_rollback", "opencode/deepseek-v4-flash-free"),
+        ("operability_rollback", "gemini/gemini-3-flash-preview"),
     ),
 }
 
@@ -525,7 +525,7 @@ def council_doctor(
     """Report council tools and exact configured model identifiers without secrets."""
     tools = {
         name: _tool_version(name, which=which, executor=executor)
-        for name in ("codex", "grok", "opencode")
+        for name in ("codex", "gemini", "grok", "opencode")
     }
     models = {tier: [model for _, model in members] for tier, members in TIER_MEMBERS.items()}
     missing = sorted(name for name, item in tools.items() if not item["available"])
