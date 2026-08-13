@@ -1755,6 +1755,8 @@ class SetupContractTests(RepoCase):
                 "AQG_GATE": "",
                 "AQG_PROFILE": "",
                 "AQG_ROOT": "",
+                "AQG_POLICY_MAINTENANCE": "",
+                "AQG_MAINTENANCE_REQUEST": "",
                 "CI": "1",
                 "TZ": "UTC",
             },
