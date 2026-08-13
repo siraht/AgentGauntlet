@@ -33,6 +33,7 @@ ROLES = frozenset(
         "test_evidence",
         "security_trust",
         "operability_rollback",
+        "adversarial",
     }
 )
 VERDICTS = frozenset({"clear", "concerns", "block", "abstain"})
@@ -60,6 +61,11 @@ _ROLE_FOCUS = {
     "operability_rollback": (
         "Assess failure detection, performance stability, migrations, observability, manual QA, "
         "deployment safety, rollback feasibility, and recovery evidence."
+    ),
+    "adversarial": (
+        "Act as a hostile but evidence-bound reviewer. Try to falsify the claimed behavior, "
+        "find ways deterministic gates or evidence could be gamed, identify unsafe interactions "
+        "between controls, and preserve every material residual unknown."
     ),
 }
 _BALLOT_FIELDS = {

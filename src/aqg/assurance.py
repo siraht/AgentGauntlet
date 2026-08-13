@@ -253,14 +253,29 @@ def _cleanup_errors(cleanup: Any, verified: Any) -> list[str]:
 def _functional_qa_errors(qa: Any) -> list[str]:
     if not isinstance(qa, Mapping):
         return ["functional_qa must be an object"]
-    errors = _exact_keys(qa, {"status", "checks", "evidence"}, "functional_qa")
+    errors = _exact_keys(qa, {"status", "procedure", "checks", "evidence"}, "functional_qa")
     if qa.get("status") != "pass":
         errors.append("functional_qa.status must be pass")
+    errors.extend(_qa_procedure_errors(qa.get("procedure")))
+    return errors + _qa_checks_errors(qa)
+
+
+def _qa_procedure_errors(procedure: Any) -> list[str]:
+    expected = {
+        "id": "QA-AQG-CONTROL-SURFACES-001",
+        "path": "qa/procedures/control-surface-rehearsal.md",
+        "execution_mode": "agent-operated executable procedure",
+        "executor": "aqg deterministic rehearsal",
+    }
+    return [] if procedure == expected else ["functional_qa procedure identity is invalid"]
+
+
+def _qa_checks_errors(qa: Mapping[str, Any]) -> list[str]:
     checks = qa.get("checks")
     if not _named_checks(checks):
-        errors.append("functional_qa.checks must contain named executed checks")
-        return errors
+        return ["functional_qa.checks must contain named executed checks"]
     assert isinstance(checks, list)
+    errors: list[str] = []
     if set(checks) != _QA_CHECKS:
         errors.append("functional_qa.checks must cover every required public control surface")
     if len(checks) != len(set(checks)):
@@ -384,6 +399,29 @@ def _rehearsal_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]
         "result": payload,
         "errors": errors,
     }
+
+
+def _manual_qa_control(rehearsal: Mapping[str, Any]) -> dict[str, Any]:
+    result = rehearsal.get("result")
+    qa = result.get("functional_qa") if isinstance(result, Mapping) else None
+    procedure = qa.get("procedure") if isinstance(qa, Mapping) else None
+    errors = _manual_qa_errors(rehearsal, procedure)
+    return {
+        "status": "works" if not errors else "broken",
+        "method": "agent-operated executable procedure",
+        "procedure": dict(procedure) if isinstance(procedure, Mapping) else None,
+        "artifact": rehearsal.get("artifact"),
+        "errors": errors,
+    }
+
+
+def _manual_qa_errors(rehearsal: Mapping[str, Any], procedure: Any) -> list[str]:
+    errors = list(rehearsal.get("errors", []))
+    if rehearsal.get("status") != "works":
+        errors.append("the executed functional QA procedure is not green")
+    if not isinstance(procedure, Mapping):
+        errors.append("executed functional QA procedure identity is missing")
+    return errors
 
 
 def _candidate_dirty(root: Path) -> bool:
@@ -518,6 +556,38 @@ def _exit_code(controls: Mapping[str, Mapping[str, Any]]) -> int:
     return PASS
 
 
+def _add_high_assurance_controls(
+    controls: dict[str, dict[str, Any]],
+    root: Path,
+    project: Mapping[str, Any],
+    risk: Mapping[str, Any],
+    scope: Mapping[str, str],
+) -> None:
+    rehearsal = _rehearsal_control(root, project)
+    controls["functional_rehearsal"] = rehearsal
+    if risk.get("required_controls", {}).get("requires_manual_qa") is True:
+        controls["manual_qa"] = _manual_qa_control(rehearsal)
+    controls["independent_verification"] = _independent_control(root, scope)
+
+
+def _assurance_result(
+    controls: Mapping[str, Mapping[str, Any]], scope: Mapping[str, str], selected: str
+) -> tuple[int, dict[str, Any]]:
+    code = _exit_code(controls)
+    failures = [
+        f"{name}: {error}" for name, item in controls.items() for error in item.get("errors", [])
+    ]
+    return code, {
+        "schema_version": ASSURANCE_SCHEMA_VERSION,
+        "kind": "aqg-functional-assurance",
+        "scope": dict(scope),
+        "risk_profile": selected,
+        "controls": dict(controls),
+        "status": "works" if code == PASS else "not_ready",
+        "failures": failures,
+    }
+
+
 def evaluate_assurance(
     root: Path,
     project: Mapping[str, Any],
@@ -533,19 +603,5 @@ def evaluate_assurance(
         "authority": _authority_control(risk.get("card", {})),
     }
     if selected in {"high_assurance", "critical"}:
-        controls["functional_rehearsal"] = _rehearsal_control(root, project)
-        controls["independent_verification"] = _independent_control(root, scope)
-    code = _exit_code(controls)
-    return code, {
-        "schema_version": ASSURANCE_SCHEMA_VERSION,
-        "kind": "aqg-functional-assurance",
-        "scope": scope,
-        "risk_profile": selected,
-        "controls": controls,
-        "status": "works" if code == PASS else "not_ready",
-        "failures": [
-            f"{name}: {error}"
-            for name, item in controls.items()
-            for error in item.get("errors", [])
-        ],
-    }
+        _add_high_assurance_controls(controls, root, project, risk, scope)
+    return _assurance_result(controls, scope, selected)

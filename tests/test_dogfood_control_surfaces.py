@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 import tempfile
@@ -12,13 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-_DOGFOOD_SPEC = importlib.util.spec_from_file_location(
-    "aqg_dogfood_control_surfaces",
-    Path(__file__).resolve().parents[1] / "scripts" / "dogfood_control_surfaces.py",
-)
-assert _DOGFOOD_SPEC and _DOGFOOD_SPEC.loader
-_DOGFOOD = importlib.util.module_from_spec(_DOGFOOD_SPEC)
-_DOGFOOD_SPEC.loader.exec_module(_DOGFOOD)
+from scripts import dogfood_control_surfaces as _DOGFOOD
 
 
 class FunctionalRehearsalContractTests(unittest.TestCase):
@@ -32,6 +25,10 @@ class FunctionalRehearsalContractTests(unittest.TestCase):
         self.assertEqual(payload["status"], "pass")
         self.assertTrue(payload["cleanup_verified"])
         self.assertEqual(payload["functional_qa"]["status"], "pass")
+        self.assertEqual(
+            payload["functional_qa"]["procedure"]["execution_mode"],
+            "agent-operated executable procedure",
+        )
         self.assertEqual(
             set(payload["functional_qa"]["checks"]),
             set(payload["functional_qa"]["evidence"]),
@@ -64,6 +61,27 @@ class FunctionalRehearsalContractTests(unittest.TestCase):
         contradictory["result_identity"] = _DOGFOOD._result_identity(contradictory)
         with self.assertRaisesRegex(_DOGFOOD.DogfoodFailure, "before identity"):
             _DOGFOOD._validate_payload(contradictory)
+
+        wrong_procedure = deepcopy(payload)
+        wrong_procedure["functional_qa"]["procedure"]["executor"] = "unrecorded operator"
+        wrong_procedure["result_identity"] = _DOGFOOD._result_identity(wrong_procedure)
+        with self.assertRaises(_DOGFOOD.DogfoodFailure) as raised:
+            _DOGFOOD._validate_payload(wrong_procedure)
+        self.assertEqual(
+            str(raised.exception),
+            "functional QA procedure identity or execution mode is invalid",
+        )
+
+        extra_qa_key = deepcopy(payload)
+        extra_qa_key["functional_qa"]["extra"] = True
+        extra_qa_key["result_identity"] = _DOGFOOD._result_identity(extra_qa_key)
+        with self.assertRaises(_DOGFOOD.DogfoodFailure) as raised:
+            _DOGFOOD._validate_payload(extra_qa_key)
+        self.assertEqual(
+            str(raised.exception),
+            "functional_qa keys differ: expected=['checks', 'evidence', 'procedure', 'status'], "
+            "actual=['checks', 'evidence', 'extra', 'procedure', 'status']",
+        )
 
     def test_rollback_restores_exact_tree_and_application_output(self) -> None:
         """AQG-RETRO-013: recovery restores bytes, modes, and observed behavior."""
@@ -149,6 +167,12 @@ def _valid_payload() -> dict[str, Any]:
         "setup": evidence["setup"],
         "functional_qa": {
             "status": "pass",
+            "procedure": {
+                "id": "QA-AQG-CONTROL-SURFACES-001",
+                "path": "qa/procedures/control-surface-rehearsal.md",
+                "execution_mode": "agent-operated executable procedure",
+                "executor": "aqg deterministic rehearsal",
+            },
             "checks": list(evidence),
             "evidence": evidence,
         },

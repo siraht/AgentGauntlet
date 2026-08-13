@@ -110,6 +110,7 @@ def _clear_council(root: Path, base: str = "HEAD") -> dict[str, object]:
         "complete": True,
         "provider_groups": ["grok", "opencode", "synthetic"],
         "covered_roles": [
+            "adversarial",
             "operability_rollback",
             "requirements_behavior",
             "security_trust",

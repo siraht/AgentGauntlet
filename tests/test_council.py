@@ -49,6 +49,7 @@ SHA_A = "sha256:" + "a" * 64
 SHA_B = "sha256:" + "b" * 64
 SHA_C = "sha256:" + "c" * 64
 MODELS = {
+    "adversarial": "grok-4.5",
     "requirements_behavior": "grok-4.5",
     "test_evidence": "codex/gpt-5.6-sol",
     "security_trust": "codex/gpt-5.6-sol",
@@ -615,7 +616,7 @@ def test_aqg_council_008_repeated_codex_roles_count_as_one_provider_group() -> N
     ballots = _clear_ballots(bundle)
     result = aggregate_ballots(bundle, ballots)
 
-    assert len(ballots) == 4
+    assert len(ballots) == 5
     assert result["provider_groups"] == [
         "openai:codex",
         "opencode:opencode.ai",

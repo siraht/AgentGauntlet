@@ -7,13 +7,22 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
+import aqg.assurance as assurance
 from aqg.assurance import (
+    _add_high_assurance_controls,
+    _assurance_result,
     _authority_control,
     _council_errors,
+    _functional_qa_errors,
     _independent_control,
+    _manual_qa_control,
+    _manual_qa_errors,
+    _qa_checks_errors,
+    _qa_procedure_errors,
     _validate_rehearsal_payload,
     evaluate_assurance,
 )
@@ -62,6 +71,12 @@ def _rehearsal() -> dict[str, object]:
         "setup": evidence["setup"],
         "functional_qa": {
             "status": "pass",
+            "procedure": {
+                "id": "QA-AQG-CONTROL-SURFACES-001",
+                "path": "qa/procedures/control-surface-rehearsal.md",
+                "execution_mode": "agent-operated executable procedure",
+                "executor": "aqg deterministic rehearsal",
+            },
             "checks": list(evidence),
             "evidence": evidence,
         },
@@ -94,6 +109,209 @@ def test_functional_rehearsal_requires_executed_qa_rollback_and_cleanup() -> Non
     assert any("checks" in error for error in errors)
     assert any("exact restoration" in error for error in errors)
     assert any("cleanup_verified" in error for error in errors)
+
+
+def test_manual_qa_is_a_distinct_executed_procedure_control() -> None:
+    rehearsal = {
+        "status": "works",
+        "artifact": ".aqg/work/assurance/functional-rehearsal.json",
+        "result": _rehearsal(),
+        "errors": [],
+    }
+
+    control = _manual_qa_control(rehearsal)
+
+    assert control == {
+        "status": "works",
+        "method": "agent-operated executable procedure",
+        "procedure": {
+            "id": "QA-AQG-CONTROL-SURFACES-001",
+            "path": "qa/procedures/control-surface-rehearsal.md",
+            "execution_mode": "agent-operated executable procedure",
+            "executor": "aqg deterministic rehearsal",
+        },
+        "artifact": ".aqg/work/assurance/functional-rehearsal.json",
+        "errors": [],
+    }
+    rehearsal["result"] = {"functional_qa": {}}
+    broken = _manual_qa_control(rehearsal)
+    assert broken["status"] == "broken"
+    assert broken["errors"] == ["executed functional QA procedure identity is missing"]
+
+    rehearsal["status"] = "broken"
+    rehearsal["errors"] = ["functional rehearsal failed"]
+    broken = _manual_qa_control(rehearsal)
+    assert broken["errors"] == [
+        "functional rehearsal failed",
+        "the executed functional QA procedure is not green",
+        "executed functional QA procedure identity is missing",
+    ]
+
+    assert _manual_qa_errors({"status": "works"}, {}) == []
+
+
+def test_functional_qa_diagnostics_are_stable_machine_contracts() -> None:
+    assert _functional_qa_errors(None) == ["functional_qa must be an object"]
+    assert _functional_qa_errors(
+        {"status": "fail", "procedure": {}, "checks": [], "evidence": {}}
+    ) == [
+        "functional_qa.status must be pass",
+        "functional_qa procedure identity is invalid",
+        "functional_qa.checks must contain named executed checks",
+    ]
+    assert (
+        _functional_qa_errors(
+            {"status": "pass", "procedure": {}, "checks": [], "evidence": {}, "extra": True}
+        )[0]
+        == "functional_qa keys differ: missing=[], unknown=['extra']"
+    )
+    assert _qa_procedure_errors({}) == ["functional_qa procedure identity is invalid"]
+    assert _qa_checks_errors({"checks": []}) == [
+        "functional_qa.checks must contain named executed checks"
+    ]
+    assert _qa_checks_errors(
+        {"checks": ["setup", "setup"], "evidence": {"setup": {"exit_code": 0}}}
+    ) == [
+        "functional_qa.checks must cover every required public control surface",
+        "functional_qa.checks must be unique",
+    ]
+
+
+def test_assurance_result_preserves_schema_scope_and_failures() -> None:
+    scope = {
+        "revision": "revision",
+        "base_ref": "base",
+        "change_fingerprint": "sha256:change",
+        "control_fingerprint": "sha256:control",
+    }
+    controls = {"proof": {"status": "broken", "errors": ["specific failure"]}}
+
+    code, report = _assurance_result(controls, scope, "high_assurance")
+
+    assert code == QUALITY_FAILURE
+    assert report == {
+        "schema_version": 1,
+        "kind": "aqg-functional-assurance",
+        "scope": scope,
+        "risk_profile": "high_assurance",
+        "controls": controls,
+        "status": "not_ready",
+        "failures": ["proof: specific failure"],
+    }
+    pass_code, pass_report = _assurance_result({"proof": {"status": "works"}}, scope, "standard")
+    assert pass_code == PASS
+    assert pass_report["failures"] == []
+    assert pass_report["status"] == "works"
+
+
+@pytest.mark.parametrize(
+    ("functional_qa", "expected"),
+    [
+        (None, "must be an object"),
+        (
+            {
+                "status": "fail",
+                "procedure": {},
+                "checks": ["setup"],
+                "evidence": {"setup": {"exit_code": 1}},
+            },
+            "status must be pass",
+        ),
+    ],
+)
+def test_functional_qa_rejects_missing_or_failed_execution(
+    functional_qa: object, expected: str
+) -> None:
+    payload = _rehearsal()
+    payload["functional_qa"] = functional_qa
+    payload["result_identity"] = _identity(payload)
+
+    assert any(expected in error for error in _validate_rehearsal_payload(payload))
+
+
+def test_high_assurance_adds_executed_manual_qa_when_risk_requires_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rehearsal = {
+        "status": "works",
+        "artifact": ".aqg/work/assurance/functional-rehearsal.json",
+        "result": _rehearsal(),
+        "errors": [],
+    }
+    behavior = Mock(return_value={"status": "works", "errors": []})
+    rehearsal_control = Mock(return_value=rehearsal)
+    independent = Mock(return_value={"status": "works", "errors": []})
+    monkeypatch.setattr(assurance, "_behavior_control", behavior)
+    monkeypatch.setattr(assurance, "_rehearsal_control", rehearsal_control)
+    monkeypatch.setattr(assurance, "_independent_control", independent)
+
+    project = {"enforcement": {"base_ref": "HEAD"}}
+    risk = {
+        "selected_risk_profile": "high_assurance",
+        "card": {"authority_triggers": {}},
+        "required_controls": {"requires_manual_qa": True},
+    }
+
+    code, report = evaluate_assurance(
+        tmp_path,
+        project,
+        risk,
+    )
+
+    assert code == PASS
+    assert report["status"] == "works"
+    assert report["controls"]["functional_rehearsal"] is rehearsal
+    assert report["controls"]["manual_qa"]["status"] == "works"
+    assert report["controls"]["independent_verification"]["status"] == "works"
+    behavior.assert_called_once_with(tmp_path, project, "high_assurance", None)
+    rehearsal_control.assert_called_once_with(tmp_path, project)
+    independent.assert_called_once_with(tmp_path, report["scope"])
+
+    controls: dict[str, dict[str, object]] = {}
+    _add_high_assurance_controls(controls, tmp_path, project, {}, report["scope"])
+    assert "manual_qa" not in controls
+
+
+def test_assurance_defaults_to_standard_without_high_controls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    behavior = Mock(return_value={"status": "works", "errors": []})
+    high_controls = Mock()
+    monkeypatch.setattr(assurance, "_behavior_control", behavior)
+    monkeypatch.setattr(assurance, "_add_high_assurance_controls", high_controls)
+    project = {"enforcement": {"base_ref": "HEAD"}}
+
+    code, report = evaluate_assurance(tmp_path, project, {}, run_id="run-1")
+
+    assert code == PASS
+    assert report["risk_profile"] == "standard"
+    assert set(report["controls"]) == {"behavior", "authority"}
+    behavior.assert_called_once_with(tmp_path, project, "standard", "run-1")
+    high_controls.assert_not_called()
+
+
+def test_critical_assurance_uses_card_authority_and_high_controls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    behavior = Mock(return_value={"status": "works", "errors": []})
+    high_controls = Mock()
+    monkeypatch.setattr(assurance, "_behavior_control", behavior)
+    monkeypatch.setattr(assurance, "_add_high_assurance_controls", high_controls)
+    project = {"enforcement": {"base_ref": "HEAD"}}
+    risk = {
+        "selected_risk_profile": "critical",
+        "card": {"authority_triggers": {"private_data_exposure": True}},
+    }
+
+    code, report = evaluate_assurance(tmp_path, project, risk, run_id="critical-run")
+
+    assert code == QUALITY_FAILURE
+    assert report["risk_profile"] == "critical"
+    assert report["controls"]["authority"]["active"] == ["private_data_exposure"]
+    behavior.assert_called_once_with(tmp_path, project, "critical", "critical-run")
+    high_controls.assert_called_once_with(
+        report["controls"], tmp_path, project, risk, report["scope"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -202,6 +420,7 @@ def test_high_council_must_be_exact_complete_clear_and_diverse() -> None:
         "status": "advisory_clear",
         "complete": True,
         "covered_roles": [
+            "adversarial",
             "requirements_behavior",
             "test_evidence",
             "security_trust",

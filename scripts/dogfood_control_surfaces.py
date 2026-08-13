@@ -348,9 +348,16 @@ def _validate_rollback_proof(rollback: dict[str, Any]) -> None:
 def _validate_functional_qa(functional_qa: Any) -> None:
     if not isinstance(functional_qa, dict):
         raise DogfoodFailure("functional_qa must be an object")
-    _exact_keys(functional_qa, {"status", "checks", "evidence"}, "functional_qa")
+    _exact_keys(functional_qa, {"status", "procedure", "checks", "evidence"}, "functional_qa")
     if functional_qa["status"] != "pass":
         raise DogfoodFailure("functional QA status must be pass")
+    if functional_qa["procedure"] != {
+        "id": "QA-AQG-CONTROL-SURFACES-001",
+        "path": "qa/procedures/control-surface-rehearsal.md",
+        "execution_mode": "agent-operated executable procedure",
+        "executor": "aqg deterministic rehearsal",
+    }:
+        raise DogfoodFailure("functional QA procedure identity or execution mode is invalid")
     checks = _validate_qa_checks(functional_qa["checks"])
     _validate_qa_evidence(checks, functional_qa["evidence"])
 
@@ -722,7 +729,17 @@ def _functional_qa(
         "dashboard": dashboard,
         "tui": tui,
     }
-    return {"status": "pass", "checks": list(evidence), "evidence": evidence}
+    return {
+        "status": "pass",
+        "procedure": {
+            "id": "QA-AQG-CONTROL-SURFACES-001",
+            "path": "qa/procedures/control-surface-rehearsal.md",
+            "execution_mode": "agent-operated executable procedure",
+            "executor": "aqg deterministic rehearsal",
+        },
+        "checks": list(evidence),
+        "evidence": evidence,
+    }
 
 
 def dogfood() -> dict[str, Any]:

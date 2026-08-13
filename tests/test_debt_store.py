@@ -108,6 +108,7 @@ def _clear_council_report(
         "complete": True,
         "provider_groups": ["provider-a", "provider-b", "provider-c"],
         "covered_roles": [
+            "adversarial",
             "operability_rollback",
             "requirements_behavior",
             "security_trust",

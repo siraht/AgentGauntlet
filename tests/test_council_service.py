@@ -87,6 +87,7 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
     ]
     assert report["models"]["high"] == [
         "grok-4.5",
+        "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
         "opencode/deepseek-v4-flash-free",
@@ -161,6 +162,7 @@ def test_high_tier_uses_no_cost_reviewers_without_synthetic_spend(
     plan, _series = _prepared(tmp_path, "high")
 
     assert [member["model_id"] for member in plan["members"]] == [
+        "grok-4.5",
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
