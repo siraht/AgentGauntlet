@@ -75,6 +75,15 @@ jobs:
               sort -z |
               xargs -0 sha256sum
           } > subject/.aqg/trust/grader.sha256
+      - name: Bind manifested verifier evidence to the exact candidate
+        shell: bash
+        run: >-
+          python trusted/scripts/write_trusted_verifier_evidence.py
+          --subject subject
+          --trusted-root trusted
+          --base-revision "${AQG_DIFF_BASE}"
+          --output "${RUNNER_TEMP}/aqg-trusted-verifier-${{ github.event.pull_request.head.sha }}"
+          --github-env "${GITHUB_ENV}"
       - name: Run risk-selected profile with the base grader
         working-directory: subject
         run: >-
