@@ -15,6 +15,7 @@ from .council import ROLES
 from .council_service import report_council
 from .errors import ConfigurationError
 from .project import gate_applicable
+from .trusted_verification import verify_trusted_verifier_evidence
 from .util import (
     change_fingerprint,
     control_fingerprint,
@@ -467,18 +468,7 @@ def _council_integrity_errors(report: Mapping[str, Any]) -> list[str]:
 
 def _independent_control(root: Path, scope: Mapping[str, str]) -> dict[str, Any]:
     if os.environ.get("AQG_TRUSTED_MODE") == "1":
-        required = (
-            "AQG_TRUSTED_LAUNCHER",
-            "AQG_TRUSTED_POLICY_PATH",
-            "AQG_TRUSTED_PROJECT_PATH",
-            "AQG_TRUSTED_TOOLCHAIN_ROOT",
-        )
-        missing = [name for name in required if not os.environ.get(name)]
-        return {
-            "status": "works" if not missing else "unusable",
-            "method": "base-controlled-trusted-grader",
-            "errors": [f"missing {name}" for name in missing],
-        }
+        return verify_trusted_verifier_evidence(root, scope)
     try:
         report = report_council(root)
     except (ConfigurationError, OSError) as exc:

@@ -13,6 +13,7 @@ import pytest
 from aqg.assurance import (
     _authority_control,
     _council_errors,
+    _independent_control,
     _validate_rehearsal_payload,
     evaluate_assurance,
 )
@@ -153,6 +154,34 @@ def test_reserved_authority_is_distinct_from_broken_functionality() -> None:
     guarded = _authority_control({"authority_triggers": {"private_data_exposure": True}})
     assert guarded["status"] == "human_decision_needed"
     assert guarded["active"] == ["private_data_exposure"]
+
+
+def test_trusted_mode_environment_without_manifested_verifier_evidence_is_unusable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trusted = tmp_path / "trusted"
+    quality = trusted / "quality"
+    quality.mkdir(parents=True)
+    for name in ("qg.py", "policy.toml", "project.json"):
+        (quality / name).write_text("trusted\n", encoding="utf-8")
+    monkeypatch.setenv("AQG_TRUSTED_MODE", "1")
+    monkeypatch.setenv("AQG_TRUSTED_LAUNCHER", str((quality / "qg.py").resolve()))
+    monkeypatch.setenv("AQG_TRUSTED_POLICY_PATH", str((quality / "policy.toml").resolve()))
+    monkeypatch.setenv("AQG_TRUSTED_PROJECT_PATH", str((quality / "project.json").resolve()))
+    monkeypatch.setenv("AQG_TRUSTED_TOOLCHAIN_ROOT", str(trusted.resolve()))
+
+    report = _independent_control(
+        tmp_path,
+        {
+            "revision": "candidate",
+            "base_ref": "base",
+            "change_fingerprint": "sha256:" + "1" * 64,
+            "control_fingerprint": "sha256:" + "2" * 64,
+        },
+    )
+
+    assert report["status"] == "unusable"
+    assert any("AQG_TRUSTED_EVIDENCE_DIR" in error for error in report["errors"])
 
 
 def test_high_council_must_be_exact_complete_clear_and_diverse() -> None:
