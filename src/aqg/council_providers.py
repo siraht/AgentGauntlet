@@ -183,6 +183,10 @@ def build_provider_spec(model_id: str, prompt: str) -> dict[str, Any]:
         command = _gemini_command(model_id, prompt)
         protocol = "json-document"
         executable = "gemini"
+    elif identity["provider_id"] == "claude":
+        command = _claude_command(model_id, prompt)
+        protocol = "json-document"
+        executable = "claude"
     else:
         command = _codex_command(model_id, prompt)
         protocol = "jsonl"
@@ -216,6 +220,10 @@ def build_file_provider_spec(model_id: str, prompt_path: str = PROMPT_FILENAME) 
         command = _gemini_stdin_command(model_id)
         protocol = "json-document"
         executable = "gemini"
+    elif identity["provider_id"] == "claude":
+        command = _claude_stdin_command(model_id)
+        protocol = "json-document"
+        executable = "claude"
     else:
         command = _codex_stdin_command(model_id)
         protocol = "jsonl"
@@ -305,6 +313,40 @@ def _gemini_command(model_id: str, prompt: str) -> list[str]:
 
 def _gemini_stdin_command(model_id: str) -> list[str]:
     return _gemini_command(model_id, "")
+
+
+def _claude_command(model_id: str, prompt: str) -> list[str]:
+    model = model_id.split("/", 1)[1]
+    command = [
+        "claude",
+        "--print",
+        "--model",
+        model,
+        "--output-format",
+        "json",
+        "--json-schema",
+        canonical_json(review_payload_json_schema()).decode(),
+        "--permission-mode",
+        "plan",
+        "--tools",
+        "",
+        "--no-session-persistence",
+        "--disable-slash-commands",
+        "--safe-mode",
+        "--no-chrome",
+        "--strict-mcp-config",
+        "--mcp-config",
+        '{"mcpServers":{}}',
+        "--setting-sources",
+        "",
+    ]
+    if prompt:
+        command.append(prompt)
+    return command
+
+
+def _claude_stdin_command(model_id: str) -> list[str]:
+    return _claude_command(model_id, "")
 
 
 _CODEX_DISABLED_FEATURES = (
@@ -416,6 +458,10 @@ def _validate_exact_provider_command(value: Mapping[str, Any], command: list[str
         raise ConfigurationError(
             "Gemini provider command does not match the protected argument shape"
         )
+    if value["executable"] == "claude" and not _valid_claude_command(value["model_id"], command):
+        raise ConfigurationError(
+            "Claude provider command does not match the protected argument shape"
+        )
 
 
 def _valid_grok_command(model_id: str, command: list[str]) -> bool:
@@ -439,6 +485,12 @@ def _valid_codex_command(model_id: str, command: list[str]) -> bool:
 def _valid_gemini_command(model_id: str, command: list[str]) -> bool:
     inline = len(command) > 2 and command == _gemini_command(model_id, command[2])
     stdin = command == _gemini_stdin_command(model_id)
+    return inline or stdin
+
+
+def _valid_claude_command(model_id: str, command: list[str]) -> bool:
+    inline = bool(command) and command == _claude_command(model_id, command[-1])
+    stdin = command == _claude_stdin_command(model_id)
     return inline or stdin
 
 

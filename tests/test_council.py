@@ -39,6 +39,7 @@ from aqg.council_providers import (
     GEMINI_POLICY_FILENAME,
     PROMPT_FILENAME,
     SCHEMA_FILENAME,
+    _claude_stdin_command,
     _gemini_stdin_command,
     build_file_provider_spec,
     build_provider_spec,
@@ -289,6 +290,7 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     )
     codex = validate_provider_spec(build_provider_spec("codex/gpt-5.6-sol", prompt))
     gemini = validate_provider_spec(build_provider_spec("gemini/gemini-3-flash-preview", prompt))
+    claude = validate_provider_spec(build_provider_spec("claude/sonnet", prompt))
 
     assert grok["command"][:3] == ["grok", "--single", prompt]
     assert grok["command"][-4:] == ["1", "--tools", "", "--verbatim"]
@@ -340,6 +342,14 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
         "--sandbox",
         "--skip-trust",
     ]
+    assert claude["provider_group"] == "anthropic:claude-cli"
+    assert claude["endpoint_origin"] == "local-subscription"
+    assert claude["command"][-1] == prompt
+    assert claude["command"][:2] == ["claude", "--print"]
+    assert claude["command"][claude["command"].index("--tools") + 1] == ""
+    assert "--no-session-persistence" in claude["command"]
+    assert "--safe-mode" in claude["command"]
+    assert "--strict-mcp-config" in claude["command"]
 
     grok_file = validate_provider_spec(build_file_provider_spec("grok-4.5"))
     synthetic_file = validate_provider_spec(
@@ -347,6 +357,7 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     )
     codex_file = validate_provider_spec(build_file_provider_spec("codex/gpt-5.6-sol"))
     gemini_file = validate_provider_spec(build_file_provider_spec("gemini/gemini-3-flash-preview"))
+    claude_file = validate_provider_spec(build_file_provider_spec("claude/sonnet"))
     assert grok_file["command"][:3] == ["grok", "--prompt-file", PROMPT_FILENAME]
     assert synthetic_file["command"][:3] == [
         "opencode",
@@ -356,6 +367,7 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     assert "--file" not in synthetic_file["command"]
     assert codex_file["command"][-1] == "-"
     assert gemini_file["command"] == _gemini_stdin_command("gemini/gemini-3-flash-preview")
+    assert claude_file["command"] == _claude_stdin_command("claude/sonnet")
 
     tampered = dict(codex_file)
     tampered["command"] = list(codex_file["command"])
@@ -619,6 +631,36 @@ def test_aqg_council_005_gemini_is_tool_denied_and_isolated(tmp_path: Path) -> N
     assert execution["exit_code"] == PASS
     assert ballot is not None
     assert ballot["reviewer"]["provider_group"] == "google:gemini-cli"
+
+
+def test_aqg_council_005_claude_is_tool_denied_and_ephemeral(tmp_path: Path) -> None:
+    bundle = _bundle()
+    payload = _payload(bundle)
+
+    def executor(arguments: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        assert arguments[0] == "claude"
+        assert arguments[arguments.index("--tools") + 1] == ""
+        assert "--no-session-persistence" in arguments
+        assert "--safe-mode" in arguments
+        assert "--disable-slash-commands" in arguments
+        assert kwargs["cwd"] == tmp_path
+        assert kwargs["input"] == build_review_prompt(bundle, "operability_rollback")
+        return _completed(json.dumps({"structured_output": payload}))
+
+    ballot, execution = collect_ballot(
+        review_id="claude-review",
+        model_id="claude/sonnet",
+        role="operability_rollback",
+        bundle=bundle,
+        cwd=tmp_path,
+        environment={"HOME": "/safe/home", "PATH": "/usr/bin"},
+        timeout_seconds=10,
+        executor=executor,
+    )
+
+    assert execution["exit_code"] == PASS
+    assert ballot is not None
+    assert ballot["reviewer"]["provider_group"] == "anthropic:claude-cli"
 
 
 @pytest.mark.parametrize(
