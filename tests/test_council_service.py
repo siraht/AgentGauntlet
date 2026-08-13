@@ -387,7 +387,7 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
     service._add_debt_review_inputs(tmp_path, run_dir, inputs)
 
     assert json.loads(str(inputs["baseline/proposed.json"])) == proposal
-    assert json.loads(bytes(inputs["run/retrospective.json"]).decode()) == retrospective
+    assert "run/retrospective.json" not in inputs
     assert "run/gates/structure.json" in inputs
     assert "run/gates/coverage.json" in inputs
     assert "run/gates/structure.details.json" in inputs

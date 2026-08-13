@@ -293,7 +293,6 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
             "controller/debt-control-binding.json": _json_text(
                 debt_control_fingerprint_evidence(root)
             ),
-            "run/retrospective.json": (run_dir / "retrospective.json").read_bytes(),
         }
     )
     for gate in ("coverage", "structure"):
