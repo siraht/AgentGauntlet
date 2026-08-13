@@ -61,6 +61,12 @@ PROFILE_ORDER = ("inner", "fast", "pr", "deep", "release")
 TIER_EVIDENCE_PROFILE = {"smoke": "fast", "pr": "pr", "high": "deep"}
 REVIEW_PURPOSES = ("candidate", "debt_baseline", "policy_maintenance")
 
+
+def _high_operability_model() -> str:
+    """Return the no-cost third-provider route sized for high-tier bundles."""
+    return "gemini/gemini-3-flash-preview"
+
+
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
     "smoke": (
         ("requirements_behavior", "synthetic/hf:zai-org/GLM-4.7-Flash"),
@@ -76,7 +82,7 @@ TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
         ("adversarial", "grok-4.5"),
         ("test_evidence", "codex/gpt-5.6-sol"),
         ("security_trust", "codex/gpt-5.6-sol"),
-        ("operability_rollback", "gemini/gemini-3-flash-preview"),
+        ("operability_rollback", _high_operability_model()),
     ),
 }
 

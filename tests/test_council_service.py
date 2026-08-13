@@ -161,6 +161,7 @@ def test_high_tier_uses_no_cost_reviewers_without_synthetic_spend(
 ) -> None:
     plan, _series = _prepared(tmp_path, "high")
 
+    assert service._high_operability_model() == "gemini/gemini-3-flash-preview"
     assert [member["model_id"] for member in plan["members"]] == [
         "grok-4.5",
         "grok-4.5",
