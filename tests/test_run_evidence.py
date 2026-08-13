@@ -336,7 +336,52 @@ def test_shadow_run_preserves_quality_observation_but_returns_non_blocking(tmp_p
     assert report["counts"]["blocking_failures"] == 1
 
 
-def test_stale_debt_baseline_is_a_manifested_configuration_failure(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("raw_code", "status"),
+    [(2, "configuration_error"), (3, "infrastructure_error")],
+)
+def test_shadow_run_records_unusable_measurement_without_blocking_development(
+    tmp_path: Path, raw_code: int, status: str
+) -> None:
+    script = tmp_path / "unusable_report.py"
+    script.write_text(
+        "import json,pathlib,sys\n"
+        "code=int(sys.argv[1])\n"
+        "status={2:'configuration_error',3:'infrastructure_error'}[code]\n"
+        "p=pathlib.Path('.aqg/work/probe/report.json')\n"
+        "p.parent.mkdir(parents=True,exist_ok=True)\n"
+        "p.write_text(json.dumps({'schema_version':2,'gate':'probe',"
+        "'status':status,'exit_code':code}),encoding='utf-8')\n"
+        "sys.exit(code)\n",
+        encoding="utf-8",
+    )
+    provenance = {
+        "revision": "candidate",
+        "base_ref": "main",
+        "change_fingerprint": "sha256:change",
+        "control_fingerprint": "sha256:control",
+    }
+    with (
+        mock.patch.dict(os.environ, {"AQG_RUN_ID": f"shadow-{raw_code}"}, clear=False),
+        mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=_project()),
+    ):
+        code, summary = run_profile(
+            tmp_path,
+            _profile_policy(f"python3 {script.name} {raw_code} adapter probe"),
+            "fast",
+            keep_going=True,
+            quiet=True,
+            shadow=True,
+        )
+
+    assert code == PASS
+    assert summary["command_status"] == "pass"
+    assert summary["observed_exit_code"] == raw_code
+    assert summary["status"] == status
+
+
+def test_explicit_shadow_records_stale_baseline_without_blocking(tmp_path: Path) -> None:
     command = _writer_script(tmp_path)
     baseline = tmp_path / "quality" / "baselines" / "debt.json"
     baseline.parent.mkdir(parents=True)
@@ -368,8 +413,10 @@ def test_stale_debt_baseline_is_a_manifested_configuration_failure(tmp_path: Pat
         )
     run_dir = tmp_path / ".aqg" / "runs" / "stale-baseline"
     report = json.loads((run_dir / "retrospective.json").read_text())
-    assert code == CONFIGURATION_ERROR
+    assert code == PASS
     assert summary["status"] == "configuration_error"
+    assert summary["observed_exit_code"] == CONFIGURATION_ERROR
+    assert summary["command_status"] == "pass"
     assert report["counts"]["configuration_errors"] == 1
     assert report["configuration_errors"][0]["gate"] == "debt_baseline"
     assert verify_run_manifest(run_dir)["ok"] is True

@@ -358,7 +358,11 @@ def run_profile(
         final = max(final, CONFIGURATION_ERROR)
     elif baseline is not None and stage == "ratchet":
         final = ratchet_exit_code(retrospective)
-    command_exit = PASS if shadow and final == QUALITY_FAILURE else final
+    # Shadow is an observational migration mode. Every measured outcome is
+    # preserved in immutable evidence, but no checker result may block ordinary
+    # development before a reviewed baseline exists. Failures to create or
+    # finalize the evidence itself still raise before this point.
+    command_exit = PASS if shadow else final
     summary = {
         "schema_version": "2",
         "run_id": run_id,
