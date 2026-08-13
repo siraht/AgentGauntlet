@@ -27,6 +27,7 @@ from .errors import ConfigurationError
 PROVIDER_SPEC_SCHEMA_VERSION = 1
 EXECUTION_SCHEMA_VERSION = 1
 PROMPT_FILENAME = "review-prompt.txt"
+SCHEMA_FILENAME = "review-output.schema.json"
 _ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _BASE_ENV_NAMES = (
     "HOME",
@@ -125,10 +126,14 @@ def build_provider_spec(model_id: str, prompt: str) -> dict[str, Any]:
         command = _grok_command(model_id, prompt)
         protocol = "json-document"
         executable = "grok"
-    else:
+    elif identity["provider_id"] in {"synthetic", "opencode"}:
         command = _opencode_command(model_id, prompt)
         protocol = "json-or-jsonl"
         executable = "opencode"
+    else:
+        command = _codex_command(model_id, prompt)
+        protocol = "jsonl"
+        executable = "codex"
     return {
         "schema_version": PROVIDER_SPEC_SCHEMA_VERSION,
         "kind": "aqg-council-provider-spec",
@@ -150,10 +155,14 @@ def build_file_provider_spec(model_id: str, prompt_path: str = PROMPT_FILENAME) 
         command = _grok_file_command(model_id, prompt_path)
         protocol = "json-document"
         executable = "grok"
-    else:
+    elif identity["provider_id"] in {"synthetic", "opencode"}:
         command = _opencode_stdin_command(model_id)
         protocol = "json-or-jsonl"
         executable = "opencode"
+    else:
+        command = _codex_stdin_command(model_id)
+        protocol = "jsonl"
+        executable = "codex"
     return {
         "schema_version": PROVIDER_SPEC_SCHEMA_VERSION,
         "kind": "aqg-council-provider-spec",
@@ -218,6 +227,53 @@ def _opencode_stdin_command(model_id: str) -> list[str]:
     return command
 
 
+_CODEX_DISABLED_FEATURES = (
+    "apps",
+    "browser_use",
+    "browser_use_external",
+    "computer_use",
+    "image_generation",
+    "in_app_browser",
+    "multi_agent",
+    "multi_agent_v2",
+    "shell_tool",
+    "skill_search",
+    "standalone_web_search",
+    "unified_exec",
+    "workspace_dependencies",
+)
+
+
+def _codex_command(model_id: str, prompt: str) -> list[str]:
+    model = model_id.split("/", 1)[1]
+    command = [
+        "codex",
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        model,
+        "--output-schema",
+        SCHEMA_FILENAME,
+        "--json",
+        "--color",
+        "never",
+        "--cd",
+        ".",
+    ]
+    for feature in _CODEX_DISABLED_FEATURES:
+        command.extend(("--disable", feature))
+    return [*command, prompt]
+
+
+def _codex_stdin_command(model_id: str) -> list[str]:
+    return _codex_command(model_id, "-")
+
+
 def validate_provider_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     """Validate that provider identity and exact no-shell command agree."""
     if not isinstance(spec, Mapping):
@@ -272,6 +328,10 @@ def _validate_exact_provider_command(value: Mapping[str, Any], command: list[str
         raise ConfigurationError(
             "OpenCode provider command does not match the protected argument shape"
         )
+    if value["executable"] == "codex" and not _valid_codex_command(value["model_id"], command):
+        raise ConfigurationError(
+            "Codex provider command does not match the protected argument shape"
+        )
 
 
 def _valid_grok_command(model_id: str, command: list[str]) -> bool:
@@ -283,6 +343,12 @@ def _valid_grok_command(model_id: str, command: list[str]) -> bool:
 def _valid_opencode_command(model_id: str, command: list[str]) -> bool:
     inline = len(command) > 2 and command == _opencode_command(model_id, command[2])
     stdin = command == _opencode_stdin_command(model_id)
+    return inline or stdin
+
+
+def _valid_codex_command(model_id: str, command: list[str]) -> bool:
+    inline = bool(command) and command == _codex_command(model_id, command[-1])
+    stdin = command == _codex_stdin_command(model_id)
     return inline or stdin
 
 
@@ -446,6 +512,9 @@ def collect_ballot(
     prompt_path = Path(cwd) / PROMPT_FILENAME
     prompt_path.write_text(prompt, encoding="utf-8")
     spec = build_file_provider_spec(model_id)
+    if spec["provider_id"] == "codex":
+        schema_path = Path(cwd) / SCHEMA_FILENAME
+        schema_path.write_bytes(canonical_json(REVIEW_PAYLOAD_JSON_SCHEMA) + b"\n")
     execution = execute_provider(
         spec,
         cwd=cwd,
@@ -535,6 +604,7 @@ def _payload_children(value: Any, depth: int) -> list[tuple[Any, int]]:
             "text",
             "part",
             "message",
+            "item",
         )
         return [(value[key], depth) for key in reversed(keys) if key in value]
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):

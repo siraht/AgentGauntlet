@@ -72,8 +72,8 @@ TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "high": (
         ("requirements_behavior", "grok-4.5"),
-        ("test_evidence", "synthetic/hf:zai-org/GLM-5.2"),
-        ("security_trust", "synthetic/hf:moonshotai/Kimi-K3"),
+        ("test_evidence", "codex/gpt-5.6-sol"),
+        ("security_trust", "codex/gpt-5.6-sol"),
         ("operability_rollback", "opencode/deepseek-v4-flash-free"),
     ),
 }
@@ -332,7 +332,8 @@ def council_doctor(
 ) -> dict[str, Any]:
     """Report council tools and exact configured model identifiers without secrets."""
     tools = {
-        name: _tool_version(name, which=which, executor=executor) for name in ("grok", "opencode")
+        name: _tool_version(name, which=which, executor=executor)
+        for name in ("codex", "grok", "opencode")
     }
     models = {tier: [model for _, model in members] for tier, members in TIER_MEMBERS.items()}
     missing = sorted(name for name, item in tools.items() if not item["available"])

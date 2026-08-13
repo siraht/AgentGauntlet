@@ -42,7 +42,8 @@ recommendations.
 Controller code validates every ballot and applies fixed rules:
 
 - malformed, missing, or timed-out output does not enter quorum;
-- multiple models behind Synthetic count as one provider group;
+- repeated roles behind Codex or multiple models behind Synthetic count as one
+  provider group;
 - a blocker cannot be outvoted;
 - missing roles or provider diversity makes the result incomplete;
 - material disagreement remains dissent;
@@ -69,16 +70,20 @@ The dashboard should translate the verified result into:
 
 ## Tiers
 
-| Tier    | Use                                     | Reviewers                                     | Expected outcome                            |
-| ------- | --------------------------------------- | --------------------------------------------- | ------------------------------------------- |
-| `smoke` | Adapter health and cheap early feedback | GLM-4.7-Flash, DeepSeek V4 Flash              | Intentionally incomplete for High assurance |
-| `pr`    | Routine checkpoint advice               | Grok 4.5, GLM-5.2, DeepSeek V4 Flash          | Three provider groups and three roles       |
-| `high`  | High-assurance technical advice         | Grok 4.5, GLM-5.2, Kimi-K3, DeepSeek V4 Flash | Four roles and three provider groups        |
+| Tier    | Use                                     | Reviewers                                      | Expected outcome                            |
+| ------- | --------------------------------------- | ---------------------------------------------- | ------------------------------------------- |
+| `smoke` | Adapter health and cheap early feedback | GLM-4.7-Flash, DeepSeek V4 Flash               | Intentionally incomplete for High assurance |
+| `pr`    | Routine checkpoint advice               | Grok 4.5, GLM-5.2, DeepSeek V4 Flash           | Three provider groups and three roles       |
+| `high`  | High-assurance technical advice         | Grok 4.5, Codex GPT-5.6 Sol ×2, DeepSeek V4 Flash | Four roles and three provider groups     |
 
 The actual installed OpenCode identifier is
 `opencode/deepseek-v4-flash-free`; there is no configured model named
 “DeepSeek 4.7 Flash.” The inexpensive Synthetic model is
-`synthetic/hf:zai-org/GLM-4.7-Flash`.
+`synthetic/hf:zai-org/GLM-4.7-Flash`. High tier uses the existing Grok,
+Codex, and OpenCode subscription/free routes and does not call Synthetic.
+The Codex adapter runs in an isolated directory, ignores user configuration
+and rules, disables tools and web capabilities, uses a read-only sandbox, and
+binds the final response to the council JSON schema.
 
 ## Commands
 

@@ -63,7 +63,7 @@ def _clear_executor(command: list[str], **kwargs: Any) -> subprocess.CompletedPr
 
 
 def test_doctor_reports_exact_models_versions_and_missing_tools_without_credentials() -> None:
-    paths = {"grok": "/tools/grok", "opencode": None}
+    paths = {"codex": "/tools/codex", "grok": "/tools/grok", "opencode": None}
 
     def fake_version(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, "grok 9.1\n", "TOKEN=secret")
@@ -72,9 +72,16 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
 
     assert report["missing_tools"] == ["opencode"]
     assert report["tools"]["grok"]["version"] == "grok 9.1"
+    assert report["tools"]["codex"]["version"] == "grok 9.1"
     assert "TOKEN" not in json.dumps(report)
     assert report["models"]["smoke"] == [
         "synthetic/hf:zai-org/GLM-4.7-Flash",
+        "opencode/deepseek-v4-flash-free",
+    ]
+    assert report["models"]["high"] == [
+        "grok-4.5",
+        "codex/gpt-5.6-sol",
+        "codex/gpt-5.6-sol",
         "opencode/deepseek-v4-flash-free",
     ]
 
@@ -138,6 +145,25 @@ def test_plan_contract_is_exact(tmp_path: Path) -> None:
         "total_bundle_bytes": series["chunks"][0]["bundle_bytes"],
         "max_bundle_bytes": 10_000,
     }
+
+
+def test_high_tier_uses_subscription_reviewers_without_synthetic_spend(
+    tmp_path: Path,
+) -> None:
+    plan, _series = _prepared(tmp_path, "high")
+
+    assert [member["model_id"] for member in plan["members"]] == [
+        "grok-4.5",
+        "codex/gpt-5.6-sol",
+        "codex/gpt-5.6-sol",
+        "opencode/deepseek-v4-flash-free",
+    ]
+    assert {member["provider_group"] for member in plan["members"]} == {
+        "xai:grok.com",
+        "openai:codex",
+        "opencode:opencode.ai",
+    }
+    assert not any(member["provider_id"] == "synthetic" for member in plan["members"])
 
 
 def test_smoke_plan_marks_high_assurance_as_incomplete(tmp_path: Path) -> None:

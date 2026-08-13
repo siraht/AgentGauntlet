@@ -117,13 +117,15 @@ Configured perspectives are:
 | Perspective                   | Default model              |
 | ----------------------------- | -------------------------- |
 | Requirements and behavior     | Grok 4.5                   |
-| Test and evidence quality     | Synthetic GLM-5.2          |
-| Security and trust boundaries | Synthetic Kimi-K3          |
+| Test and evidence quality     | Codex GPT-5.6 Sol          |
+| Security and trust boundaries | Codex GPT-5.6 Sol          |
 | Operations and rollback       | OpenCode DeepSeek V4 Flash |
 
-GLM-4.7-Flash and DeepSeek V4 Flash form the inexpensive smoke tier. Multiple
-Synthetic models visibly count as one provider group, not independent
-providers.
+GLM-4.7-Flash and DeepSeek V4 Flash form the inexpensive smoke tier. The PR
+tier retains Synthetic support. High tier uses three existing
+subscription/free provider groups—Grok, Codex, and OpenCode—without Synthetic
+API spending. Repeated Codex roles visibly count as one provider group, not
+independent providers.
 
 Every valid ballot cites exact bundled material. Quorum, blocker veto,
 completeness, and dissent are deterministic. Prompt and response digests,

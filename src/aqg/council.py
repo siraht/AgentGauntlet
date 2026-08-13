@@ -285,6 +285,14 @@ def provider_identity(model_id: str) -> dict[str, str]:
             "endpoint_origin": "https://opencode.ai/zen/v1",
             "model_family": family,
         }
+    if model_id.startswith("codex/"):
+        family = "openai:" + model_id.split("/", 1)[1].split("-")[0].lower()
+        return {
+            "provider_id": "codex",
+            "provider_group": "openai:codex",
+            "endpoint_origin": "local-subscription",
+            "model_family": family,
+        }
     raise ConfigurationError(f"unsupported council model namespace: {model_id}")
 
 

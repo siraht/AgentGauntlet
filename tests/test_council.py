@@ -31,6 +31,8 @@ from aqg.council import (
 )
 from aqg.council_providers import (
     PROMPT_FILENAME,
+    REVIEW_PAYLOAD_JSON_SCHEMA,
+    SCHEMA_FILENAME,
     build_file_provider_spec,
     build_provider_spec,
     collect_ballot,
@@ -45,8 +47,8 @@ SHA_B = "sha256:" + "b" * 64
 SHA_C = "sha256:" + "c" * 64
 MODELS = {
     "requirements_behavior": "grok-4.5",
-    "test_evidence": "synthetic/hf:zai-org/GLM-5.2",
-    "security_trust": "synthetic/hf:moonshotai/Kimi-K3",
+    "test_evidence": "codex/gpt-5.6-sol",
+    "security_trust": "codex/gpt-5.6-sol",
     "operability_rollback": "opencode/deepseek-v4-flash-free",
 }
 
@@ -176,6 +178,7 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     deepseek = validate_provider_spec(
         build_provider_spec("opencode/deepseek-v4-flash-free", prompt)
     )
+    codex = validate_provider_spec(build_provider_spec("codex/gpt-5.6-sol", prompt))
 
     assert grok["command"][:3] == ["grok", "--single", prompt]
     assert grok["command"][-4:] == ["1", "--tools", "", "--verbatim"]
@@ -193,11 +196,29 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     ]
     assert synthetic["provider_group"] == "synthetic:api.synthetic.new"
     assert deepseek["provider_group"] == "opencode:opencode.ai"
+    assert codex["provider_group"] == "openai:codex"
+    assert codex["endpoint_origin"] == "local-subscription"
+    assert codex["command"][-1] == prompt
+    assert codex["command"][:2] == ["codex", "exec"]
+    assert "--ignore-user-config" in codex["command"]
+    assert "--ignore-rules" in codex["command"]
+    assert "--ephemeral" in codex["command"]
+    assert "--skip-git-repo-check" in codex["command"]
+    assert codex["command"][codex["command"].index("--sandbox") + 1] == "read-only"
+    assert codex["command"][codex["command"].index("--output-schema") + 1] == SCHEMA_FILENAME
+    assert "--search" not in codex["command"]
+    disabled = {
+        codex["command"][index + 1]
+        for index, argument in enumerate(codex["command"][:-1])
+        if argument == "--disable"
+    }
+    assert {"shell_tool", "unified_exec", "standalone_web_search"} <= disabled
 
     grok_file = validate_provider_spec(build_file_provider_spec("grok-4.5"))
     synthetic_file = validate_provider_spec(
         build_file_provider_spec("synthetic/hf:zai-org/GLM-5.2")
     )
+    codex_file = validate_provider_spec(build_file_provider_spec("codex/gpt-5.6-sol"))
     assert grok_file["command"][:3] == ["grok", "--prompt-file", PROMPT_FILENAME]
     assert synthetic_file["command"][:3] == [
         "opencode",
@@ -205,6 +226,13 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
         "--pure",
     ]
     assert "--file" not in synthetic_file["command"]
+    assert codex_file["command"][-1] == "-"
+
+    tampered = dict(codex_file)
+    tampered["command"] = list(codex_file["command"])
+    tampered["command"].remove("--ignore-rules")
+    with pytest.raises(ConfigurationError, match="protected argument shape"):
+        validate_provider_spec(tampered)
 
 
 def test_aqg_council_004_minimal_environment_scrubs_unapproved_secrets() -> None:
@@ -281,6 +309,38 @@ def test_aqg_council_005_valid_output_creates_ballot_and_malformed_schema_fails(
     assert rejected is None
     assert failed["exit_code"] == CONFIGURATION_ERROR
     assert failed["status"].startswith("malformed provider review")
+
+
+def test_aqg_council_005_codex_is_read_only_isolated_and_schema_bound(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle()
+    payload = _payload(bundle)
+
+    def executor(arguments: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        assert arguments[:2] == ["codex", "exec"]
+        assert arguments[-1] == "-"
+        assert kwargs["cwd"] == tmp_path
+        assert kwargs["input"] == build_review_prompt(bundle, "test_evidence")
+        schema = json.loads((tmp_path / SCHEMA_FILENAME).read_text(encoding="utf-8"))
+        assert schema == REVIEW_PAYLOAD_JSON_SCHEMA
+        event = {"type": "item.completed", "item": {"type": "agent_message", "text": payload}}
+        return _completed(json.dumps(event))
+
+    ballot, execution = collect_ballot(
+        review_id="codex-review",
+        model_id="codex/gpt-5.6-sol",
+        role="test_evidence",
+        bundle=bundle,
+        cwd=tmp_path,
+        environment={"HOME": "/safe/home", "PATH": "/usr/bin"},
+        timeout_seconds=10,
+        executor=executor,
+    )
+
+    assert execution["exit_code"] == PASS
+    assert ballot is not None
+    assert ballot["reviewer"]["provider_group"] == "openai:codex"
 
 
 @pytest.mark.parametrize(
@@ -423,15 +483,15 @@ def test_aqg_council_007_ballots_and_results_are_versioned_and_advisory_only() -
         validate_ballot(impersonation, bundle=bundle)
 
 
-def test_aqg_council_008_correlated_synthetic_models_count_as_one_provider_group() -> None:
+def test_aqg_council_008_repeated_codex_roles_count_as_one_provider_group() -> None:
     bundle = _bundle()
     ballots = _clear_ballots(bundle)
     result = aggregate_ballots(bundle, ballots)
 
     assert len(ballots) == 4
     assert result["provider_groups"] == [
+        "openai:codex",
         "opencode:opencode.ai",
-        "synthetic:api.synthetic.new",
         "xai:grok.com",
     ]
     assert result["provider_group_count"] == 3
