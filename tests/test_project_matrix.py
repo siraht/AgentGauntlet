@@ -21,6 +21,16 @@ _MATRIX_MODULE = importlib.util.module_from_spec(_MATRIX_SPEC)
 _MATRIX_SPEC.loader.exec_module(_MATRIX_MODULE)
 _corepack_shim = _MATRIX_MODULE._corepack_shim
 _prepare_typescript_web = _MATRIX_MODULE._prepare_typescript_web
+_stage_typescript_web_change = _MATRIX_MODULE._stage_typescript_web_change
+_executed_mutant_count = _MATRIX_MODULE._executed_mutant_count
+
+_PILOT_SPEC = importlib.util.spec_from_file_location(
+    "aqg_dogfood_web_pilot",
+    Path(__file__).resolve().parents[1] / "scripts" / "dogfood_web_pilot.py",
+)
+assert _PILOT_SPEC and _PILOT_SPEC.loader
+_PILOT_MODULE = importlib.util.module_from_spec(_PILOT_SPEC)
+_PILOT_SPEC.loader.exec_module(_PILOT_MODULE)
 
 
 class CrossPlatformMatrixContractTests(unittest.TestCase):
@@ -113,7 +123,15 @@ class CrossPlatformMatrixContractTests(unittest.TestCase):
 
             self.assertEqual(
                 gates,
-                ["test_integrity", "unit", "structure", "coverage", "acceptance"],
+                [
+                    "typecheck",
+                    "test_integrity",
+                    "unit",
+                    "structure",
+                    "coverage",
+                    "acceptance",
+                    "mutation_changed",
+                ],
             )
             detection = detect_project(root)
             self.assertTrue(detection.typescript)
@@ -131,6 +149,52 @@ class CrossPlatformMatrixContractTests(unittest.TestCase):
             self.assertIn("AxeBuilder", (root / "e2e" / "counter.spec.mjs").read_text())
             self.assertIn("CTP-WEB-001", (root / "feature-spec" / "Counter.md").read_text())
             self.assertTrue((root / "qa" / "procedures" / "QA-COUNTER.md").is_file())
+
+    def test_typescript_web_pilot_stages_a_real_mutation_target(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aqg-contract-") as temporary:
+            root = Path(temporary)
+            _prepare_typescript_web(root)
+            before = (root / "src" / "counter.ts").read_text(encoding="utf-8")
+
+            _stage_typescript_web_change(root)
+
+            after = (root / "src" / "counter.ts").read_text(encoding="utf-8")
+            test = (root / "tests" / "counter.test.ts").read_text(encoding="utf-8")
+            self.assertNotEqual(after, before)
+            self.assertIn("incrementByOne", after)
+            self.assertIn("incrementByOne({ value: 4 })", test)
+
+    def test_web_pilot_missing_control_is_configuration_error(self) -> None:
+        result = {
+            "duration_seconds": 0.1,
+            "gates": [
+                {"gate": gate, "exit_code": 0, "status": "pass"}
+                for gate in sorted(_PILOT_MODULE.REQUIRED_CONTROLS - {"mutation_changed"})
+            ],
+        }
+        with (
+            tempfile.TemporaryDirectory(prefix="aqg-contract-") as temporary,
+            patch.object(_PILOT_MODULE, "_execute_case", return_value=result),
+        ):
+            code, report = _PILOT_MODULE.run_pilot(Path(temporary))
+
+        self.assertEqual(code, 2)
+        self.assertEqual(report["status"], "configuration_error")
+        self.assertEqual(report["missing_controls"], ["mutation_changed"])
+
+    def test_web_pilot_preserves_gate_failure_classification(self) -> None:
+        for raw_code, status in (
+            (1, "measured_failure"),
+            (2, "configuration_error"),
+            (3, "infrastructure_error"),
+        ):
+            with self.subTest(raw_code=raw_code):
+                error = RuntimeError(f"typescript-web gate returned {raw_code}: detail")
+                self.assertEqual(_PILOT_MODULE._failure_kind(error), (status, raw_code))
+
+    def test_compile_errors_alone_do_not_count_as_executed_mutants(self) -> None:
+        self.assertEqual(_executed_mutant_count({"CompileError": 4}), 0)
+        self.assertEqual(_executed_mutant_count({"CompileError": 4, "Killed": 1}), 1)
 
     def test_installed_vitest_config_excludes_packaged_runtime_tests(self) -> None:
         """The application runner must not collect AQG's packaged template tests."""

@@ -35,6 +35,13 @@ An additional local `bun-node` case proves Bun command generation and execution.
 browser job installs protected Chromium and runs the generated Playwright smoke journey
 with axe-core against a static HTML/CSS project on an isolated free port.
 
+The greenfield TypeScript/web dogfood is deliberately broader. It uses the installed
+AQG CLI inside a disposable Git repository, reuses the exact offline checker lock, and
+proves status, strict TypeScript, production build, test discovery, unit/property tests,
+structure, coverage, a real Chromium keyboard journey, the journey's axe assertion, and
+changed-code Stryker mutation. Compile errors alone do not count as executed mutants.
+Missing browser or mutation infrastructure is reported as exit 3, never as a pass.
+
 Run the default live cases:
 
 ```sh
@@ -49,6 +56,13 @@ PYTHONPATH=src .aqg/venv/bin/python scripts/project_matrix.py \
   --case bun-node \
   --case browser-static \
   --output .aqg/project-matrix-optional.json
+```
+
+Run the complete greenfield TypeScript/HTML/CSS pilot:
+
+```sh
+PYTHONPATH=src .aqg/venv/bin/python scripts/dogfood_web_pilot.py \
+  --output .aqg/web-pilot.json
 ```
 
 The report is normalized JSON. Fixture workspaces and native runner output are temporary;

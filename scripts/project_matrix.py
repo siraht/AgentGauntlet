@@ -81,6 +81,11 @@ def _initialize_git(root: Path) -> None:
     _run(["git", "commit", "-qm", "fixture baseline"], cwd=root)
 
 
+def _commit_all(root: Path, message: str) -> None:
+    _run(["git", "add", "."], cwd=root)
+    _run(["git", "commit", "-qm", message], cwd=root)
+
+
 def _link(source: Path, destination: Path) -> None:
     if not source.exists():
         raise RuntimeError(f"required shared toolchain is missing: {source}")
@@ -410,6 +415,34 @@ def _write_typescript_web_contract(project: Path) -> None:
     )
 
 
+def _stage_typescript_web_change(project: Path) -> None:
+    """Create the bounded product-and-test diff exercised by changed-code mutation."""
+    counter = project / "src" / "counter.ts"
+    counter.write_text(
+        counter.read_text(encoding="utf-8").replace(
+            "  return { value: counter.value + amount };",
+            "  const value = counter.value + amount;\n  return { value };",
+        )
+        + "\nexport function incrementByOne(counter: Counter): Counter {\n"
+        + "  return increment(counter, 1);\n"
+        + "}\n",
+        encoding="utf-8",
+    )
+    test = project / "tests" / "counter.test.ts"
+    content = test.read_text(encoding="utf-8").replace(
+        "import { increment } from '../src/counter';",
+        "import { increment, incrementByOne } from '../src/counter';",
+    )
+    content = content.replace(
+        "describe('increment', () => {\n",
+        "describe('increment', () => {\n"
+        "  it('provides the one-step operation used by the visible control', () => {\n"
+        "    expect(incrementByOne({ value: 4 })).toEqual({ value: 5 });\n"
+        "  });\n\n",
+    )
+    test.write_text(content, encoding="utf-8")
+
+
 def _typescript_web_package() -> dict[str, Any]:
     return {
         "name": "aqg-typescript-web-pilot",
@@ -420,7 +453,7 @@ def _typescript_web_package() -> dict[str, Any]:
         "devDependencies": {
             "fast-check": "4.9.0",
             "typescript": "6.0.3",
-            "vite": "7.1.7",
+            "vite": "8.1.5",
             "vitest": "4.1.10",
         },
     }
@@ -433,7 +466,15 @@ def _prepare_typescript_web(project: Path) -> list[str]:
     _write_typescript_web_browser_test(project)
     _write_typescript_web_contract(project)
     _write(project / "package.json", json.dumps(_typescript_web_package(), indent=2) + "\n")
-    return ["test_integrity", "unit", "structure", "coverage", "acceptance"]
+    return [
+        "typecheck",
+        "test_integrity",
+        "unit",
+        "structure",
+        "coverage",
+        "acceptance",
+        "mutation_changed",
+    ]
 
 
 def _browser_setup_options() -> dict[str, str]:
@@ -456,45 +497,145 @@ def _typescript_setup_options() -> dict[str, str]:
     }
 
 
-def _execute_case(case: str, workspace: Path) -> dict[str, Any]:
-    project = workspace / case
-    project.mkdir()
-    if case in JS_CASES:
-        gates = _prepare_javascript(project, case)
-        javascript, python = True, False
-    elif case.startswith("python-"):
-        gates = _prepare_python(project, case)
-        javascript, python = False, True
-    elif case == "typescript-web":
-        gates = _prepare_typescript_web(project)
-        _manager_install(project, "npm")
-        javascript, python = True, False
-    else:
-        gates = _prepare_browser(project)
-        javascript, python = True, False
-    _initialize_git(project)
-    setup_options = (
-        _browser_setup_options()
-        if case == "browser-static"
-        else _typescript_setup_options()
-        if case == "typescript-web"
-        else {}
+def _initialize_typescript_web(project: Path, options: dict[str, str]) -> None:
+    _run(
+        [
+            sys.executable,
+            str(REPOSITORY_ROOT / "quality" / "qg.py"),
+            "init",
+            str(project),
+            "--owner",
+            "@aqg-matrix",
+            "--mode",
+            "greenfield",
+            "--base-url",
+            options["base_url"],
+            "--start-command",
+            options["start_command"],
+            "--no-ci",
+        ],
+        cwd=REPOSITORY_ROOT,
     )
+
+
+def _run_installed_gate(project: Path, gate: str) -> tuple[int, dict[str, Any]]:
+    _run([sys.executable, "quality/qg.py", "gate", gate], cwd=project, timeout=7200)
+    report_path = project / ".aqg" / "work" / gate / "report.json"
+    if not report_path.is_file():
+        raise RuntimeError(f"installed control surface omitted the {gate} report")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    code = int(report.get("exit_code", 3))
+    if code:
+        raise RuntimeError(f"typescript-web gate {gate} returned {code}: {report}")
+    return code, report
+
+
+def _executed_mutant_count(status_counts: dict[str, Any]) -> int:
+    return sum(
+        int(status_counts.get(status, 0))
+        for status in ("Killed", "Timeout", "Survived", "NoCoverage")
+    )
+
+
+def _prepare_case(project: Path, case: str) -> tuple[list[str], bool, bool]:
+    if case in JS_CASES:
+        return _prepare_javascript(project, case), True, False
+    if case.startswith("python-"):
+        return _prepare_python(project, case), False, True
+    if case == "typescript-web":
+        return _prepare_typescript_web(project), True, False
+    return _prepare_browser(project), True, False
+
+
+def _case_setup_options(case: str) -> dict[str, str]:
+    if case == "browser-static":
+        return _browser_setup_options()
+    if case == "typescript-web":
+        return _typescript_setup_options()
+    return {}
+
+
+def _initialize_case(project: Path, case: str, options: dict[str, str]) -> None:
+    if case == "typescript-web":
+        _initialize_typescript_web(project, options)
+        return
     initialize_project(
         project,
         owner="@aqg-matrix",
         install=False,
         ci=False,
         mode="greenfield",
-        base_url=setup_options.get("base_url"),
-        start_command=setup_options.get("start_command"),
+        base_url=options.get("base_url"),
+        start_command=options.get("start_command"),
     )
+
+
+def _stage_installed_web_pilot(project: Path) -> None:
+    _link(
+        REPOSITORY_ROOT / "quality" / "tools" / "js" / "node_modules",
+        project / "node_modules",
+    )
+    _commit_all(project, "install Agent Quality Gauntlet")
+    _stage_typescript_web_change(project)
+
+
+def _web_control_surface_results(project: Path) -> list[dict[str, Any]]:
+    _run([sys.executable, "quality/qg.py", "status"], cwd=project)
+    build = _run(["npm", "run", "build"], cwd=project)
+    return [
+        {"gate": "installed_cli_status", "exit_code": 0, "status": "pass"},
+        {"gate": "build", "exit_code": build.returncode, "status": "pass"},
+    ]
+
+
+def _add_mutation_proof(entry: dict[str, Any], report: dict[str, Any]) -> None:
+    javascript_report = report.get("javascript", {})
+    status_counts = javascript_report.get("status_counts", {})
+    entry["proof"] = {
+        "mutated_files": javascript_report.get("mutated_files", []),
+        "status_counts": status_counts,
+        "mutation_score": javascript_report.get("mutation_score"),
+    }
+    if (
+        not javascript_report.get("mutated_files")
+        or not status_counts
+        or not _executed_mutant_count(status_counts)
+    ):
+        raise RuntimeError("typescript-web mutation did not execute real mutants")
+
+
+def _gate_entry(gate: str, code: int, report: dict[str, Any]) -> dict[str, Any]:
+    entry: dict[str, Any] = {"gate": gate, "exit_code": code, "status": report["status"]}
+    if gate == "acceptance":
+        entry["proof"] = {
+            "browser_journey_executed": bool(report.get("executed")),
+            "axe_assertion_source": "e2e/counter.spec.mjs",
+        }
+        if not report.get("executed"):
+            raise RuntimeError("typescript-web acceptance did not execute a browser journey")
+    if gate == "mutation_changed":
+        _add_mutation_proof(entry, report)
+    return entry
+
+
+def _execute_case(case: str, workspace: Path) -> dict[str, Any]:
+    project = workspace / case
+    project.mkdir()
+    gates, javascript, python = _prepare_case(project, case)
+    _initialize_git(project)
+    _initialize_case(project, case, _case_setup_options(case))
     _link_toolchains(project, javascript=javascript, python=python)
-    results = []
+    if case == "typescript-web":
+        _stage_installed_web_pilot(project)
     started = time.monotonic()
+    results = _web_control_surface_results(project) if case == "typescript-web" else []
     for gate in gates:
-        code, report = run_adapter(project, gate)
-        results.append({"gate": gate, "exit_code": code, "status": report["status"]})
+        code, report = (
+            _run_installed_gate(project, gate)
+            if case == "typescript-web"
+            else run_adapter(project, gate)
+        )
+        results.append(_gate_entry(gate, code, report))
         if code:
             raise RuntimeError(f"{case} gate {gate} returned {code}: {report}")
     return {
