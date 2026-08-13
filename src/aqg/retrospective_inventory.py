@@ -97,6 +97,10 @@ def _function_structure_items(
     return items
 
 
+def _function_is_out_of_scope(report: Mapping[str, Any], function: Mapping[str, Any]) -> bool:
+    return report.get("scope") == "changed-functions" and function.get("enforced") is False
+
+
 def _structure_inventory(
     detail: Mapping[str, Any], thresholds: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
@@ -106,7 +110,7 @@ def _structure_inventory(
         for function in _sequence(report.get("functions")):
             if not isinstance(function, Mapping):
                 continue
-            if report.get("scope") == "changed-functions" and function.get("enforced") is False:
+            if _function_is_out_of_scope(report, function):
                 continue
             items.extend(_function_structure_items(function, limits))
     return items
@@ -123,6 +127,8 @@ def _crap_inventory(
     items: list[dict[str, Any]] = []
     for function in _sequence(report.get("functions")):
         if not isinstance(function, Mapping):
+            continue
+        if _function_is_out_of_scope(report, function):
             continue
         path = _text(function.get("path"))
         name = _text(function.get("name")) or "<anonymous>"
