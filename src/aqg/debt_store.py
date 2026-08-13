@@ -149,7 +149,10 @@ def _proposed_baseline(
             "source_revision": revision,
             "policy_fingerprint": policy_fingerprint,
             "control_fingerprint": baseline_controls,
-            "created_at": utc_now(),
+            # Use the immutable measurement time so the exact proposal reviewed
+            # by a council can be reconstructed later without a clock-dependent
+            # document fingerprint.
+            "created_at": measured_at,
             "measurement": {
                 "run_id": resolved,
                 "profile": profile,
@@ -162,12 +165,8 @@ def _proposed_baseline(
     )
 
 
-def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
-    """Create a write-once proposal from manifested shadow evidence.
-
-    A proposal is deliberately not a reviewed baseline and cannot authorize
-    ratchet enforcement.
-    """
+def build_debt_baseline_proposal(root: Path, run_id: str = "latest") -> dict[str, Any]:
+    """Reconstruct the exact deterministic proposal from manifested evidence."""
     resolved, run_dir = resolve_shadow_run(root, run_id)
     verification, summary, retrospective, manifest = _verified_shadow_documents(run_dir, resolved)
     baseline_controls, measured_change = _validate_shadow_scope(root, resolved, summary)
@@ -189,7 +188,6 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
     fingerprint = document_fingerprint(proposed)
     proposal_id = f"debt-{resolved}-{source_manifest_fingerprint.removeprefix('sha256:')[:12]}"
     path = root / ".aqg" / "proposals" / "debt" / f"{proposal_id}.json"
-    write_evidence_json(path, proposed)
     return {
         "schema_version": 1,
         "proposal_id": proposal_id,
@@ -199,6 +197,17 @@ def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "baseline": proposed,
         "manifest_verification": verification,
     }
+
+
+def propose_debt_baseline(root: Path, run_id: str = "latest") -> dict[str, Any]:
+    """Persist a write-once proposal from manifested shadow evidence.
+
+    A proposal is deliberately not a reviewed baseline and cannot authorize
+    ratchet enforcement.
+    """
+    report = build_debt_baseline_proposal(root, run_id)
+    write_evidence_json(Path(report["path"]), report["baseline"])
+    return report
 
 
 def _council_scope_errors(
@@ -218,11 +227,17 @@ def _council_scope_errors(
     }
     if not isinstance(scope, dict):
         return ["council candidate scope is missing"]
-    return [
+    errors = [
         f"council {name} does not match the immutable shadow candidate"
         for name, expected_value in expected.items()
         if scope.get(name) != expected_value
     ]
+    purpose_artifacts = report.get("purpose_artifacts")
+    if not isinstance(purpose_artifacts, dict) or purpose_artifacts.get(
+        "debt_baseline_document"
+    ) != document_fingerprint(proposal):
+        errors.append("council did not review the exact proposed debt-baseline document")
+    return errors
 
 
 def _council_quality_errors(report: dict[str, Any]) -> list[str]:

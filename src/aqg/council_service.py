@@ -178,7 +178,11 @@ def _review_projection(root: Path, base: str) -> dict[str, Any]:
 
 
 def _bundle_inputs(
-    root: Path, base: str, run_dir: Path, summary: Mapping[str, Any]
+    root: Path,
+    base: str,
+    run_dir: Path,
+    summary: Mapping[str, Any],
+    purpose: str = "candidate",
 ) -> dict[str, str | bytes]:
     inputs: dict[str, str | bytes] = {
         "current.diff.patch": git_diff(root, base, unified=3),
@@ -189,7 +193,60 @@ def _bundle_inputs(
     }
     for path in sorted((root / "feature-spec").glob("*.md")):
         inputs[f"feature-spec/{path.name}"] = path.read_bytes()
+    if purpose == "debt_baseline":
+        _add_debt_review_inputs(root, run_dir, inputs)
     return inputs
+
+
+def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | bytes]) -> None:
+    """Include the exact inventory, proposal, provenance, and exclusions."""
+    # Imported lazily because review -> runner imports debt_store while this
+    # service is being initialized.
+    from .debt import document_fingerprint
+    from .debt_store import build_debt_baseline_proposal
+
+    proposal = build_debt_baseline_proposal(root, run_dir.name)["baseline"]
+    retrospective = read_json(run_dir / "retrospective.json")
+    inventory = retrospective.get("inventory", [])
+    excluded_keys = (
+        "blocking_failures",
+        "configuration_errors",
+        "infrastructure_errors",
+        "measured_failures",
+        "missing_evidence",
+        "unknown_product_intent",
+    )
+    exclusions = {key: retrospective.get(key, []) for key in excluded_keys}
+    inputs.update(
+        {
+            "baseline/proposed.json": _json_text(proposal),
+            "controller/debt-eligibility.json": _json_text(
+                {
+                    "schema_version": 1,
+                    "proposal_sha256": document_fingerprint(proposal),
+                    "inventory_count": len(inventory) if isinstance(inventory, list) else None,
+                    "inventory_categories": sorted(
+                        {
+                            str(item.get("category"))
+                            for item in inventory
+                            if isinstance(item, Mapping)
+                        }
+                    ),
+                    "rule": (
+                        "Only the exact items in baseline/proposed.json are eligible inherited "
+                        "debt. Every condition listed below remains non-baselinable and unresolved."
+                    ),
+                    "non_baselinable": exclusions,
+                }
+            ),
+            "run/retrospective.json": (run_dir / "retrospective.json").read_bytes(),
+        }
+    )
+    for gate in ("coverage", "structure"):
+        for suffix in ("json", "details.json"):
+            path = run_dir / "gates" / f"{gate}.{suffix}"
+            if path.is_file():
+                inputs[f"run/gates/{path.name}"] = path.read_bytes()
 
 
 def _json_text(value: Any) -> str:
@@ -218,7 +275,7 @@ def _prepare_plan(
     routing = _provider_routing(data_classification)
     scope = _scope(root, base)
     run_dir, summary = _matching_quality_run(root, scope, TIER_EVIDENCE_PROFILE[tier])
-    inputs = _bundle_inputs(root, base, run_dir, summary)
+    inputs = _bundle_inputs(root, base, run_dir, summary, purpose)
     inputs["controller/review-purpose.json"] = _json_text(
         {
             "purpose": purpose,
@@ -250,18 +307,24 @@ def _prepare_plan(
         inputs=inputs,
         max_bundle_bytes=max_bundle_bytes,
     )
-    return (
-        _plan_payload(
-            tier,
-            run_dir,
-            series,
-            max_bundle_bytes,
-            data_classification,
-            routing,
-            purpose,
-        ),
+    plan = _plan_payload(
+        tier,
+        run_dir,
         series,
+        max_bundle_bytes,
+        data_classification,
+        routing,
+        purpose,
     )
+    if purpose == "debt_baseline":
+        from .debt import document_fingerprint
+
+        plan["purpose_artifacts"] = {
+            "debt_baseline_document": document_fingerprint(
+                json.loads(str(inputs["baseline/proposed.json"]))
+            )
+        }
+    return plan, series
 
 
 def _provider_routing(data_classification: str) -> dict[str, Any]:
@@ -761,6 +824,7 @@ def report_council(root: Path, run_id: str = "latest") -> dict[str, Any]:
         "run_id": selected,
         "tier": plan["tier"],
         "purpose": plan.get("purpose", "candidate"),
+        "purpose_artifacts": plan.get("purpose_artifacts", {}),
         "scope": bundle["scope"],
         "status": result["status"],
         "summary": result["summary"],

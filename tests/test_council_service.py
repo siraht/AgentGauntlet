@@ -301,7 +301,7 @@ def test_prepare_plan_preserves_every_evidence_binding(
     base_ref.assert_called_once_with(tmp_path)
     build_scope.assert_called_once_with(tmp_path, "origin/main")
     matching.assert_called_once_with(tmp_path, scope, "deep")
-    bundle_inputs.assert_called_once_with(tmp_path, "origin/main", run_dir, summary)
+    bundle_inputs.assert_called_once_with(tmp_path, "origin/main", run_dir, summary, "candidate")
     build_series.assert_called_once_with(
         scope=scope,
         evidence_manifest_sha256="sha256:" + "5" * 64,
@@ -309,6 +309,67 @@ def test_prepare_plan_preserves_every_evidence_binding(
         max_bundle_bytes=1,
     )
     plan_payload.assert_called_once_with("high", run_dir, series, 1, "public", routing, "candidate")
+
+
+def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / ".aqg" / "runs" / "shadow-source"
+    inventory = [
+        {
+            "fingerprint": "structure:src/legacy.py:legacy",
+            "category": "structure",
+            "path": "src/legacy.py",
+            "severity": "medium",
+            "value": 80,
+            "direction": "higher_is_worse",
+        }
+    ]
+    retrospective = {
+        "schema_version": 1,
+        "inventory": inventory,
+        "configuration_errors": [{"gate": "mutation_changed"}],
+        "infrastructure_errors": [{"gate": "assurance"}],
+        "missing_evidence": [{"gate": "policy_maintenance"}],
+    }
+    proposal = {
+        "schema_version": 1,
+        "state": "proposed",
+        "source_revision": "a" * 40,
+        "policy_fingerprint": "sha256:" + "b" * 64,
+        "control_fingerprint": "sha256:" + "c" * 64,
+        "created_at": "2026-08-13T00:00:00+00:00",
+        "measurement": {
+            "run_id": "shadow-source",
+            "profile": "deep",
+            "measured_at": "2026-08-13T00:00:00+00:00",
+            "change_fingerprint": "sha256:" + "d" * 64,
+            "manifest_fingerprint": "sha256:" + "e" * 64,
+        },
+        "inventory": inventory,
+    }
+    write_evidence_json(run_dir / "retrospective.json", retrospective)
+    write_evidence_json(run_dir / "gates" / "structure.json", {"status": "quality_failure"})
+    write_evidence_json(run_dir / "gates" / "structure.details.json", {"findings": inventory})
+    write_evidence_json(run_dir / "gates" / "coverage.json", {"status": "pass"})
+    write_evidence_json(run_dir / "gates" / "coverage.details.json", {"metrics": []})
+    monkeypatch.setattr(
+        "aqg.debt_store.build_debt_baseline_proposal",
+        lambda _root, _run_id: {"baseline": proposal},
+    )
+    inputs: dict[str, str | bytes] = {}
+
+    service._add_debt_review_inputs(tmp_path, run_dir, inputs)
+
+    assert json.loads(str(inputs["baseline/proposed.json"])) == proposal
+    assert json.loads(bytes(inputs["run/retrospective.json"]).decode()) == retrospective
+    assert "run/gates/structure.details.json" in inputs
+    assert "run/gates/coverage.details.json" in inputs
+    eligibility = json.loads(str(inputs["controller/debt-eligibility.json"]))
+    assert eligibility["inventory_count"] == 1
+    assert eligibility["inventory_categories"] == ["structure"]
+    assert eligibility["non_baselinable"]["configuration_errors"] == [{"gate": "mutation_changed"}]
+    assert eligibility["non_baselinable"]["infrastructure_errors"] == [{"gate": "assurance"}]
 
 
 def test_fake_run_publishes_only_verified_immutable_evidence(
@@ -335,6 +396,7 @@ def test_fake_run_publishes_only_verified_immutable_evidence(
         "run_id": "council-test",
         "tier": "pr",
         "purpose": "candidate",
+        "purpose_artifacts": {},
         "scope": series["scope"],
         "status": "advisory_clear",
         "summary": (

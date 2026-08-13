@@ -13,7 +13,7 @@ import pytest
 
 from aqg.cli import main
 from aqg.constants import PASS
-from aqg.debt import DebtError, compare, validate_baseline
+from aqg.debt import DebtError, compare, document_fingerprint, validate_baseline
 from aqg.debt_store import (
     _council_authority,
     _council_quality_errors,
@@ -22,6 +22,7 @@ from aqg.debt_store import (
     _proposed_baseline,
     _validate_shadow_scope,
     _verified_shadow_documents,
+    build_debt_baseline_proposal,
     debt_control_fingerprint,
     load_current_debt_baseline,
     propose_debt_baseline,
@@ -92,6 +93,9 @@ def _clear_council_report(
         "run_id": run_id,
         "tier": "high",
         "purpose": "debt_baseline",
+        "purpose_artifacts": {
+            "debt_baseline_document": document_fingerprint(proposal),
+        },
         "scope": {
             "revision": proposal["source_revision"],
             "base_revision": "HEAD",
@@ -157,6 +161,12 @@ def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
         "council revision does not match the immutable shadow candidate"
     ]
 
+    wrong_document = json.loads(json.dumps(report))
+    wrong_document["purpose_artifacts"]["debt_baseline_document"] = "sha256:" + "0" * 64
+    assert _council_scope_errors(wrong_document, proposal, summary) == [
+        "council did not review the exact proposed debt-baseline document"
+    ]
+
     weak = json.loads(json.dumps(report))
     weak.update(
         {
@@ -183,8 +193,6 @@ def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
 def test_proposal_preserves_complete_manifested_measurement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    timestamps = iter(["2026-07-28T22:49:39+00:00", "2026-07-28T22:49:40+00:00"])
-    monkeypatch.setattr("aqg.debt_store.utc_now", lambda: next(timestamps))
     _policy(tmp_path)
     run_dir = _run(tmp_path, "20260728-shadow")
     report = propose_debt_baseline(tmp_path, "20260728-shadow")
@@ -193,6 +201,7 @@ def test_proposal_preserves_complete_manifested_measurement(
     assert proposal["state"] == "proposed"
     assert proposal["measurement"]["run_id"] == "20260728-shadow"
     assert proposal["source_revision"] == "a" * 40
+    assert proposal["created_at"] == proposal["measurement"]["measured_at"]
     assert proposal["inventory"][0]["value"] == 80
     assert report["manifest_verification"]["ok"] is True
     assert report["source_manifest_fingerprint"].startswith("sha256:")
@@ -217,6 +226,20 @@ def test_proposal_preserves_complete_manifested_measurement(
     with pytest.raises(ConfigurationError, match="overwrite"):
         propose_debt_baseline(tmp_path, "20260728-shadow")
     assert json.loads((run_dir / "manifest.json").read_text())["run_id"] == "20260728-shadow"
+
+
+def test_proposal_can_be_reconstructed_without_writing_or_clock_drift(
+    tmp_path: Path,
+) -> None:
+    _policy(tmp_path)
+    _run(tmp_path, "reconstruct-shadow")
+
+    first = build_debt_baseline_proposal(tmp_path, "reconstruct-shadow")
+    second = build_debt_baseline_proposal(tmp_path, "reconstruct-shadow")
+
+    assert first["baseline"] == second["baseline"]
+    assert first["document_fingerprint"] == second["document_fingerprint"]
+    assert not Path(first["path"]).exists()
 
 
 def test_verified_shadow_documents_preserves_diagnostics_and_labels(
@@ -355,8 +378,7 @@ def test_proposal_wires_resolved_run_identity_to_helpers(
     measurement.assert_called_once_with("wired-shadow", summary, retrospective, manifest)
 
 
-def test_proposed_baseline_contract_is_exact(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("aqg.debt_store.utc_now", lambda: "2026-07-28T23:00:00+00:00")
+def test_proposed_baseline_contract_is_exact() -> None:
     inventory: list[dict[str, object]] = []
 
     proposal = _proposed_baseline(
@@ -377,7 +399,7 @@ def test_proposed_baseline_contract_is_exact(monkeypatch: pytest.MonkeyPatch) ->
         "source_revision": "a" * 40,
         "policy_fingerprint": "sha256:" + "4" * 64,
         "control_fingerprint": "sha256:" + "1" * 64,
-        "created_at": "2026-07-28T23:00:00+00:00",
+        "created_at": "2026-07-28T22:00:00+00:00",
         "measurement": {
             "run_id": "shadow-run",
             "profile": "deep",
