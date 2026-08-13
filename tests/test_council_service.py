@@ -77,6 +77,9 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
 
     report = service.council_doctor(which=paths.get, executor=fake_version)
 
+    assert report["schema_version"] == service.SERVICE_SCHEMA_VERSION
+    assert report["banner"] == service.ADVISORY_BANNER
+    assert report["status"] == "incomplete"
     assert report["missing_tools"] == ["opencode"]
     assert report["tools"]["grok"]["version"] == "grok 9.1"
     assert report["tools"]["codex"]["version"] == "grok 9.1"
@@ -92,6 +95,11 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
         "codex/gpt-5.6-sol",
         "gemini/gemini-3-flash-preview",
     ]
+
+    paths["opencode"] = "/tools/opencode"
+    ready = service.council_doctor(which=paths.get, executor=fake_version)
+    assert ready["status"] == "ready"
+    assert ready["missing_tools"] == []
 
 
 def test_plan_has_no_provider_calls_and_bundle_cap_fails_closed(
