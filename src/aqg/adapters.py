@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from .acceptance import run_acceptance_mutation
-from .approvals import validate_required_approvals
+from .assurance import evaluate_assurance
 from .checks import (
     crap_score,
     lint_features,
@@ -2163,17 +2163,27 @@ def _review(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
 
 
 def _assurance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    del project
     policy = load_policy(root)
     errors, risk = risk_summary(root, policy, "quality/change-risk.json")
-    selected = str(risk.get("selected_risk_profile") or "standard")
-    approvals = validate_required_approvals(root, selected)
     if errors:
         code = CONFIGURATION_ERROR
-    elif approvals["errors"]:
-        code = QUALITY_FAILURE
+        assurance = {
+            "schema_version": 1,
+            "kind": "aqg-functional-assurance",
+            "status": "unusable",
+            "controls": {},
+            "failures": list(errors),
+        }
     else:
-        code = PASS
+        code, assurance = evaluate_assurance(
+            root,
+            project,
+            risk,
+            run_id=os.environ.get("AQG_RUN_ID"),
+        )
+    assurance_failures = assurance.get("failures", [])
+    if not isinstance(assurance_failures, list):
+        assurance_failures = ["functional assurance returned malformed failures"]
     return _write_report(
         root,
         "assurance",
@@ -2182,8 +2192,8 @@ def _assurance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
             "applicability": "applicable",
             "risk": risk,
             "risk_errors": errors,
-            "approvals": approvals,
-            "failures": [*errors, *approvals["errors"]],
+            "assurance": assurance,
+            "failures": [*errors, *assurance_failures],
         },
     )
 
@@ -2640,9 +2650,10 @@ def _release_readiness(root: Path, project: dict[str, Any]) -> tuple[int, dict[s
     packet = analyze_review(root, policy, base=_base_ref(project), require_evidence=False)
     if packet["summary"]["blockers"]:
         findings.append(f"automated review has {packet['summary']['blockers']} blocker(s)")
-    selected = str(risk.get("selected_risk_profile") or "standard")
-    approvals = validate_required_approvals(root, selected)
-    findings.extend(f"approval {message}" for message in approvals["errors"])
+    assurance_path = root / ".aqg" / "work" / "assurance" / "report.json"
+    assurance = read_json(assurance_path) if assurance_path.is_file() else None
+    if not isinstance(assurance, dict) or assurance.get("exit_code") != PASS:
+        findings.append("current functional assurance evidence is not green")
     for required in (
         root / ".github" / "workflows" / "quality-gauntlet.yml",
         root / ".github" / "CODEOWNERS",
@@ -2658,7 +2669,7 @@ def _release_readiness(root: Path, project: dict[str, Any]) -> tuple[int, dict[s
             "applicability": "applicable",
             "risk": risk,
             "review": packet["summary"],
-            "approvals": approvals,
+            "assurance": assurance,
             "findings": findings,
         },
     )

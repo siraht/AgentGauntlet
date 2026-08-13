@@ -1000,13 +1000,14 @@ class ReviewAndApprovalTests(RepoCase):
         actor_errors = validate_approval(self.root, "independent-verification")
         self.assertTrue(any("actor_type" in error for error in actor_errors), actor_errors)
 
-    def test_assurance_gate_blocks_missing_risk_selected_approval_evidence(self) -> None:
+    def test_assurance_gate_blocks_missing_functional_evidence(self) -> None:
         self._initialized()
         code, report = run_adapter(self.root, "assurance")
-        self.assertEqual(code, QUALITY_FAILURE)
-        self.assertEqual(report["approvals"]["required"], ["behavior-review"])
+        self.assertEqual(code, INFRASTRUCTURE_ERROR)
+        self.assertEqual(report["assurance"]["kind"], "aqg-functional-assurance")
+        self.assertNotIn("approvals", report)
         self.assertTrue(
-            any("missing" in failure for failure in report["failures"]),
+            any("profile-owned evidence" in failure for failure in report["failures"]),
             report["failures"],
         )
 

@@ -37,6 +37,15 @@
   },
   "build_command": ["python3", "scripts/build_release.py", "--output", "dist"],
   "build_outputs": ["dist"],
+  "assurance": {
+    "rehearsal_command": [
+      "python3",
+      "scripts/dogfood_control_surfaces.py",
+      "--output",
+      "{output}"
+    ],
+    "timeout_seconds": 600
+  },
   "frameworks": ["pytest"],
   "gates": {
     "assurance": {

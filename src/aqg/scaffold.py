@@ -550,6 +550,7 @@ def build_project_config(
         "enforcement": _enforcement_settings(root, mode),
         "thresholds": _default_thresholds(),
         "profile_thresholds": _assurance_thresholds(),
+        "assurance": None,
         "gates": gates,
         "notes": detection.notes,
     }
