@@ -493,6 +493,46 @@ def test_candidate_bundle_contains_every_manifested_gate_detail(
     }
 
 
+def test_pre_council_assurance_context_has_an_exact_fail_closed_contract() -> None:
+    summary = {
+        "profile": "deep",
+        "gates": [
+            {"name": "coverage", "exit_code": 0},
+            {"name": "assurance", "exit_code": 1},
+            "malformed",
+        ],
+    }
+    detail = {
+        "assurance": {
+            "failures": ["independent_verification: current council missing"],
+            "controls": {
+                "behavior": {"status": "works"},
+                "functional_rehearsal": {"status": "works"},
+                "independent_verification": {"status": "not_tested"},
+                "malformed": "ignored",
+            },
+        }
+    }
+
+    assert service._pre_council_assurance_context(summary, detail) == {
+        "schema_version": 1,
+        "seed_run_is_final_assurance": False,
+        "seed_run_profile": "deep",
+        "failed_gates": ["assurance"],
+        "assurance_failures": ["independent_verification: current council missing"],
+        "control_statuses": {
+            "behavior": "works",
+            "functional_rehearsal": "works",
+            "independent_verification": "not_tested",
+        },
+        "interpretation": (
+            "A candidate council runs before final assurance. Inspect the complete assurance "
+            "detail. If its sole unresolved control is this exact current council, that circular "
+            "precondition is not an independent candidate defect; every other failure remains."
+        ),
+    }
+
+
 def test_fake_run_publishes_only_verified_immutable_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

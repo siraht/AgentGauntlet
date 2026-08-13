@@ -182,7 +182,7 @@ def _pre_council_assurance_context(
 ) -> dict[str, Any]:
     assurance = assurance_detail.get("assurance", {})
     controls = assurance.get("controls", {}) if isinstance(assurance, Mapping) else {}
-    return {
+    context = {
         "schema_version": 1,
         "seed_run_is_final_assurance": False,
         "failed_gates": [
@@ -202,6 +202,8 @@ def _pre_council_assurance_context(
             "precondition is not an independent candidate defect; every other failure remains."
         ),
     }
+    context["seed_run_profile"] = summary.get("profile")
+    return context
 
 
 def _add_candidate_run_inputs(
