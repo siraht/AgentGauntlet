@@ -187,12 +187,18 @@ def _bundle_inputs(
     diff = git_diff(root, base, unified=3)
     inputs: dict[str, str | bytes] = {
         "current.diff.patch": "" if purpose == "debt_baseline" else diff,
-        "quality/change-risk.json": (root / "quality" / "change-risk.json").read_bytes(),
-        "review/current.json": _json_text(_review_projection(root, base)),
         "run/manifest.json": (run_dir / "manifest.json").read_bytes(),
         "run/summary.json": _json_text(summary),
     }
-    for path in sorted((root / "feature-spec").glob("*.md")):
+    if purpose != "debt_baseline":
+        inputs["quality/change-risk.json"] = (root / "quality" / "change-risk.json").read_bytes()
+        inputs["review/current.json"] = _json_text(_review_projection(root, base))
+    feature_paths = (
+        [root / "feature-spec" / "AgentQualityGauntlet.Retrospective.md"]
+        if purpose == "debt_baseline"
+        else sorted((root / "feature-spec").glob("*.md"))
+    )
+    for path in feature_paths:
         inputs[f"feature-spec/{path.name}"] = path.read_bytes()
     if purpose == "debt_baseline":
         inputs["controller/debt-adoption-boundary.json"] = _json_text(

@@ -410,6 +410,10 @@ def test_debt_review_omits_unrelated_diff_content_but_binds_its_identity(
     run_dir = tmp_path / "run"
     (tmp_path / "quality").mkdir()
     (tmp_path / "quality" / "change-risk.json").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "feature-spec").mkdir()
+    (tmp_path / "feature-spec" / "AgentQualityGauntlet.Retrospective.md").write_text(
+        "# Retrospective\n", encoding="utf-8"
+    )
     (run_dir / "manifest.json").parent.mkdir(parents=True)
     (run_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(service, "git_diff", lambda *_args, **_kwargs: "private bootstrap diff")
@@ -419,6 +423,11 @@ def test_debt_review_omits_unrelated_diff_content_but_binds_its_identity(
     inputs = service._bundle_inputs(tmp_path, "origin/main", run_dir, {}, "debt_baseline")
 
     assert inputs["current.diff.patch"] == ""
+    assert "review/current.json" not in inputs
+    assert "quality/change-risk.json" not in inputs
+    assert {name for name in inputs if name.startswith("feature-spec/")} == {
+        "feature-spec/AgentQualityGauntlet.Retrospective.md"
+    }
     boundary = json.loads(str(inputs["controller/debt-adoption-boundary.json"]))
     assert boundary["omitted_diff_bytes"] == len("private bootstrap diff")
     assert boundary["omitted_diff_sha256"].startswith("sha256:")
