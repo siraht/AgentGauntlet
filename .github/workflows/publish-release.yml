@@ -7,6 +7,10 @@ on:
         description: Existing vX.Y.Z tag to publish
         required: true
         type: string
+      comparison_sha:
+        description: Full protected commit SHA that predates and grades this release
+        required: true
+        type: string
       prerelease:
         description: Mark the GitHub release as a prerelease
         required: true
@@ -14,43 +18,59 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
-  artifact-metadata: write
+  contents: read
 
 concurrency:
   group: publish-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  prepare-evidence:
+    name: Prepare base-graded release evidence
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      COMPARISON_SHA: ${{ inputs.comparison_sha }}
+      AQG_TRUSTED_MODE: "1"
+      AQG_TRUSTED_POLICY_PATH: ${{ github.workspace }}/trusted/quality/policy.toml
+      AQG_TRUSTED_PROJECT_PATH: ${{ github.workspace }}/trusted/quality/project.json
+      AQG_TRUSTED_LAUNCHER: ${{ github.workspace }}/trusted/quality/qg.py
+      AQG_TRUSTED_TOOLCHAIN_ROOT: ${{ github.workspace }}/trusted
+      AQG_DIFF_BASE: ${{ inputs.comparison_sha }}
     steps:
-      - name: Validate immutable tag input
+      - name: Validate immutable release inputs
         shell: bash
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
-            echo "Release tag must use vX.Y.Z syntax." >&2
-            exit 2
-          }
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || exit 2
+          [[ "$COMPARISON_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
+      - name: Checkout immutable base grader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.comparison_sha }}
+          path: trusted
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact tagged subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
+          path: subject
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify tag belongs to published main and matches runtime version
+      - name: Prove tag, comparison ancestry, and runtime version
         shell: bash
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor HEAD origin/main
-          VERSION="$(python -c 'from pathlib import Path; import re; text=Path("src/aqg/constants.py").read_text(); print(re.search(r"^__version__ = \"([^\"]+)\"$", text, re.M).group(1))')"
+          git -C subject fetch --no-tags origin "$COMPARISON_SHA"
+          test "$(git -C trusted rev-parse HEAD)" = "$COMPARISON_SHA"
+          test "$(git -C subject rev-parse HEAD)" = \
+            "$(git -C subject rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          test "$COMPARISON_SHA" != "$(git -C subject rev-parse HEAD)"
+          git -C subject merge-base --is-ancestor "$COMPARISON_SHA" HEAD
+          VERSION="$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' subject/src/aqg/constants.py)"
+          test -n "$VERSION"
           test "$RELEASE_TAG" = "v$VERSION"
+          test -z "$(git -C subject status --porcelain --untracked-files=no)"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
@@ -59,36 +79,255 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: quality/tools/js/package-lock.json
-      - name: Prove exact-tag risk-selected quality evidence
-        env:
-          AQG_DIFF_BASE: HEAD^
+          cache-dependency-path: trusted/quality/tools/js/package-lock.json
+      - name: Install base-controlled hash-locked tools
+        working-directory: trusted
+        run: python3 quality/qg.py tools install --ci --browsers
+      - name: Create manifested deep seed without claiming it passed
+        working-directory: subject
+        shell: bash
         run: |
-          python quality/qg.py tools install --ci --browsers
-          python quality/qg.py check-risk --keep-going
-          python quality/qg.py evidence verify --run-id latest
-      - name: Prove source contracts
+          set +e
+          python3 ../trusted/quality/qg.py --root . check deep --keep-going --quiet
+          code=$?
+          set -e
+          test "$code" -eq 0 -o "$code" -eq 1
+          python3 ../trusted/quality/qg.py --root . evidence verify --run-id latest
+      - name: Upload immutable deep seed
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-deep-seed-${{ inputs.tag }}-${{ github.run_id }}
+          path: subject/.aqg/runs/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  council:
+    name: Exact-tag high review council
+    needs: prepare-evidence
+    runs-on: [self-hosted, aqg-review]
+    timeout-minutes: 120
+    outputs:
+      run_id: ${{ steps.review.outputs.run_id }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      COMPARISON_SHA: ${{ inputs.comparison_sha }}
+      AQG_TRUSTED_MODE: "1"
+      AQG_TRUSTED_POLICY_PATH: ${{ github.workspace }}/trusted/quality/policy.toml
+      AQG_TRUSTED_PROJECT_PATH: ${{ github.workspace }}/trusted/quality/project.json
+      AQG_TRUSTED_LAUNCHER: ${{ github.workspace }}/trusted/quality/qg.py
+      AQG_TRUSTED_TOOLCHAIN_ROOT: ${{ github.workspace }}/trusted
+      AQG_DIFF_BASE: ${{ inputs.comparison_sha }}
+    steps:
+      - name: Checkout immutable base grader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.comparison_sha }}
+          path: trusted
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact tagged subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          path: subject
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch immutable comparison revision
+        run: git -C subject fetch --no-tags origin "$COMPARISON_SHA"
+      - name: Download base-graded deep seed
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-deep-seed-${{ inputs.tag }}-${{ github.run_id }}
+          path: subject/.aqg/runs
+      - name: Prove subscription review tools are available
+        working-directory: subject
+        run: python3 ../trusted/quality/qg.py --root . council doctor
+      - name: Run and verify exact-tag high council
+        id: review
+        working-directory: subject
+        shell: bash
         run: |
-          python -m pip install --disable-pip-version-check -e . pytest
-          python -m compileall -q src tests scripts
-          python -m pytest -q
-          python scripts/dogfood_control_surfaces.py --output build/aqg/control-surface-dogfood.json
-      - name: Build and independently verify twice
+          set +e
+          python3 ../trusted/quality/qg.py --root . council run \
+            --tier high --purpose candidate --data-classification public
+          code=$?
+          set -e
+          RUN_ID="$(python3 -c 'import json; print(json.load(open(".aqg/council/latest.json"))["run_id"])')"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          python3 ../trusted/quality/qg.py --root . council verify --run-id "$RUN_ID"
+          python3 ../trusted/scripts/verify_release_authority.py \
+            --subject . --tag "$RELEASE_TAG" --comparison-sha "$COMPARISON_SHA" \
+            --council-run-id "$RUN_ID"
+          test "$code" -eq 0
+      - name: Upload high-council evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-high-council-${{ inputs.tag }}-${{ github.run_id }}
+          path: subject/.aqg/council/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  quality-and-build:
+    name: Trusted checks and deterministic build
+    needs: council
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      COMPARISON_SHA: ${{ inputs.comparison_sha }}
+      COUNCIL_RUN_ID: ${{ needs.council.outputs.run_id }}
+      AQG_TRUSTED_MODE: "1"
+      AQG_TRUSTED_POLICY_PATH: ${{ github.workspace }}/trusted/quality/policy.toml
+      AQG_TRUSTED_PROJECT_PATH: ${{ github.workspace }}/trusted/quality/project.json
+      AQG_TRUSTED_LAUNCHER: ${{ github.workspace }}/trusted/quality/qg.py
+      AQG_TRUSTED_TOOLCHAIN_ROOT: ${{ github.workspace }}/trusted
+      AQG_DIFF_BASE: ${{ inputs.comparison_sha }}
+    steps:
+      - name: Checkout immutable base grader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.comparison_sha }}
+          path: trusted
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact tagged subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          path: subject
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch immutable comparison revision
+        run: git -C subject fetch --no-tags origin "$COMPARISON_SHA"
+      - name: Download exact high-council evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-high-council-${{ inputs.tag }}-${{ github.run_id }}
+          path: subject/.aqg/council
+      - name: Verify authority before candidate execution
+        run: >-
+          python3 trusted/scripts/verify_release_authority.py
+          --subject subject --tag "$RELEASE_TAG"
+          --comparison-sha "$COMPARISON_SHA"
+          --council-run-id "$COUNCIL_RUN_ID"
+          --output subject/build/aqg/release-authority.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: trusted/quality/tools/js/package-lock.json
+      - name: Install base-controlled hash-locked tools
+        working-directory: trusted
+        run: python3 quality/qg.py tools install --ci --browsers
+      - name: Prove risk-selected and release profiles with trusted grader
+        working-directory: subject
+        shell: bash
         run: |
-          python scripts/build_release.py --output dist-one
-          python scripts/build_release.py --output dist-two
+          STAGE="$(python3 -c 'import json; print(json.load(open("../trusted/quality/project.json"))["enforcement"]["stage"])')"
+          if [[ "$STAGE" == "shadow" ]]; then
+            python3 ../trusted/quality/qg.py --root . check-risk --shadow --keep-going
+            python3 ../trusted/quality/qg.py --root . audit shadow --profile release
+          else
+            python3 ../trusted/quality/qg.py --root . check-risk --keep-going
+            python3 ../trusted/quality/qg.py --root . check release --keep-going
+          fi
+          python3 ../trusted/quality/qg.py --root . evidence verify --run-id latest
+      - name: Prove source and functional contracts
+        working-directory: subject
+        run: |
+          python3 -m pip install --disable-pip-version-check -e . pytest
+          python3 -m compileall -q src tests scripts
+          python3 -m pytest -q
+          python3 scripts/dogfood_control_surfaces.py \
+            --output build/aqg/control-surface-dogfood.json
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Build twice and verify with immutable grader
+        working-directory: subject
+        run: |
+          python3 scripts/build_release.py --output dist-one
+          python3 scripts/build_release.py --output dist-two
           diff -qr dist-one dist-two
-          python scripts/verify_release.py dist-one
+          python3 ../trusted/scripts/verify_release.py dist-one
+          python3 ../trusted/scripts/verify_release.py dist-two
           (cd dist-one && sha256sum -c SHA256SUMS)
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Upload verified release package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified-release-${{ inputs.tag }}-${{ github.run_id }}
+          path: |
+            subject/dist-one/
+            subject/build/aqg/release-authority.json
+            subject/build/aqg/control-surface-dogfood.json
+            subject/.aqg/runs/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
+  publish:
+    name: Publish previously verified bytes
+    needs: [council, quality-and-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      COMPARISON_SHA: ${{ inputs.comparison_sha }}
+      COUNCIL_RUN_ID: ${{ needs.council.outputs.run_id }}
+    steps:
+      - name: Checkout immutable base grader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.comparison_sha }}
+          path: trusted
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact tagged subject without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          path: subject
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch immutable comparison revision
+        run: git -C subject fetch --no-tags origin "$COMPARISON_SHA"
+      - name: Download exact high-council evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-high-council-${{ inputs.tag }}-${{ github.run_id }}
+          path: subject/.aqg/council
+      - name: Download previously verified release package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-release-${{ inputs.tag }}-${{ github.run_id }}
+          path: payload
+      - name: Reverify exact authority and release bytes
+        run: |
+          python3 trusted/scripts/verify_release_authority.py \
+            --subject subject --tag "$RELEASE_TAG" --comparison-sha "$COMPARISON_SHA" \
+            --council-run-id "$COUNCIL_RUN_ID" --output release-authority.json
+          diff -u payload/build/aqg/release-authority.json release-authority.json
+          python3 trusted/scripts/verify_release.py payload/dist-one
+          (cd payload/dist-one && sha256sum -c SHA256SUMS)
       - name: Attest checksummed release subjects
         uses: actions/attest@36051bcae73b7c2a8a6945a48cbf80953c6baa35 # v4.2.0
         with:
-          subject-checksums: dist-one/SHA256SUMS
+          subject-checksums: payload/dist-one/SHA256SUMS
       - name: Publish immutable artifacts
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           test -z "$(gh release view "$RELEASE_TAG" --json tagName 2>/dev/null || true)" || {
@@ -97,15 +336,15 @@ jobs:
           }
           args=(--verify-tag --generate-notes --title "Agent Quality Gauntlet $RELEASE_TAG")
           if [[ "$PRERELEASE" == "true" ]]; then args+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" dist-one/* "${args[@]}"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+          gh release create "$RELEASE_TAG" payload/dist-one/* "${args[@]}"
+      - name: Retain final publication evidence
         if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: published-release-evidence-${{ inputs.tag }}
+          name: published-release-evidence-${{ inputs.tag }}-${{ github.run_id }}
           path: |
-            dist-one/
-            build/aqg/control-surface-dogfood.json
-            .aqg/runs/
-            .aqg/council/
+            payload/
+            release-authority.json
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 90
