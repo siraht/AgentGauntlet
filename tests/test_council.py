@@ -417,6 +417,8 @@ def test_all_provider_identities_are_exact_contracts() -> None:
         for identity in (provider_identity(model),)
     }
     assert actual == expected
+    with pytest.raises(ConfigurationError, match="^model_id must be a non-empty string$"):
+        provider_identity(None)  # type: ignore[arg-type]
 
 
 def test_all_file_provider_commands_and_protocols_are_exact() -> None:
@@ -548,10 +550,34 @@ def test_all_file_provider_commands_and_protocols_are_exact() -> None:
         "gemini/gemini-3-flash-preview": ("gemini", "json-document"),
         "claude/sonnet": ("claude", "json-document"),
     }
+    prompt = "bounded review prompt"
+    inline_commands = {
+        "grok-4.5": [commands["grok-4.5"][0], "--single", prompt, *commands["grok-4.5"][3:]],
+        "synthetic/hf:zai-org/GLM-5.2": [
+            *commands["synthetic/hf:zai-org/GLM-5.2"][:2],
+            prompt,
+            *commands["synthetic/hf:zai-org/GLM-5.2"][2:],
+        ],
+        "opencode/deepseek-v4-flash-free": [
+            *commands["opencode/deepseek-v4-flash-free"][:2],
+            prompt,
+            *commands["opencode/deepseek-v4-flash-free"][2:],
+        ],
+        "codex/gpt-5.6-sol": [*commands["codex/gpt-5.6-sol"][:-1], prompt],
+        "gemini/gemini-3-flash-preview": [
+            *commands["gemini/gemini-3-flash-preview"][:2],
+            prompt,
+            *commands["gemini/gemini-3-flash-preview"][3:],
+        ],
+        "claude/sonnet": [*commands["claude/sonnet"], prompt],
+    }
     for model, expected_command in commands.items():
-        spec = validate_provider_spec(build_file_provider_spec(model))
-        assert spec["command"] == expected_command
-        assert (spec["executable"], spec["output_protocol"]) == protocols[model]
+        file_spec = validate_provider_spec(build_file_provider_spec(model))
+        inline_spec = validate_provider_spec(build_provider_spec(model, prompt))
+        assert file_spec["command"] == expected_command
+        assert inline_spec["command"] == inline_commands[model]
+        assert (file_spec["executable"], file_spec["output_protocol"]) == protocols[model]
+        assert (inline_spec["executable"], inline_spec["output_protocol"]) == protocols[model]
 
 
 def test_every_file_provider_command_rejects_argument_tampering() -> None:

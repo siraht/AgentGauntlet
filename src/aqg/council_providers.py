@@ -184,7 +184,7 @@ def build_provider_spec(model_id: str, prompt: str) -> dict[str, Any]:
         protocol = "json-document"
         executable = "gemini"
     elif identity["provider_id"] == "claude":
-        command = _claude_command(model_id, prompt)
+        command = _claude_inline_command(model_id, prompt)
         protocol = "json-document"
         executable = "claude"
     else:
@@ -315,9 +315,9 @@ def _gemini_stdin_command(model_id: str) -> list[str]:
     return _gemini_command(model_id, "")
 
 
-def _claude_command(model_id: str, prompt: str) -> list[str]:
-    model = model_id.split("/", 1)[1]
-    command = [
+def _claude_base_command(model_id: str) -> list[str]:
+    model = model_id.removeprefix("claude/")
+    return [
         "claude",
         "--print",
         "--model",
@@ -340,13 +340,14 @@ def _claude_command(model_id: str, prompt: str) -> list[str]:
         "--setting-sources",
         "",
     ]
-    if prompt:
-        command.append(prompt)
-    return command
+
+
+def _claude_inline_command(model_id: str, prompt: str) -> list[str]:
+    return [*_claude_base_command(model_id), prompt]
 
 
 def _claude_stdin_command(model_id: str) -> list[str]:
-    return _claude_command(model_id, "")
+    return _claude_base_command(model_id)
 
 
 _CODEX_DISABLED_FEATURES = (
@@ -495,7 +496,7 @@ def _valid_gemini_command(model_id: str, command: list[str]) -> bool:
 
 
 def _valid_claude_command(model_id: str, command: list[str]) -> bool:
-    inline = bool(command) and command == _claude_command(model_id, command[-1])
+    inline = bool(command) and command == _claude_inline_command(model_id, command[-1])
     stdin = command == _claude_stdin_command(model_id)
     return inline or stdin
 

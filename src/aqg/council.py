@@ -276,7 +276,7 @@ def provider_identity(model_id: str) -> dict[str, str]:
             "model_family": "grok",
         }
     if model_id.startswith("synthetic/"):
-        family = "synthetic:" + model_id.split("/")[-1].split("-")[0].lower()
+        family = "synthetic:" + model_id.rpartition("/")[2].partition("-")[0].lower()
         return {
             "provider_id": "synthetic",
             "provider_group": "synthetic:api.synthetic.new",
@@ -284,7 +284,7 @@ def provider_identity(model_id: str) -> dict[str, str]:
             "model_family": family,
         }
     if model_id.startswith("opencode/"):
-        family = "opencode:" + model_id.split("/", 1)[1].split("-")[0].lower()
+        family = "opencode:" + model_id.removeprefix("opencode/").partition("-")[0].lower()
         return {
             "provider_id": "opencode",
             "provider_group": "opencode:opencode.ai",
@@ -292,7 +292,7 @@ def provider_identity(model_id: str) -> dict[str, str]:
             "model_family": family,
         }
     if model_id.startswith("codex/"):
-        family = "openai:" + model_id.split("/", 1)[1].split("-")[0].lower()
+        family = "openai:" + model_id.removeprefix("codex/").partition("-")[0].lower()
         return {
             "provider_id": "codex",
             "provider_group": "openai:codex",
@@ -302,7 +302,7 @@ def provider_identity(model_id: str) -> dict[str, str]:
     if model_id.startswith("claude/"):
         return _claude_identity(model_id)
     if model_id.startswith("gemini/"):
-        family = "google:" + model_id.split("/", 1)[1].split("-")[0].lower()
+        family = "google:" + model_id.removeprefix("gemini/").partition("-")[0].lower()
         return {
             "provider_id": "gemini",
             "provider_group": "google:gemini-cli",
@@ -313,7 +313,7 @@ def provider_identity(model_id: str) -> dict[str, str]:
 
 
 def _claude_identity(model_id: str) -> dict[str, str]:
-    family = "anthropic:" + model_id.split("/", 1)[1].split("-")[0].lower()
+    family = "anthropic:" + model_id.removeprefix("claude/").partition("-")[0].lower()
     return {
         "provider_id": "claude",
         "provider_group": "anthropic:claude-cli",
