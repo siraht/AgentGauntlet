@@ -458,7 +458,13 @@ def _validate_exact_provider_command(value: Mapping[str, Any], command: list[str
         raise ConfigurationError(
             "Gemini provider command does not match the protected argument shape"
         )
-    if value["executable"] == "claude" and not _valid_claude_command(value["model_id"], command):
+    _validate_claude_command(value, command)
+
+
+def _validate_claude_command(value: Mapping[str, Any], command: list[str]) -> None:
+    if value["executable"] != "claude":
+        return
+    if not _valid_claude_command(value["model_id"], command):
         raise ConfigurationError(
             "Claude provider command does not match the protected argument shape"
         )

@@ -300,13 +300,7 @@ def provider_identity(model_id: str) -> dict[str, str]:
             "model_family": family,
         }
     if model_id.startswith("claude/"):
-        family = "anthropic:" + model_id.split("/", 1)[1].split("-")[0].lower()
-        return {
-            "provider_id": "claude",
-            "provider_group": "anthropic:claude-cli",
-            "endpoint_origin": "local-subscription",
-            "model_family": family,
-        }
+        return _claude_identity(model_id)
     if model_id.startswith("gemini/"):
         family = "google:" + model_id.split("/", 1)[1].split("-")[0].lower()
         return {
@@ -316,6 +310,16 @@ def provider_identity(model_id: str) -> dict[str, str]:
             "model_family": family,
         }
     raise ConfigurationError(f"unsupported council model namespace: {model_id}")
+
+
+def _claude_identity(model_id: str) -> dict[str, str]:
+    family = "anthropic:" + model_id.split("/", 1)[1].split("-")[0].lower()
+    return {
+        "provider_id": "claude",
+        "provider_group": "anthropic:claude-cli",
+        "endpoint_origin": "local-subscription",
+        "model_family": family,
+    }
 
 
 def _review_output_contract() -> str:
