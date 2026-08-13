@@ -53,13 +53,20 @@
   reports without converting an unknown measurement into a pass.
 - `AQG-CORE-024` Detailed evidence used to classify a gate MUST be copied into its run
   directory and protected by a deterministic manifest before the run completes.
-- `AQG-CORE-025` High-assurance policy MUST require independently fingerprinted verification,
-  behavior approval, manual QA, and rollback evidence.
-- `AQG-CORE-026` Protected policy maintenance MUST require a scoped, fingerprinted approval
-  record and MUST NOT make authoritative evidence pass while maintenance
-  overrides are active.
+- `AQG-CORE-025` High-assurance policy MUST require current, immutable executable
+  evidence for behavior, functional QA, rollback, and independent verification.
+  A ceremonial approval record MUST NOT substitute for a missing measurement.
+- `AQG-CORE-026` Protected policy maintenance MUST remain scoped to exact paths
+  and operations and MUST prove that the trusted grader, required gates,
+  thresholds, protected paths, and failure classifications were not weakened.
+  An unclassified or weakening change requires explicit human authority, and
+  maintenance overrides MUST NOT be active during authoritative checking.
 - `AQG-CORE-027` Active requirements MUST have stable identifiers that tests and acceptance
   scenarios can reference directly.
+- `AQG-CORE-028` Routine development, verification, and release publication MAY
+  be authorized by deterministic gates plus current independent agent review.
+  Human authority remains REQUIRED before weakening a guardrail, spending
+  money, exposing private data, or executing an irreversible action.
 
 ## Related specifications
 

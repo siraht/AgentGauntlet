@@ -29,9 +29,11 @@
 - `AQG-COUNCIL-007` Prompts, normalized candidate inputs, provider identity,
   model identity, tool version, timings, validated responses, reconciliation,
   and the conclusion MUST be stored in immutable run evidence.
-- `AQG-COUNCIL-008` Council evidence is advisory by default. It MUST NOT
-  impersonate a human behavior approval, code-owner approval, hosted
-  branch-protection check, or release authority.
+- `AQG-COUNCIL-008` Council evidence is advisory by default. Protected policy
+  MAY assign a current, complete, exact-candidate council technical-verification
+  authority, but it MUST NOT impersonate a human, erase a deterministic
+  failure, fill unknown product intent, or cross a reserved human-authority
+  boundary.
 - `AQG-COUNCIL-009` Sensitive inputs MUST be minimized and explicitly
   classified before external-provider review; credentials, environment
   secrets, and unrelated repository content MUST NOT enter provider prompts.

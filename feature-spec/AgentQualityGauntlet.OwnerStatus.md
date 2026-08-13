@@ -28,6 +28,12 @@
 - `AQG-OWNER-009` Missing, malformed, stale, or tampered evidence MUST remain
   visible with its actual classification and MUST NOT be collapsed into an
   ordinary quality failure or pass.
+- `AQG-OWNER-010` Owner-facing evidence MUST distinguish `works`, `not_tested`,
+  `broken`, `unusable`, and `human_decision_needed` without changing the raw
+  gate result or exit-code contract.
+- `AQG-OWNER-011` A missing ceremonial approval MUST NOT make otherwise current
+  functional evidence `broken`; `human_decision_needed` is reserved for an
+  explicit human-authority boundary.
 
 ## Related specifications
 

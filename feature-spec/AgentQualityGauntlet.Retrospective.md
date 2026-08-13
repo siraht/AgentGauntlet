@@ -33,10 +33,13 @@
 - `AQG-RETRO-011` Authoritative verification MUST use a grader selected by a
   protected base or immutable release identity, never solely by the candidate.
 - `AQG-RETRO-012` Policy maintenance MUST be scoped to declared paths and
-  operations, fingerprinted to the candidate and controls, independently
-  approved, and rejected during ordinary authoritative checking.
+  operations, fingerprinted to the candidate and controls, checked by a trust
+  anchor outside the candidate grading surface, and rejected during ordinary
+  authoritative checking when it weakens or cannot classify a guardrail
+  without explicit human authority.
 - `AQG-RETRO-013` High-assurance completion MUST independently validate current
-  verification, behavior approval, manual QA, and rollback evidence.
+  executable behavior, functional QA, rollback, and trusted-verification
+  evidence; prose-only or ceremonial approval records are insufficient.
 - `AQG-RETRO-014` All configured and detected required test roots, including
   repository-local quality-tool contract tests, MUST be collected.
 - `AQG-RETRO-015` Active requirements MUST be mapped by stable requirement ID
