@@ -21,12 +21,17 @@ from aqg.policy import load_policy
 from aqg.reporting import review_to_sarif
 from aqg.review import (
     _ballot_oracle_resolution,
+    _ballot_parts,
+    _bundle_materials,
     _clear_high_council_for_scope,
     _consume_replacement,
     _deleted_test_assertion_paths,
+    _diff_material_content,
+    _first_complete_resolution,
     _html,
     _markdown,
     _resolution_path,
+    _resolution_values,
     _resolve_deleted_expectations,
     _resolved_oracle_paths,
     _resolved_review_findings,
@@ -1590,6 +1595,19 @@ def test_oracle_resolution_requires_exact_path_and_both_diff_sides() -> None:
     assert _resolved_oracle_paths(finding, affected, diff) == affected
     assert _resolved_oracle_paths(finding, affected, None) == set()
     assert _resolved_oracle_paths({"oracle_resolutions": None}, affected, diff) == set()
+
+
+def test_extracted_oracle_helpers_fail_closed_on_malformed_inputs(tmp_path: Path) -> None:
+    ballot_path = tmp_path / "run" / "ballots" / "000.json"
+    ballot_path.parent.mkdir(parents=True)
+    assert _bundle_materials(ballot_path) == []
+    assert _diff_material_content(None) is None
+    assert _diff_material_content({"name": "other", "content": "diff"}) is None
+    assert _diff_material_content({"name": "current.diff.patch", "content": 42}) is None
+    assert _ballot_parts(None) is None
+    assert _ballot_parts({"findings": [], "reviewer": None}) is None
+    assert _resolution_values({"path": "tests/test_app.py"}) is None
+    assert _first_complete_resolution([None, {}], {"tests/test_app.py"}, None) is None
 
 
 def test_oracle_resolution_preserves_diff_whitespace_exactly() -> None:

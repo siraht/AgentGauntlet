@@ -20,6 +20,7 @@ import pytest
 from aqg.constants import CONFIGURATION_ERROR, INFRASTRUCTURE_ERROR, PASS
 from aqg.council import (
     ROLES,
+    _validate_findings,
     aggregate_ballots,
     build_candidate_bundle,
     build_review_prompt,
@@ -507,6 +508,17 @@ def test_finding_validation_reports_exact_invalid_field_and_order() -> None:
         candidate["findings"] = findings
         with pytest.raises(ConfigurationError, match=f"^{re.escape(message)}(?:$|:)"):
             validate_review_payload(candidate)
+
+
+def test_extracted_finding_validator_preserves_sorting_and_duplicate_rejection() -> None:
+    first = _payload(_bundle(), "concerns")["findings"][0]
+    second = {**first, "id": "A-0"}
+
+    assert [item["id"] for item in _validate_findings([first, second])] == ["A-0", "F-1"]
+    with pytest.raises(
+        ConfigurationError, match=r"findings\[1\] has duplicate id or invalid severity"
+    ):
+        _validate_findings([first, dict(first)])
 
 
 def test_oracle_resolution_validation_reports_exact_invalid_field() -> None:
