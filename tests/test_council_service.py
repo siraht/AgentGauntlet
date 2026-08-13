@@ -533,6 +533,15 @@ def test_pre_council_assurance_context_has_an_exact_fail_closed_contract() -> No
     }
 
 
+def test_pre_council_assurance_context_normalizes_absent_optional_collections() -> None:
+    context = service._pre_council_assurance_context({}, {})
+
+    assert context["seed_run_profile"] is None
+    assert context["failed_gates"] == []
+    assert context["assurance_failures"] == []
+    assert context["control_statuses"] == {}
+
+
 def test_fake_run_publishes_only_verified_immutable_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
