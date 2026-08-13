@@ -94,6 +94,7 @@ JS_SUFFIXES = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
 WEB_SUFFIXES = {".html", ".htm", ".css", ".scss", ".sass", ".less"}
 PY_SUFFIXES = {".py", ".pyi"}
 GENERATED_FORMAT_EXCLUDES = {"quality/onboarding.json"}
+MUTATION_EXECUTED_STATUSES = ("Killed", "Timeout", "Survived", "NoCoverage")
 CommandSpec = (
     tuple[list[str], int, dict[str, str] | None]
     | tuple[list[str], int, dict[str, str] | None, tuple[int, ...]]
@@ -2041,13 +2042,7 @@ def _js_mutation_metrics(payload: Any) -> tuple[dict[str, int], int, float]:
     killed = counts.get("Killed", 0) + counts.get("Timeout", 0)
     survived = counts.get("Survived", 0) + counts.get("NoCoverage", 0)
     denominator = killed + survived
-    score = (
-        100.0
-        if denominator == 0 and statuses
-        else killed * 100 / denominator
-        if denominator
-        else 0.0
-    )
+    score = killed * 100 / denominator if denominator else 0.0
     return counts, survived, score
 
 
@@ -2062,9 +2057,10 @@ def _evaluate_js_mutation(
     command_code: int,
 ) -> tuple[int, list[str]]:
     failures: list[str] = []
-    if not report_exists or not counts:
+    executed = sum(counts.get(status, 0) for status in MUTATION_EXECUTED_STATUSES)
+    if not report_exists or not counts or not executed:
         return INFRASTRUCTURE_ERROR, [
-            "Stryker did not produce a readable non-empty mutation report"
+            "Stryker did not produce a readable report with at least one executed mutant"
         ]
     if survived > maximum:
         failures.append(f"{survived} survived/no-coverage mutants > allowed {maximum}")

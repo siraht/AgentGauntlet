@@ -1516,7 +1516,11 @@ class SetupContractTests(RepoCase):
         self.assertEqual(survived, 2)
         self.assertEqual(score, 60.0)
         self.assertEqual(
-            _js_mutation_metrics({"mutants": [{"id": "1", "status": "Ignored"}]})[2], 100.0
+            _js_mutation_metrics({"mutants": [{"id": "1", "status": "Ignored"}]})[2], 0.0
+        )
+        self.assertEqual(
+            _js_mutation_metrics({"mutants": [{"id": "1", "status": "CompileError"}]})[2],
+            0.0,
         )
         self.assertEqual(_js_mutation_metrics({}), ({}, 0, 0.0))
 
@@ -1533,7 +1537,7 @@ class SetupContractTests(RepoCase):
             ),
             (
                 INFRASTRUCTURE_ERROR,
-                ["Stryker did not produce a readable non-empty mutation report"],
+                ["Stryker did not produce a readable report with at least one executed mutant"],
             ),
         )
         for report_exists, counts in ((False, {"Killed": 1}), (True, {})):
@@ -1549,6 +1553,25 @@ class SetupContractTests(RepoCase):
                         command_code=0,
                     )[0],
                     INFRASTRUCTURE_ERROR,
+                )
+        for counts in ({"CompileError": 4}, {"Ignored": 3}):
+            with self.subTest(counts=counts):
+                self.assertEqual(
+                    _evaluate_js_mutation(
+                        report_exists=True,
+                        counts=counts,
+                        survived=0,
+                        score=0,
+                        threshold=85,
+                        maximum=0,
+                        command_code=0,
+                    ),
+                    (
+                        INFRASTRUCTURE_ERROR,
+                        [
+                            "Stryker did not produce a readable report with at least one executed mutant"
+                        ],
+                    ),
                 )
         quality_code, failures = _evaluate_js_mutation(
             report_exists=True,
