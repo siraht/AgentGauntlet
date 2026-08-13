@@ -222,6 +222,21 @@ def test_aqg_council_002_prompt_injection_is_inert_data_and_never_a_shell_comman
     assert not Path("/tmp/AQG_COUNCIL_SHOULD_NOT_EXIST").exists()
 
 
+def test_aqg_council_002_prompt_lists_only_citable_bundled_materials() -> None:
+    bundle = _bundle(source='see "outside-report.json" in this manifest')
+    prompt = build_review_prompt(bundle, "security_trust")
+    marker = "VALID_EVIDENCE_MATERIALS="
+    line = next(value for value in prompt.splitlines() if value.startswith(marker))
+
+    materials = json.loads(line.removeprefix(marker))
+
+    assert materials == [
+        {"material": item["name"], "sha256": item["sha256"]} for item in bundle["materials"]
+    ]
+    assert all(item["material"] != "outside-report.json" for item in materials)
+    assert "A file named inside a manifest" in prompt
+
+
 def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() -> None:
     prompt = build_review_prompt(_bundle(), "requirements_behavior")
     grok = validate_provider_spec(build_provider_spec("grok-4.5", prompt))
