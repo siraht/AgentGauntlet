@@ -507,14 +507,7 @@ def collect_ballot(
     monotonic: Callable[[], float] = time.monotonic,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Run one isolated reviewer and create a ballot only from valid JSON."""
-    normalized_bundle = validate_candidate_bundle(bundle)
-    prompt = build_review_prompt(normalized_bundle, role)
-    prompt_path = Path(cwd) / PROMPT_FILENAME
-    prompt_path.write_text(prompt, encoding="utf-8")
-    spec = build_file_provider_spec(model_id)
-    if spec["provider_id"] == "codex":
-        schema_path = Path(cwd) / SCHEMA_FILENAME
-        schema_path.write_bytes(canonical_json(REVIEW_PAYLOAD_JSON_SCHEMA) + b"\n")
+    normalized_bundle, prompt, spec = _prepare_provider_inputs(bundle, role, model_id, cwd)
     execution = execute_provider(
         spec,
         cwd=cwd,
@@ -546,6 +539,20 @@ def collect_ballot(
     except ConfigurationError as exc:
         return None, _malformed_execution(execution, exc)
     return ballot, execution
+
+
+def _prepare_provider_inputs(
+    bundle: Mapping[str, Any], role: str, model_id: str, cwd: Path
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    normalized_bundle = validate_candidate_bundle(bundle)
+    prompt = build_review_prompt(normalized_bundle, role)
+    (Path(cwd) / PROMPT_FILENAME).write_text(prompt, encoding="utf-8")
+    spec = build_file_provider_spec(model_id)
+    if spec["provider_id"] == "codex":
+        (Path(cwd) / SCHEMA_FILENAME).write_bytes(
+            canonical_json(REVIEW_PAYLOAD_JSON_SCHEMA) + b"\n"
+        )
+    return normalized_bundle, prompt, spec
 
 
 def _malformed_execution(execution: Mapping[str, Any], error: ConfigurationError) -> dict[str, Any]:

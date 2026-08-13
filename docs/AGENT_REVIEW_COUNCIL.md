@@ -70,11 +70,11 @@ The dashboard should translate the verified result into:
 
 ## Tiers
 
-| Tier    | Use                                     | Reviewers                                      | Expected outcome                            |
-| ------- | --------------------------------------- | ---------------------------------------------- | ------------------------------------------- |
-| `smoke` | Adapter health and cheap early feedback | GLM-4.7-Flash, DeepSeek V4 Flash               | Intentionally incomplete for High assurance |
-| `pr`    | Routine checkpoint advice               | Grok 4.5, GLM-5.2, DeepSeek V4 Flash           | Three provider groups and three roles       |
-| `high`  | High-assurance technical advice         | Grok 4.5, Codex GPT-5.6 Sol ×2, DeepSeek V4 Flash | Four roles and three provider groups     |
+| Tier    | Use                                     | Reviewers                                         | Expected outcome                            |
+| ------- | --------------------------------------- | ------------------------------------------------- | ------------------------------------------- |
+| `smoke` | Adapter health and cheap early feedback | GLM-4.7-Flash, DeepSeek V4 Flash                  | Intentionally incomplete for High assurance |
+| `pr`    | Routine checkpoint advice               | Grok 4.5, GLM-5.2, DeepSeek V4 Flash              | Three provider groups and three roles       |
+| `high`  | High-assurance technical advice         | Grok 4.5, Codex GPT-5.6 Sol ×2, DeepSeek V4 Flash | Four roles and three provider groups        |
 
 The actual installed OpenCode identifier is
 `opencode/deepseek-v4-flash-free`; there is no configured model named
