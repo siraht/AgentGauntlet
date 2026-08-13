@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from aqg.cli import COMMAND_HANDLERS, _triage_payload, build_parser, main
 from aqg.constants import CONFIGURATION_ERROR, PASS, QUALITY_FAILURE
+from aqg.evidence_manifest import write_evidence_json, write_run_manifest
 from aqg.scaffold import initialize_project
 
 
@@ -102,13 +103,42 @@ class CliControlSurfaceTests(unittest.TestCase):
         self.assertIn("scenarios.json", payload["error"]["message"])
         self.assertIn("configuration error:", stderr)
 
-    def test_missing_human_approvals_fail_closed_with_json_evidence(self) -> None:
+    def test_routine_high_assurance_does_not_require_ceremonial_approval_json(self) -> None:
         code, payload, _ = self._json_command(
             "approval", "validate", "--risk-profile", "high_assurance"
         )
-        self.assertEqual(code, QUALITY_FAILURE)
-        self.assertTrue(payload["errors"])
-        self.assertEqual(payload["exit_code"], QUALITY_FAILURE)
+        self.assertEqual(code, PASS)
+        self.assertEqual(payload["required"], [])
+        self.assertEqual(payload["errors"], [])
+        self.assertEqual(payload["mode"], "reserved_boundary_only")
+        self.assertEqual(payload["exit_code"], PASS)
+
+    def test_evidence_verify_proves_history_and_detects_tampering(self) -> None:
+        run_id = "cli-evidence-proof"
+        run_dir = self.root / ".aqg" / "runs" / run_id
+        write_evidence_json(run_dir / "summary.json", {"status": "pass"})
+        write_run_manifest(run_dir, run_id)
+        (self.root / ".aqg" / "latest.json").write_text(
+            json.dumps({"run_id": run_id}) + "\n", encoding="utf-8"
+        )
+
+        code, payload, stderr = self._json_command("evidence", "verify")
+        self.assertEqual(code, PASS, stderr)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "verified")
+        self.assertEqual(payload["run_id"], run_id)
+
+        (run_dir / "summary.json").write_text('{"status":"changed"}\n', encoding="utf-8")
+        code, payload, _ = self._json_command("evidence", "verify", "--run-id", run_id)
+        self.assertEqual(code, 3)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "unusable")
+        self.assertEqual(payload["modified"], ["summary.json"])
+
+    def test_evidence_verify_rejects_unsafe_run_identity(self) -> None:
+        code, payload, _ = self._json_command("evidence", "verify", "--run-id", "../outside")
+        self.assertEqual(code, CONFIGURATION_ERROR)
+        self.assertIn("must start alphanumeric", payload["error"]["message"])
 
     def test_authoritative_commands_reject_active_update_overrides(self) -> None:
         cases = (
@@ -196,14 +226,14 @@ class CliControlSurfaceTests(unittest.TestCase):
             "stderr": "",
         }
         stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
-            with (
-                patch("aqg.cli.utc_now", return_value="2026-07-28T00:41:31+00:00"),
-                patch("aqg.cli.uuid.uuid4") as uuid4,
-                patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
-            ):
-                uuid4.return_value.hex = "12345678deadbeef"
-                code = main(["--root", str(self.root), "gate", "format"])
+        with (
+            contextlib.redirect_stdout(stdout),
+            patch("aqg.cli.utc_now", return_value="2026-07-28T00:41:31+00:00"),
+            patch("aqg.cli.uuid.uuid4") as uuid4,
+            patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
+        ):
+            uuid4.return_value.hex = "12345678deadbeef"
+            code = main(["--root", str(self.root), "gate", "format"])
         self.assertEqual(code, PASS)
         self.assertEqual(stdout.getvalue(), "format: pass\n")
         self.assertEqual(run.call_args.args[0], self.root)
@@ -214,13 +244,13 @@ class CliControlSurfaceTests(unittest.TestCase):
     def test_manual_gate_honors_explicit_run_id_and_json_output(self) -> None:
         evidence = {"status": "pass", "stdout": "", "stderr": "", "gate": "format"}
         stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
-            with (
-                patch.dict(os.environ, {"AQG_RUN_ID": "caller-owned-run"}),
-                patch("aqg.cli.uuid.uuid4") as uuid4,
-                patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
-            ):
-                code = main(["--root", str(self.root), "gate", "format", "--json"])
+        with (
+            contextlib.redirect_stdout(stdout),
+            patch.dict(os.environ, {"AQG_RUN_ID": "caller-owned-run"}),
+            patch("aqg.cli.uuid.uuid4") as uuid4,
+            patch("aqg.cli.run_gate", return_value=(PASS, evidence)) as run,
+        ):
+            code = main(["--root", str(self.root), "gate", "format", "--json"])
 
         self.assertEqual(code, PASS)
         self.assertEqual(json.loads(stdout.getvalue()), evidence)

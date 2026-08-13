@@ -37,6 +37,7 @@ from .debt_store import propose_debt_baseline, review_debt_proposal
 from .detect import detect_project
 from .doctor import diagnose
 from .errors import AQGError, ConfigurationError, InfrastructureError, QualityFailure
+from .evidence_manifest import validate_run_id, verify_run_manifest
 from .golden import run_goldens
 from .guidance import guides, read_guide, search_guides
 from .hooks import hook_pretool, hook_stop
@@ -499,6 +500,15 @@ def _add_council_parsers(sub: Any) -> None:
 
 
 def _add_evidence_parsers(sub: Any) -> None:
+    evidence = sub.add_parser("evidence", help="inspect and verify immutable run evidence")
+    evidence_sub = _nested_subparsers(evidence, "evidence_command")
+    evidence_verify = evidence_sub.add_parser(
+        "verify", help="verify every byte recorded by a finalized run manifest"
+    )
+    evidence_verify.add_argument(
+        "--run-id", default="latest", help="completed run identifier; defaults to latest"
+    )
+
     golden = sub.add_parser("golden", help="run or explicitly update deterministic golden sessions")
     golden.add_argument("--update", action="store_true")
     golden.add_argument("--scenario")
@@ -566,7 +576,7 @@ def _add_evidence_parsers(sub: Any) -> None:
     promote_proposal.add_argument("--to", choices=STAGES, required=True)
 
     approval = sub.add_parser(
-        "approval", help="create templates or validate human approval records"
+        "approval", help="manage legacy or reserved-boundary human authority records"
     )
     approval_sub = _nested_subparsers(approval, "approval_command")
     approval_template = approval_sub.add_parser(
@@ -1482,6 +1492,33 @@ def _dispatch_report(args: argparse.Namespace, root: Path) -> int:
     return PASS
 
 
+def _resolve_evidence_run(root: Path, requested: str) -> tuple[str, Path]:
+    if requested != "latest":
+        run_id = validate_run_id(requested)
+        return run_id, root / ".aqg" / "runs" / run_id
+    latest = root / ".aqg" / "latest.json"
+    if not latest.is_file():
+        raise InfrastructureError("no latest evidence pointer exists; run a profile first")
+    try:
+        payload = json.loads(latest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise InfrastructureError(f"cannot read latest evidence pointer: {exc}") from exc
+    run_id = validate_run_id(str(payload.get("run_id", "")))
+    return run_id, root / ".aqg" / "runs" / run_id
+
+
+def _dispatch_evidence(args: argparse.Namespace, root: Path) -> int:
+    run_id, run_dir = _resolve_evidence_run(root, args.run_id)
+    payload = verify_run_manifest(run_dir)
+    payload["path"] = str(run_dir)
+    payload["status"] = "verified" if payload["ok"] else "unusable"
+    _json_dump(payload) if args.json else print(
+        f"Evidence {run_id}: {payload['status']}"
+        + (f" · {'; '.join(payload['errors'])}" if payload["errors"] else "")
+    )
+    return PASS if payload["ok"] else INFRASTRUCTURE_ERROR
+
+
 def _dispatch_dashboard(args: argparse.Namespace, root: Path) -> int:
     roots = project_roots() if args.portfolio else [root]
     if not roots:
@@ -1558,6 +1595,7 @@ COMMAND_HANDLERS: dict[str, CommandHandler] = {
     "dashboard": _dispatch_dashboard,
     "detect": _dispatch_detect,
     "doctor": _dispatch_doctor,
+    "evidence": _dispatch_evidence,
     "gate": _dispatch_gate,
     "golden": _dispatch_golden,
     "guidance": _dispatch_guidance,
