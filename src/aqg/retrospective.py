@@ -27,6 +27,11 @@ TAXONOMY = (
 _MISSING = re.compile(r"\b(?:missing|absent|unavailable)\b", re.IGNORECASE)
 _EXIT_BUCKET = {1: "measured_failures", 2: "configuration_errors", 3: "infrastructure_errors"}
 _BASELINABLE_GATES = {"structure", "coverage", "test_integrity"}
+_GATE_DEBT_CATEGORIES = {
+    "structure": {"structure"},
+    "coverage": {"coverage", "crap"},
+    "test_integrity": {"test_integrity"},
+}
 
 
 def _text(value: Any) -> str:
@@ -159,7 +164,9 @@ def _blocking_failures(
 
 
 def _comparison(
-    inventory: list[dict[str, Any]], baseline: Mapping[str, Any] | None
+    inventory: list[dict[str, Any]],
+    baseline: Mapping[str, Any] | None,
+    measured_categories: set[str],
 ) -> tuple[dict[str, list[Any]], bool]:
     empty: dict[str, list[Any]] = {
         "inherited": [],
@@ -170,7 +177,91 @@ def _comparison(
     }
     if baseline is None:
         return empty, False
-    return compare(inventory, baseline), True
+    result = compare(inventory, baseline)
+    deferred = [
+        item for item in result["resolved"] if item.get("category") not in measured_categories
+    ]
+    result["resolved"] = [
+        item for item in result["resolved"] if item.get("category") in measured_categories
+    ]
+    result["inherited"] = sorted(
+        [*result["inherited"], *deferred], key=lambda item: str(item.get("fingerprint", ""))
+    )
+    return result, True
+
+
+def _record_baseline_error(gates: dict[str, list[dict[str, Any]]], error: str | None) -> None:
+    if not error:
+        return
+    gates["configuration_errors"] = _dedupe(
+        [
+            *gates["configuration_errors"],
+            _item("debt_baseline", "configuration_errors", 2, error),
+        ]
+    )
+
+
+def _measured_categories(details: Mapping[str, Any]) -> set[str]:
+    return {
+        category
+        for gate in set(details).intersection(_BASELINABLE_GATES)
+        for category in _GATE_DEBT_CATEGORIES[gate]
+    }
+
+
+def _is_unsafe(
+    gates: Mapping[str, list[dict[str, Any]]],
+    comparison: Mapping[str, list[Any]],
+    blocking: Sequence[dict[str, Any]],
+    unknown: Sequence[dict[str, Any]],
+) -> bool:
+    return any(
+        (
+            blocking,
+            comparison["regressed"],
+            comparison["new"],
+            comparison["invalid"],
+            gates["missing_evidence"],
+            gates["configuration_errors"],
+            gates["infrastructure_errors"],
+            unknown,
+        )
+    )
+
+
+def _certification(reviewed: bool, unsafe: bool) -> str:
+    if not reviewed:
+        return "observations_only"
+    return "not_regression_free" if unsafe else "regression_free"
+
+
+def _report(
+    inventory: list[dict[str, Any]],
+    gates: Mapping[str, list[dict[str, Any]]],
+    comparison: Mapping[str, list[Any]],
+    blocking: list[dict[str, Any]],
+    unknown: list[dict[str, Any]],
+    reviewed: bool,
+) -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "certification": _certification(reviewed, _is_unsafe(gates, comparison, blocking, unknown)),
+        "inventory": inventory,
+        "unreviewed_debt": inventory if not reviewed else [],
+        "measured_failures": gates["measured_failures"],
+        "blocking_failures": blocking,
+        "inherited_debt": comparison["inherited"],
+        "regressions": comparison["regressed"],
+        "missing_evidence": gates["missing_evidence"],
+        "configuration_errors": gates["configuration_errors"],
+        "infrastructure_errors": gates["infrastructure_errors"],
+        "unknown_product_intent": unknown,
+        "new_debt": comparison["new"],
+        "resolved_debt": comparison["resolved"],
+        "invalid_debt": comparison["invalid"],
+    }
+    report["counts"] = {name: len(report[name]) for name in (*TAXONOMY, "unreviewed_debt")}
+    return report
 
 
 def build_retrospective(
@@ -190,58 +281,13 @@ def build_retrospective(
     details = copy.deepcopy(dict(gate_details))
     inventory = debt_inventory(details, copy.deepcopy(dict(thresholds)))
     gates = _gate_taxonomy(results, details)
-    if baseline_error:
-        gates["configuration_errors"] = _dedupe(
-            [
-                *gates["configuration_errors"],
-                _item(
-                    "debt_baseline",
-                    "configuration_errors",
-                    2,
-                    baseline_error,
-                ),
-            ]
-        )
+    _record_baseline_error(gates, baseline_error)
     unknown = _unknown_intent(copy.deepcopy(traceability))
-    comparison, reviewed = _comparison(inventory, copy.deepcopy(baseline))
-    blocking = _blocking_failures(gates["measured_failures"], details)
-    unsafe = any(
-        (
-            blocking,
-            comparison["regressed"],
-            comparison["new"],
-            comparison["invalid"],
-            gates["missing_evidence"],
-            gates["configuration_errors"],
-            gates["infrastructure_errors"],
-            unknown,
-        )
+    comparison, reviewed = _comparison(
+        inventory, copy.deepcopy(baseline), _measured_categories(details)
     )
-    report: dict[str, Any] = {
-        "schema_version": SCHEMA_VERSION,
-        "certification": (
-            "observations_only"
-            if not reviewed
-            else "not_regression_free"
-            if unsafe
-            else "regression_free"
-        ),
-        "inventory": inventory,
-        "unreviewed_debt": inventory if not reviewed else [],
-        "measured_failures": gates["measured_failures"],
-        "blocking_failures": blocking,
-        "inherited_debt": comparison["inherited"],
-        "regressions": comparison["regressed"],
-        "missing_evidence": gates["missing_evidence"],
-        "configuration_errors": gates["configuration_errors"],
-        "infrastructure_errors": gates["infrastructure_errors"],
-        "unknown_product_intent": unknown,
-        "new_debt": comparison["new"],
-        "resolved_debt": comparison["resolved"],
-        "invalid_debt": comparison["invalid"],
-    }
-    report["counts"] = {name: len(report[name]) for name in (*TAXONOMY, "unreviewed_debt")}
-    return report
+    blocking = _blocking_failures(gates["measured_failures"], details)
+    return _report(inventory, gates, comparison, blocking, unknown, reviewed)
 
 
 def ratchet_exit_code(report: Mapping[str, Any]) -> int:

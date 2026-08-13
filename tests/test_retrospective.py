@@ -422,6 +422,24 @@ class RetrospectiveTaxonomyTests(unittest.TestCase):
         # Measured gate failure is preserved and does not block regression_free.
         self.assertEqual(report["counts"]["measured_failures"], 1)
 
+    def test_unmeasured_profile_debt_remains_inherited_not_resolved(self) -> None:
+        full_details = {
+            "structure": _structure_detail(complexity=20),
+            "coverage": _coverage_detail(),
+        }
+        inventory = build_retrospective([], full_details, THRESHOLDS)["inventory"]
+        baseline = _baseline(copy.deepcopy(inventory))
+
+        fast_report = build_retrospective(
+            [], {"structure": _structure_detail(complexity=20)}, THRESHOLDS, baseline=baseline
+        )
+
+        inherited_categories = {item["category"] for item in fast_report["inherited_debt"]}
+        self.assertEqual(inherited_categories, {"coverage", "crap", "structure"})
+        self.assertEqual(fast_report["resolved_debt"], [])
+        self.assertEqual(fast_report["certification"], "regression_free")
+        self.assertEqual(ratchet_exit_code(fast_report), 0)
+
     def test_new_or_regressed_debt_is_not_regression_free(self) -> None:
         details = {"structure": _structure_detail(complexity=20)}
         inventory = build_retrospective([], details, THRESHOLDS)["inventory"]

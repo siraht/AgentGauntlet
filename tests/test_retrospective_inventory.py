@@ -105,6 +105,14 @@ def test_inventory_includes_whole_tree_debt_even_when_not_currently_enforced() -
     assert "coverage:python:changed_lines" not in by_fingerprint
 
 
+def test_changed_scope_inventory_excludes_untouched_functions() -> None:
+    details = _details()
+    details["structure"]["python"]["scope"] = "changed-functions"
+    inventory = debt_inventory(details, LIMITS)
+
+    assert not any(item["category"] == "structure" for item in inventory)
+
+
 def test_only_reviewable_quality_debt_is_baseline_eligible() -> None:
     inventory = debt_inventory(_details(), LIMITS)
     categories = {item["category"] for item in inventory}
