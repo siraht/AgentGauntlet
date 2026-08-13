@@ -3,7 +3,12 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
+import json
 from pathlib import Path
+
+import pytest
 
 from aqg.assurance import (
     _authority_control,
@@ -14,26 +19,132 @@ from aqg.assurance import (
 from aqg.constants import INFRASTRUCTURE_ERROR, PASS, QUALITY_FAILURE
 
 
+def _identity(payload: dict[str, object]) -> str:
+    stable = dict(payload)
+    stable.pop("result_identity", None)
+    stable.pop("durations_ms", None)
+    encoded = json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def _rehearsal() -> dict[str, object]:
-    return {
+    evidence = {
+        "cold_start": {"bare_help": 0},
+        "setup": {"exit_code": 0},
+        "review": {"findings": 0},
+        "conformance": {"passed": 1},
+        "dashboard": {"checks": ["GET /=200"]},
+        "tui": {"exit_code": 0},
+    }
+    payload: dict[str, object] = {
         "schema_version": 2,
+        "evidence_type": "aqg.functional-rehearsal",
         "status": "pass",
-        "functional_qa": {"status": "pass", "checks": ["CLI", "dashboard"]},
-        "rollback": {"status": "pass", "restored_matches_before": True},
+        "candidate": {
+            "revision": "a" * 40,
+            "dirty": False,
+            "source_tree_sha256": "b" * 64,
+            "material_count": 3,
+        },
+        "result_identity": "",
+        "durations_ms": {
+            "total": 7,
+            "cold_start": 1,
+            "setup": 1,
+            "commands": 1,
+            "dashboard": 1,
+            "tui": 1,
+            "rollback": 1,
+        },
+        "cleanup": {"method": "TemporaryDirectory", "temporary_workspace_removed": True},
+        "cold_start": evidence["cold_start"],
+        "setup": evidence["setup"],
+        "functional_qa": {
+            "status": "pass",
+            "checks": list(evidence),
+            "evidence": evidence,
+        },
+        "rollback": {
+            "status": "pass",
+            "mechanism": "content-addressed-copy-into-fresh-root",
+            "before_identity": "sha256:" + "c" * 64,
+            "candidate_identity": "sha256:" + "d" * 64,
+            "restored_identity": "sha256:" + "c" * 64,
+            "candidate_changed": True,
+            "restored_matches_before": True,
+            "operation_outputs_equal": True,
+        },
         "cleanup_verified": True,
     }
+    payload["result_identity"] = _identity(payload)
+    return payload
 
 
 def test_functional_rehearsal_requires_executed_qa_rollback_and_cleanup() -> None:
     assert _validate_rehearsal_payload(_rehearsal()) == []
     payload = _rehearsal()
-    payload["functional_qa"] = {"status": "pass", "checks": []}
-    payload["rollback"] = {"status": "pass", "restored_matches_before": False}
+    payload["functional_qa"] = {"status": "pass", "checks": [], "evidence": {}}
+    rollback = payload["rollback"]
+    assert isinstance(rollback, dict)
+    rollback["restored_matches_before"] = False
     payload["cleanup_verified"] = False
+    payload["result_identity"] = _identity(payload)
     errors = _validate_rehearsal_payload(payload)
     assert any("checks" in error for error in errors)
-    assert any("restored_matches_before" in error for error in errors)
+    assert any("exact restoration" in error for error in errors)
     assert any("cleanup_verified" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        (lambda value: value.update({"unexpected": True}), "keys differ"),
+        (lambda value: value.update({"evidence_type": "self-asserted"}), "evidence_type"),
+        (lambda value: value["candidate"].update({"material_count": True}), "material_count"),
+        (lambda value: value["durations_ms"].update({"dashboard": -1}), "non-negative"),
+        (
+            lambda value: value["cleanup"].update({"temporary_workspace_removed": False}),
+            "cleanup was not verified",
+        ),
+        (lambda value: value["functional_qa"].update({"checks": ["setup", "setup"]}), "unique"),
+        (
+            lambda value: value["functional_qa"].update(
+                {"checks": ["cold_start", "setup", "review"]}
+            ),
+            "every required public control surface",
+        ),
+        (lambda value: value["functional_qa"]["evidence"].pop("tui"), "match every"),
+        (lambda value: value.update({"setup": {"exit_code": 9}}), "setup alias"),
+        (
+            lambda value: value["rollback"].update({"restored_identity": "sha256:" + "e" * 64}),
+            "restored identity",
+        ),
+        (
+            lambda value: value["rollback"].update({"candidate_identity": "sha256:" + "c" * 64}),
+            "changed installation",
+        ),
+    ],
+)
+def test_functional_rehearsal_rejects_forged_or_incomplete_evidence(
+    mutation: object, expected: str
+) -> None:
+    payload = copy.deepcopy(_rehearsal())
+    assert callable(mutation)
+    mutation(payload)
+    payload["result_identity"] = _identity(payload)
+    assert any(expected in error for error in _validate_rehearsal_payload(payload))
+
+
+def test_functional_rehearsal_identity_binds_content_and_current_revision() -> None:
+    payload = _rehearsal()
+    rollback = payload["rollback"]
+    assert isinstance(rollback, dict)
+    rollback["operation_outputs_equal"] = False
+    errors = _validate_rehearsal_payload(payload, revision="f" * 40, dirty=True)
+    assert any("result_identity does not match" in error for error in errors)
+    assert any("current candidate" in error for error in errors)
+    assert any("dirty state" in error for error in errors)
+    assert any("equal output" in error for error in errors)
 
 
 def test_reserved_authority_is_distinct_from_broken_functionality() -> None:

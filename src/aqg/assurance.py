@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -15,6 +18,7 @@ from .project import gate_applicable
 from .util import (
     change_fingerprint,
     control_fingerprint,
+    git_output,
     git_revision,
     read_json,
     run_command,
@@ -27,6 +31,24 @@ AUTHORITY_TRIGGERS = (
     "private_data_exposure",
     "irreversible_execution",
 )
+_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
+_HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_REVISION = re.compile(r"^[0-9a-f]{40,64}$")
+_REHEARSAL_KEYS = {
+    "schema_version",
+    "evidence_type",
+    "status",
+    "candidate",
+    "result_identity",
+    "durations_ms",
+    "cleanup",
+    "cold_start",
+    "setup",
+    "functional_qa",
+    "rollback",
+    "cleanup_verified",
+}
+_QA_CHECKS = {"cold_start", "setup", "review", "conformance", "dashboard", "tui"}
 
 
 def _base_ref(project: Mapping[str, Any]) -> str:
@@ -105,35 +127,216 @@ def _render_command(command: Any, output: Path) -> list[str]:
     return rendered
 
 
-def _validate_rehearsal_payload(payload: Any) -> list[str]:
+def _exact_keys(value: Mapping[str, Any], expected: set[str], location: str) -> list[str]:
+    if set(value) == expected:
+        return []
+    missing = sorted(expected - set(value))
+    unknown = sorted(set(value) - expected)
+    return [f"{location} keys differ: missing={missing!r}, unknown={unknown!r}"]
+
+
+def _canonical(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _expected_result_identity(payload: Mapping[str, Any]) -> str:
+    stable = dict(payload)
+    stable.pop("result_identity", None)
+    stable.pop("durations_ms", None)
+    return "sha256:" + hashlib.sha256(_canonical(stable)).hexdigest()
+
+
+def _validate_rehearsal_payload(
+    payload: Any, *, revision: str | None = None, dirty: bool | None = None
+) -> list[str]:
     if not isinstance(payload, dict):
         return ["functional rehearsal output must be a JSON object"]
+    errors = _exact_keys(payload, _REHEARSAL_KEYS, "functional rehearsal")
+    errors.extend(_rehearsal_identity_errors(payload, revision))
+    errors.extend(_candidate_errors(payload.get("candidate"), revision, dirty))
+    errors.extend(_duration_errors(payload.get("durations_ms")))
+    errors.extend(_cleanup_errors(payload.get("cleanup"), payload.get("cleanup_verified")))
+    errors.extend(_functional_qa_errors(payload.get("functional_qa")))
+    errors.extend(_rollback_errors(payload.get("rollback")))
+    errors.extend(_alias_errors(payload))
+    return errors
+
+
+def _rehearsal_identity_errors(payload: Mapping[str, Any], revision: str | None) -> list[str]:
     errors: list[str] = []
     if payload.get("schema_version") != 2:
         errors.append("functional rehearsal schema_version must be 2")
+    if payload.get("evidence_type") != "aqg.functional-rehearsal":
+        errors.append("functional rehearsal evidence_type is invalid")
     if payload.get("status") != "pass":
         errors.append("functional rehearsal status must be pass")
-    errors.extend(_functional_qa_errors(payload.get("functional_qa")))
-    errors.extend(_rollback_errors(payload.get("rollback")))
-    if payload.get("cleanup_verified") is not True:
+    identity = payload.get("result_identity")
+    if not isinstance(identity, str) or not _SHA256.fullmatch(identity):
+        errors.append("functional rehearsal result_identity must be a SHA-256 digest")
+    elif identity != _expected_result_identity(payload):
+        errors.append("functional rehearsal result_identity does not match its content")
+    return errors
+
+
+def _candidate_errors(candidate: Any, revision: str | None, dirty: bool | None) -> list[str]:
+    if not isinstance(candidate, Mapping):
+        return ["functional rehearsal candidate must be an object"]
+    errors = _exact_keys(
+        candidate, {"revision", "dirty", "source_tree_sha256", "material_count"}, "candidate"
+    )
+    candidate_revision = candidate.get("revision")
+    checks = (
+        (
+            isinstance(candidate_revision, str) and bool(_REVISION.fullmatch(candidate_revision)),
+            "candidate revision must be a Git object identity",
+        ),
+        (
+            revision is None or candidate_revision == revision,
+            "candidate revision does not match the current candidate",
+        ),
+        (isinstance(candidate.get("dirty"), bool), "candidate dirty must be boolean"),
+        (
+            dirty is None or candidate.get("dirty") is dirty,
+            "candidate dirty state does not match the current candidate",
+        ),
+        (
+            isinstance(candidate.get("source_tree_sha256"), str)
+            and bool(_HEX_SHA256.fullmatch(candidate["source_tree_sha256"])),
+            "candidate source_tree_sha256 must be a SHA-256 digest",
+        ),
+        (
+            isinstance(candidate.get("material_count"), int)
+            and not isinstance(candidate.get("material_count"), bool)
+            and candidate["material_count"] > 0,
+            "candidate material_count must be a positive integer",
+        ),
+    )
+    return errors + [message for passed, message in checks if not passed]
+
+
+def _duration_errors(durations: Any) -> list[str]:
+    expected = {"total", "cold_start", "setup", "commands", "dashboard", "tui", "rollback"}
+    if not isinstance(durations, Mapping):
+        return ["durations_ms must be an object"]
+    errors = _exact_keys(durations, expected, "durations_ms")
+    if any(not _nonnegative_integer(value) for value in durations.values()):
+        errors.append("durations_ms values must be non-negative integers")
+    return errors + _duration_order_errors(durations)
+
+
+def _nonnegative_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _duration_order_errors(durations: Mapping[str, Any]) -> list[str]:
+    total = durations.get("total")
+    phases = [value for key, value in durations.items() if key != "total"]
+    comparable = _nonnegative_integer(total) and all(
+        _nonnegative_integer(value) for value in phases
+    )
+    return (
+        ["total duration cannot be shorter than a phase"]
+        if comparable and any(total < value for value in phases)
+        else []
+    )
+
+
+def _cleanup_errors(cleanup: Any, verified: Any) -> list[str]:
+    expected = {"method": "TemporaryDirectory", "temporary_workspace_removed": True}
+    errors = [] if cleanup == expected else ["disposable workspace cleanup was not verified"]
+    if verified is not True:
         errors.append("functional rehearsal must prove cleanup_verified")
     return errors
 
 
 def _functional_qa_errors(qa: Any) -> list[str]:
-    if not isinstance(qa, dict) or qa.get("status") != "pass":
-        return ["functional_qa.status must be pass"]
-    if not isinstance(qa.get("checks"), list) or not qa["checks"]:
-        return ["functional_qa.checks must contain executed checks"]
+    if not isinstance(qa, Mapping):
+        return ["functional_qa must be an object"]
+    errors = _exact_keys(qa, {"status", "checks", "evidence"}, "functional_qa")
+    if qa.get("status") != "pass":
+        errors.append("functional_qa.status must be pass")
+    checks = qa.get("checks")
+    if not _named_checks(checks):
+        errors.append("functional_qa.checks must contain named executed checks")
+        return errors
+    assert isinstance(checks, list)
+    if set(checks) != _QA_CHECKS:
+        errors.append("functional_qa.checks must cover every required public control surface")
+    if len(checks) != len(set(checks)):
+        errors.append("functional_qa.checks must be unique")
+    return errors + _qa_evidence_errors(checks, qa.get("evidence"))
+
+
+def _named_checks(checks: Any) -> bool:
+    return (
+        isinstance(checks, list)
+        and bool(checks)
+        and all(isinstance(item, str) and bool(item) for item in checks)
+    )
+
+
+def _qa_evidence_errors(checks: list[Any], evidence: Any) -> list[str]:
+    if not isinstance(evidence, Mapping) or set(evidence) != set(checks):
+        return ["functional_qa.evidence must match every named check"]
+    if any(not isinstance(item, Mapping) or not item for item in evidence.values()):
+        return ["every functional QA check must contain non-empty evidence"]
     return []
 
 
 def _rollback_errors(rollback: Any) -> list[str]:
-    if not isinstance(rollback, dict) or rollback.get("status") != "pass":
-        return ["rollback.status must be pass"]
-    if rollback.get("restored_matches_before") is not True:
-        return ["rollback must prove restored_matches_before"]
-    return []
+    if not isinstance(rollback, Mapping):
+        return ["rollback must be an object"]
+    expected = {
+        "status",
+        "mechanism",
+        "before_identity",
+        "candidate_identity",
+        "restored_identity",
+        "candidate_changed",
+        "restored_matches_before",
+        "operation_outputs_equal",
+    }
+    errors = _exact_keys(rollback, expected, "rollback")
+    if rollback.get("status") != "pass":
+        errors.append("rollback.status must be pass")
+    if not isinstance(rollback.get("mechanism"), str) or not rollback["mechanism"].strip():
+        errors.append("rollback mechanism must be non-empty")
+    errors.extend(_rollback_digest_errors(rollback))
+    errors.extend(_rollback_proof_errors(rollback))
+    return errors
+
+
+def _rollback_digest_errors(rollback: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    for name in ("before_identity", "candidate_identity", "restored_identity"):
+        if not isinstance(rollback.get(name), str) or not _SHA256.fullmatch(rollback[name]):
+            errors.append(f"rollback {name} must be a SHA-256 digest")
+    return errors
+
+
+def _rollback_proof_errors(rollback: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    proof = ("candidate_changed", "restored_matches_before", "operation_outputs_equal")
+    if any(rollback.get(name) is not True for name in proof):
+        errors.append("rollback must prove changed candidate, exact restoration, and equal output")
+    if rollback.get("before_identity") != rollback.get("restored_identity"):
+        errors.append("rollback restored identity does not match before identity")
+    if rollback.get("candidate_identity") == rollback.get("before_identity"):
+        errors.append("rollback candidate identity does not demonstrate a changed installation")
+    return errors
+
+
+def _alias_errors(payload: Mapping[str, Any]) -> list[str]:
+    qa = payload.get("functional_qa")
+    evidence = qa.get("evidence") if isinstance(qa, Mapping) else None
+    if not isinstance(evidence, Mapping):
+        return []
+    errors: list[str] = []
+    if payload.get("cold_start") != evidence.get("cold_start"):
+        errors.append("cold_start alias does not match functional QA evidence")
+    if payload.get("setup") != evidence.get("setup"):
+        errors.append("setup alias does not match functional QA evidence")
+    return errors
 
 
 def _rehearsal_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]:
@@ -168,7 +371,11 @@ def _rehearsal_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]
             "command": result.as_dict(),
             "errors": [str(exc)],
         }
-    errors = _validate_rehearsal_payload(payload)
+    errors = _validate_rehearsal_payload(
+        payload,
+        revision=git_revision(root),
+        dirty=_candidate_dirty(root),
+    )
     return {
         "status": "works" if not errors else "broken",
         "command": result.as_dict(),
@@ -176,6 +383,22 @@ def _rehearsal_control(root: Path, project: Mapping[str, Any]) -> dict[str, Any]
         "result": payload,
         "errors": errors,
     }
+
+
+def _candidate_dirty(root: Path) -> bool:
+    code, stdout, _ = git_output(
+        root,
+        [
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            "--",
+            "qg",
+            "src/aqg",
+            "scripts/dogfood_control_surfaces.py",
+        ],
+    )
+    return code != 0 or bool(stdout.strip())
 
 
 def _council_errors(report: Mapping[str, Any], scope: Mapping[str, str]) -> list[str]:
@@ -198,6 +421,10 @@ def _council_errors(report: Mapping[str, Any], scope: Mapping[str, str]) -> list
 
 def _council_quality_errors(report: Mapping[str, Any]) -> list[str]:
     checks = (
+        (
+            report.get("purpose", "candidate") == "candidate",
+            "independent agent verification requires candidate-purpose council evidence",
+        ),
         (
             report.get("tier") == "high",
             "independent agent verification requires the high council tier",
