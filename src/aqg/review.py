@@ -16,6 +16,7 @@ from .approvals import validate_required_approvals
 from .checks import test_feature_traceability
 from .constants import PASS, QUALITY_FAILURE
 from .evidence_manifest import verify_run_manifest
+from .errors import ConfigurationError
 from .policy import human_review_patterns, protected_patterns, risk_summary
 from .project import load_project
 from .runner import list_runs
@@ -26,6 +27,7 @@ from .util import (
     git_diff,
     git_revision,
     matches_any,
+    read_json,
     utc_now,
     write_json,
 )
@@ -966,6 +968,111 @@ def _sort_review_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]
     )
 
 
+def _council_scope_is_clear(
+    report: dict[str, Any], base: str, revision: str, change_fp: str, control_fp: str
+) -> bool:
+    scope = report.get("scope")
+    verification = report.get("verification")
+    provider_groups = report.get("provider_groups")
+    covered_roles = report.get("covered_roles")
+    if not isinstance(scope, dict):
+        return False
+    if not isinstance(verification, dict):
+        return False
+    if not isinstance(provider_groups, list):
+        return False
+    if not isinstance(covered_roles, list):
+        return False
+    required_roles = {"adversarial", "test_evidence"}
+    checks = (
+        isinstance(report.get("run_id"), str) and bool(report.get("run_id")),
+        report.get("tier") == "high",
+        report.get("purpose") == "candidate",
+        report.get("status") == "advisory_clear",
+        report.get("complete") is True,
+        report.get("blockers") == [],
+        report.get("incomplete_reasons") == [],
+        report.get("dissent") == {"present": False, "chunk_indexes": []},
+        verification.get("ok") is True,
+        len(provider_groups) >= 3,
+        required_roles.issubset(set(covered_roles)),
+        scope.get("revision") == revision,
+        scope.get("base_revision") == base,
+        scope.get("change_fingerprint") == change_fp,
+        scope.get("control_fingerprint") == control_fp,
+    )
+    return all(checks)
+
+
+def _is_test_expectation_resolution(finding: Any) -> bool:
+    return (
+        isinstance(finding, dict)
+        and finding.get("severity") == "info"
+        and finding.get("category") == "test-expectation-resolution"
+    )
+
+
+def _test_expectation_resolution_roles(root: Path, run_id: str) -> set[str]:
+    run_dir = root / ".aqg" / "council" / run_id
+    roles: set[str] = set()
+    for path in sorted(run_dir.rglob("ballots/*.json")):
+        ballot = read_json(path)
+        findings = ballot.get("findings") if isinstance(ballot, dict) else None
+        reviewer = ballot.get("reviewer") if isinstance(ballot, dict) else None
+        if not isinstance(findings, list) or not isinstance(reviewer, dict):
+            continue
+        if any(_is_test_expectation_resolution(finding) for finding in findings):
+            roles.add(str(reviewer.get("role")))
+    return roles
+
+
+def _clear_high_council_for_scope(
+    root: Path, base: str, revision: str, change_fp: str, control_fp: str
+) -> str | None:
+    from .council_service import report_council
+
+    try:
+        report = report_council(root)
+    except (ConfigurationError, OSError):
+        return None
+    if not _council_scope_is_clear(report, base, revision, change_fp, control_fp):
+        return None
+    run_id = str(report["run_id"])
+    required_roles = {"adversarial", "test_evidence"}
+    if not required_roles.issubset(_test_expectation_resolution_roles(root, run_id)):
+        return None
+    return run_id
+
+
+def _resolve_deleted_expectations(
+    findings: list[dict[str, Any]], council_run_id: str | None
+) -> None:
+    if council_run_id is None:
+        return
+    for finding in findings:
+        if finding.get("code") != "test-expectation-deleted":
+            continue
+        finding["severity"] = "review"
+        finding["detail"] += (
+            f" Verified high-tier council {council_run_id} reviewed the exact candidate and "
+            "cleared the replacement evidence."
+        )
+        finding["action"] = "Retain the immutable council evidence with the candidate run."
+
+
+def _resolved_review_findings(
+    root: Path,
+    base: str,
+    revision: str,
+    change_fp: str,
+    control_fp: str,
+    findings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    council_run_id = _clear_high_council_for_scope(root, base, revision, change_fp, control_fp)
+    _resolve_deleted_expectations(findings, council_run_id)
+    return _sort_review_findings(findings)
+
+
 def _build_review_packet(
     *,
     base: str,
@@ -1016,6 +1123,23 @@ def _build_review_packet(
     }
 
 
+def _review_evidence(
+    root: Path,
+    runs: list[dict[str, Any]],
+    risk_payload: dict[str, Any] | None,
+    revision: str,
+    change_fp: str,
+    control_fp: str,
+    require_evidence: bool,
+    findings: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    evidence = _build_evidence_matrix(root, runs, risk_payload, revision, change_fp, control_fp)
+    findings.extend(_findings_evidence_requirements(evidence, risk_payload, require_evidence, runs))
+    approvals = _load_approvals(root, risk_payload)
+    findings.extend(_findings_approvals(approvals, require_evidence))
+    return evidence, approvals
+
+
 def analyze_review(
     root: Path, policy: dict[str, Any], *, base: str = "HEAD", require_evidence: bool = True
 ) -> dict[str, Any]:
@@ -1036,15 +1160,10 @@ def analyze_review(
     revision = git_revision(root)
     change_fp = change_fingerprint(root, base)
     control_fp = control_fingerprint(root)
-    evidence_matrix = _build_evidence_matrix(
-        root, runs, risk_payload, revision, change_fp, control_fp
+    evidence_matrix, approvals = _review_evidence(
+        root, runs, risk_payload, revision, change_fp, control_fp, require_evidence, findings
     )
-    findings.extend(
-        _findings_evidence_requirements(evidence_matrix, risk_payload, require_evidence, runs)
-    )
-    approvals = _load_approvals(root, risk_payload)
-    findings.extend(_findings_approvals(approvals, require_evidence))
-    findings = _sort_review_findings(findings)
+    findings = _resolved_review_findings(root, base, revision, change_fp, control_fp, findings)
     return _build_review_packet(
         base=base,
         revision=revision,

@@ -12,6 +12,7 @@ import subprocess
 from collections import Counter
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
@@ -19,11 +20,15 @@ from aqg.evidence_manifest import write_run_manifest
 from aqg.policy import load_policy
 from aqg.reporting import review_to_sarif
 from aqg.review import (
+    _clear_high_council_for_scope,
     _consume_replacement,
     _deleted_test_assertion_paths,
     _html,
     _markdown,
+    _resolve_deleted_expectations,
+    _resolved_review_findings,
     _test_expectation_key,
+    _test_expectation_resolution_roles,
     analyze_review,
     review_exit_code,
     write_review_packet,
@@ -1229,6 +1234,301 @@ def test_deleted_oracle_scan_continues_after_an_exact_replacement() -> None:
         "-assert removed == 2\n"
     )
     assert _deleted_test_assertion_paths(changed) == ["tests/test_app.py"]
+
+
+def _clear_council_report() -> dict[str, Any]:
+    return {
+        "run_id": "council-exact",
+        "tier": "high",
+        "purpose": "candidate",
+        "status": "advisory_clear",
+        "complete": True,
+        "blockers": [],
+        "incomplete_reasons": [],
+        "dissent": {"present": False, "chunk_indexes": []},
+        "verification": {"ok": True},
+        "provider_groups": ["one", "two", "three"],
+        "covered_roles": ["adversarial", "test_evidence"],
+        "scope": {
+            "revision": "candidate",
+            "base_revision": "base",
+            "change_fingerprint": "sha256:change",
+            "control_fingerprint": "sha256:control",
+        },
+    }
+
+
+def test_only_exact_verified_diverse_high_council_can_resolve_deleted_oracles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.council_service as council_service
+    import aqg.review as review
+
+    monkeypatch.setattr(council_service, "report_council", lambda _root: _clear_council_report())
+    resolution_roles = Mock(return_value={"adversarial", "test_evidence"})
+    monkeypatch.setattr(review, "_test_expectation_resolution_roles", resolution_roles)
+    assert (
+        _clear_high_council_for_scope(
+            tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+        )
+        == "council-exact"
+    )
+    resolution_roles.assert_called_once_with(tmp_path, "council-exact")
+
+    for mutate in (
+        lambda report: report.update(status="advisory_blocked"),
+        lambda report: report.update(run_id=""),
+        lambda report: report["verification"].update(ok=False),
+        lambda report: report.update(verification=None),
+        lambda report: report.update(scope=None),
+        lambda report: report.update(provider_groups=None),
+        lambda report: report.update(covered_roles=None),
+        lambda report: report["scope"].update(revision="stale"),
+        lambda report: report["scope"].update(base_revision="stale"),
+        lambda report: report["scope"].update(change_fingerprint="stale"),
+        lambda report: report["scope"].update(control_fingerprint="stale"),
+        lambda report: report.update(provider_groups=["one", "two"]),
+        lambda report: report.update(covered_roles=["test_evidence"]),
+    ):
+        report = _clear_council_report()
+        mutate(report)
+        monkeypatch.setattr(council_service, "report_council", lambda _root, r=report: r)
+        assert (
+            _clear_high_council_for_scope(
+                tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+            )
+            is None
+        )
+
+    monkeypatch.setattr(review, "_test_expectation_resolution_roles", lambda *_args: set())
+    monkeypatch.setattr(council_service, "report_council", lambda _root: _clear_council_report())
+    assert (
+        _clear_high_council_for_scope(
+            tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+        )
+        is None
+    )
+
+
+def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_path: Path) -> None:
+    run_dir = tmp_path / ".aqg" / "council" / "council-exact" / "ballots"
+    run_dir.mkdir(parents=True)
+
+    def ballot(role: str, severity: str, category: str) -> dict[str, Any]:
+        return {
+            "reviewer": {"role": role},
+            "findings": [{"severity": severity, "category": category}],
+        }
+
+    (run_dir / "000.json").write_text(
+        json.dumps(ballot("adversarial", "info", "test-expectation-resolution")),
+        encoding="utf-8",
+    )
+    (run_dir / "001.json").write_text(
+        json.dumps(ballot("test_evidence", "warning", "test-expectation-resolution")),
+        encoding="utf-8",
+    )
+    (run_dir / "002.json").write_text(
+        json.dumps(ballot("security_trust", "info", "unrelated")),
+        encoding="utf-8",
+    )
+    (run_dir / "003.json").write_text(json.dumps({"malformed": True}), encoding="utf-8")
+    (run_dir / "-002.json").write_text(
+        json.dumps({"reviewer": {"role": "ignored"}, "findings": None}),
+        encoding="utf-8",
+    )
+    (run_dir / "-001.json").write_text(
+        json.dumps({"reviewer": None, "findings": []}),
+        encoding="utf-8",
+    )
+
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact") == {"adversarial"}
+
+    (run_dir / "001.json").write_text(
+        json.dumps(ballot("test_evidence", "info", "test-expectation-resolution")),
+        encoding="utf-8",
+    )
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact") == {
+        "adversarial",
+        "test_evidence",
+    }
+
+
+def test_clear_council_resolves_only_deleted_oracle_finding() -> None:
+    deleted = {
+        "code": "test-expectation-deleted",
+        "severity": "blocker",
+        "detail": "deleted",
+        "action": "inspect",
+    }
+    unrelated = {
+        "code": "policy-plane-change",
+        "severity": "blocker",
+        "detail": "policy",
+        "action": "inspect",
+    }
+
+    _resolve_deleted_expectations([unrelated, deleted], "council-exact")
+
+    assert deleted == {
+        "code": "test-expectation-deleted",
+        "severity": "review",
+        "detail": (
+            "deleted Verified high-tier council council-exact reviewed the exact candidate and "
+            "cleared the replacement evidence."
+        ),
+        "action": "Retain the immutable council evidence with the candidate run.",
+    }
+    assert unrelated == {
+        "code": "policy-plane-change",
+        "severity": "blocker",
+        "detail": "policy",
+        "action": "inspect",
+    }
+
+
+def test_resolved_findings_bind_all_candidate_scope_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.review as review
+
+    resolve = Mock(return_value="council-exact")
+    monkeypatch.setattr(review, "_clear_high_council_for_scope", resolve)
+    findings = [
+        {
+            "code": "test-expectation-deleted",
+            "severity": "blocker",
+            "detail": "deleted",
+            "action": "inspect",
+        }
+    ]
+
+    result = _resolved_review_findings(
+        tmp_path, "base", "candidate", "sha256:change", "sha256:control", findings
+    )
+
+    resolve.assert_called_once_with(
+        tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+    )
+    assert result[0]["severity"] == "review"
+
+
+def test_review_evidence_preserves_fail_closed_collaborator_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.review as review
+
+    runs = [{"run_id": "run"}]
+    risk = {"selected_risk_profile": "high_assurance"}
+    evidence = [{"gate": "deep", "status": "current_pass"}]
+    approvals = {"required": [], "errors": []}
+    evidence_builder = Mock(return_value=evidence)
+    evidence_findings = Mock(return_value=[{"code": "evidence"}])
+    approval_loader = Mock(return_value=approvals)
+    approval_findings = Mock(return_value=[{"code": "approval"}])
+    monkeypatch.setattr(review, "_build_evidence_matrix", evidence_builder)
+    monkeypatch.setattr(review, "_findings_evidence_requirements", evidence_findings)
+    monkeypatch.setattr(review, "_load_approvals", approval_loader)
+    monkeypatch.setattr(review, "_findings_approvals", approval_findings)
+    findings: list[dict[str, Any]] = []
+
+    result = review._review_evidence(
+        tmp_path,
+        runs,
+        risk,
+        "candidate",
+        "sha256:change",
+        "sha256:control",
+        True,
+        findings,
+    )
+
+    assert result == (evidence, approvals)
+    assert findings == [{"code": "evidence"}, {"code": "approval"}]
+    evidence_builder.assert_called_once_with(
+        tmp_path, runs, risk, "candidate", "sha256:change", "sha256:control"
+    )
+    evidence_findings.assert_called_once_with(evidence, risk, True, runs)
+    approval_loader.assert_called_once_with(tmp_path, risk)
+    approval_findings.assert_called_once_with(approvals, True)
+
+
+def test_analyze_review_wires_exact_default_scope_and_strict_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.review as review
+
+    changed = ["src/app.py", "tests/test_app.py"]
+    production, tests = ["src/app.py"], ["tests/test_app.py"]
+    runs = [{"run_id": "deep"}]
+    risk = {"selected_risk_profile": "high_assurance"}
+    evidence, approvals = [{"gate": "deep"}], {"required": []}
+    initial = [{"code": "initial"}]
+    resolved = [{"code": "resolved"}]
+    packet = {"schema_version": 3, "findings": resolved}
+    changed_files = Mock(return_value=changed)
+    diff = Mock(return_value="patch")
+    list_quality_runs = Mock(return_value=runs)
+    fingerprint = Mock(return_value="sha256:change")
+    review_evidence = Mock(return_value=(evidence, approvals))
+    resolve = Mock(return_value=resolved)
+    build = Mock(return_value=packet)
+    monkeypatch.setattr(review, "load_project", lambda _root: {"project": True})
+    monkeypatch.setattr(review, "git_changed_files", changed_files)
+    monkeypatch.setattr(review, "git_diff", diff)
+    monkeypatch.setattr(review, "_added_lines", lambda _diff: [("added", 1, "line")])
+    monkeypatch.setattr(review, "_deleted_lines", lambda _diff: [("deleted", 1, "line")])
+    monkeypatch.setattr(review, "_partition_changed_paths", lambda _changed: (production, tests))
+    monkeypatch.setattr(review, "_diff_heuristic_findings", lambda *_args: initial)
+    monkeypatch.setattr(review, "_load_risk_payload", lambda *_args: ([], risk))
+    monkeypatch.setattr(review, "_findings_invalid_risk_card", lambda _errors: [])
+    monkeypatch.setattr(review, "_findings_risk_factor_mismatches", lambda *_args: [])
+    monkeypatch.setattr(review, "_findings_traceability", lambda *_args: [])
+    monkeypatch.setattr(review, "list_runs", list_quality_runs)
+    monkeypatch.setattr(review, "git_revision", lambda _root: "candidate")
+    monkeypatch.setattr(review, "change_fingerprint", fingerprint)
+    monkeypatch.setattr(review, "control_fingerprint", lambda _root: "sha256:control")
+    monkeypatch.setattr(review, "_review_evidence", review_evidence)
+    monkeypatch.setattr(review, "_resolved_review_findings", resolve)
+    monkeypatch.setattr(review, "_build_review_packet", build)
+
+    assert analyze_review(tmp_path, {"policy": True}) == packet
+    changed_files.assert_called_once_with(tmp_path, "HEAD")
+    diff.assert_called_once_with(tmp_path, "HEAD", unified=1)
+    list_quality_runs.assert_called_once_with(tmp_path, limit=100)
+    fingerprint.assert_called_once_with(tmp_path, "HEAD")
+    review_evidence.assert_called_once_with(
+        tmp_path,
+        runs,
+        risk,
+        "candidate",
+        "sha256:change",
+        "sha256:control",
+        True,
+        initial,
+    )
+    resolve.assert_called_once_with(
+        tmp_path,
+        "HEAD",
+        "candidate",
+        "sha256:change",
+        "sha256:control",
+        initial,
+    )
+    build.assert_called_once_with(
+        base="HEAD",
+        revision="candidate",
+        change_fp="sha256:change",
+        control_fp="sha256:control",
+        changed=changed,
+        production=production,
+        tests=tests,
+        risk_payload=risk,
+        evidence_matrix=evidence,
+        approvals=approvals,
+        runs=runs,
+        findings=resolved,
+    )
 
 
 def test_module_level_test_def_deletion_is_expectation_deleted(tmp_path: Path) -> None:
