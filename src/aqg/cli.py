@@ -478,7 +478,9 @@ def _add_council_parsers(sub: Any) -> None:
     plan.add_argument("--tier", choices=("smoke", "pr", "high"), default="high")
     plan.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
     plan.add_argument(
-        "--purpose", choices=("candidate", "debt-baseline"), default="candidate"
+        "--purpose",
+        choices=("candidate", "debt-baseline", "policy-maintenance"),
+        default="candidate",
     )
     plan.add_argument(
         "--data-classification",
@@ -491,7 +493,9 @@ def _add_council_parsers(sub: Any) -> None:
     run.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     run.add_argument("--max-bundle-bytes", type=int, default=DEFAULT_BUNDLE_BYTES)
     run.add_argument(
-        "--purpose", choices=("candidate", "debt-baseline"), default="candidate"
+        "--purpose",
+        choices=("candidate", "debt-baseline", "policy-maintenance"),
+        default="candidate",
     )
     run.add_argument(
         "--data-classification",

@@ -347,7 +347,9 @@ def _review_purpose(bundle: Mapping[str, Any]) -> dict[str, str]:
             raise ConfigurationError("controller review purpose must be an object")
         purpose = payload.get("purpose")
         decision = payload.get("decision")
-        if purpose not in {"candidate", "debt_baseline"} or not isinstance(decision, str):
+        if purpose not in {"candidate", "debt_baseline", "policy_maintenance"} or not isinstance(
+            decision, str
+        ):
             raise ConfigurationError("controller review purpose is invalid")
         return {"purpose": str(purpose), "decision": decision}
     return default

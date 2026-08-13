@@ -181,6 +181,30 @@ def test_debt_baseline_purpose_is_explicit_and_cannot_authorize_release() -> Non
     assert "this does not authorize release" in prompt
 
 
+def test_policy_maintenance_purpose_is_narrower_than_candidate_assurance() -> None:
+    purpose = json.dumps(
+        {
+            "purpose": "policy_maintenance",
+            "decision": "Review control changes only; do not certify unrelated implementation.",
+        }
+    )
+    bundle = build_candidate_bundle(
+        revision="candidate-123",
+        base_revision="base-456",
+        change_fingerprint=SHA_A,
+        control_fingerprint=SHA_B,
+        evidence_manifest_sha256=SHA_C,
+        inputs={
+            "controller/review-purpose.json": purpose,
+            "current.diff.patch": "diff --git a/quality/policy.toml b/quality/policy.toml\n",
+        },
+    )
+
+    prompt = build_review_prompt(bundle, "security_trust")
+    assert "REVIEW_PURPOSE=policy_maintenance" in prompt
+    assert "do not certify unrelated implementation" in prompt
+
+
 def test_aqg_council_002_prompt_injection_is_inert_data_and_never_a_shell_command() -> None:
     marker = '"; touch /tmp/AQG_COUNCIL_SHOULD_NOT_EXIST; #'
     bundle = _bundle(source=marker)

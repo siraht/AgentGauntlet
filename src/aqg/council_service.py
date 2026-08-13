@@ -59,7 +59,7 @@ ADVISORY_BANNER = "AGENT ADVISORY — NOT AN APPROVAL OR RELEASE AUTHORITY"
 DATA_CLASSIFICATIONS = ("unclassified", "public", "internal", "confidential", "regulated")
 PROFILE_ORDER = ("inner", "fast", "pr", "deep", "release")
 TIER_EVIDENCE_PROFILE = {"smoke": "fast", "pr": "pr", "high": "deep"}
-REVIEW_PURPOSES = ("candidate", "debt_baseline")
+REVIEW_PURPOSES = ("candidate", "debt_baseline", "policy_maintenance")
 
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
     "smoke": (
@@ -228,7 +228,14 @@ def _prepare_plan(
                 "candidate, satisfy assurance, authorize release, or turn a failed measurement "
                 "into a pass. Block defects that make the inventory or ratchet unsafe or dishonest."
                 if purpose == "debt_baseline"
-                else "Review the exact candidate for ordinary technical assurance."
+                else (
+                    "Decide only whether the exact protected control changes preserve or "
+                    "strengthen guardrails and match their stated maintenance request. Clear "
+                    "does not certify unrelated implementation, satisfy assurance, authorize "
+                    "release, or erase deterministic failures."
+                    if purpose == "policy_maintenance"
+                    else "Review the exact candidate for ordinary technical assurance."
+                )
             ),
         }
     )

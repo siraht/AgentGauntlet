@@ -12,7 +12,7 @@ import pytest
 
 from aqg.adapters import run_adapter
 from aqg.approvals import template
-from aqg.constants import PASS, QUALITY_FAILURE
+from aqg.constants import CONFIGURATION_ERROR, PASS, QUALITY_FAILURE
 from aqg.errors import ConfigurationError
 from aqg.maintenance import (
     create_maintenance_request,
@@ -99,6 +99,7 @@ def _clear_council(root: Path, base: str = "HEAD") -> dict[str, object]:
     return {
         "run_id": "council-current",
         "tier": "high",
+        "purpose": "policy_maintenance",
         "scope": {
             "revision": git_revision(root),
             "base_revision": base,
@@ -226,7 +227,9 @@ def test_unknown_policy_change_rejects_wrong_stale_or_dissenting_council(
     if fault == "wrong_tier":
         council["tier"] = "pr"
     elif fault == "stale_scope":
-        council["scope"] = {**dict(council["scope"]), "revision": "stale"}
+        scope = council["scope"]
+        assert isinstance(scope, dict)
+        council["scope"] = {**scope, "revision": "stale"}
     else:
         council["dissent"] = {"present": True}
     monkeypatch.setattr(council_service, "report_council", lambda _root: council)
@@ -310,6 +313,52 @@ def test_reserved_authority_trigger_cannot_be_overridden_by_agent_council(
     assert report["authority_triggers"] == ["guardrail_weakening"]
     assert report["agent_council_authority_required"] is False
     assert report["agent_council_authority"] is None
+
+
+def test_missing_authority_trigger_declaration_makes_policy_maintenance_unusable(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "quality/project.json", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "quality" / "project.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["thresholds"]["structure"]["max_cyclomatic_complexity"] -= 1
+    write_json(path, payload)
+    risk_path = project / "quality" / "change-risk.json"
+    risk = json.loads(risk_path.read_text(encoding="utf-8"))
+    del risk["authority_triggers"]
+    write_json(risk_path, risk)
+
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+
+    assert report["exit_code"] == CONFIGURATION_ERROR
+    assert report["human_authority_required"] is False
+    assert report["authority_triggers"] == []
+    assert report["authority_trigger_errors"] == [
+        "authority trigger state is unusable: authority_triggers is required"
+    ]
+
+
+def test_malformed_authority_trigger_declaration_cannot_default_false(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = [{"path": "quality/project.json", "operation": "modify"}]
+    _request(project, changes, monkeypatch)
+    path = project / "quality" / "project.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["thresholds"]["structure"]["max_cyclomatic_complexity"] -= 1
+    write_json(path, payload)
+    risk_path = project / "quality" / "change-risk.json"
+    risk = json.loads(risk_path.read_text(encoding="utf-8"))
+    risk["authority_triggers"] = {"guardrail_weakening": "false"}
+    write_json(risk_path, risk)
+
+    report = validate_policy_maintenance(project, load_policy(project), "HEAD")
+
+    assert report["exit_code"] == CONFIGURATION_ERROR
+    assert len(report["authority_trigger_errors"]) == 4
+    assert any("must be boolean" in error for error in report["authority_trigger_errors"])
+    assert sum("missing trigger" in error for error in report["authority_trigger_errors"]) == 3
 
 
 def test_agent_record_cannot_impersonate_human_weakening_authority(

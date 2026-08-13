@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .approvals import approval_path, validate_approval
-from .constants import PASS, QUALITY_FAILURE, RISK_ORDER
+from .constants import CONFIGURATION_ERROR, PASS, QUALITY_FAILURE, RISK_ORDER
 from .errors import ConfigurationError
 from .evidence_manifest import validate_run_id, write_evidence_json
 from .policy import load_policy, policy_override_enabled, protected_patterns
@@ -460,15 +460,39 @@ def _human_override_errors(root: Path, actual: list[dict[str, str]]) -> list[str
     return errors
 
 
-def _active_authority_triggers(root: Path) -> list[str]:
+def _authority_trigger_state(root: Path) -> tuple[list[str], list[str]]:
     try:
         card = read_json(root / "quality" / "change-risk.json")
-    except (OSError, json.JSONDecodeError):
-        return ["unknown-authority-trigger-state"]
+    except (ConfigurationError, OSError, json.JSONDecodeError) as exc:
+        return [], [f"authority trigger state is unusable: {exc}"]
     triggers = card.get("authority_triggers") if isinstance(card, dict) else None
     if not isinstance(triggers, dict):
-        return []
-    return sorted(str(key) for key, value in triggers.items() if value is True)
+        return [], ["authority trigger state is unusable: authority_triggers is required"]
+    return _validated_authority_triggers(triggers)
+
+
+def _validated_authority_triggers(triggers: dict[str, Any]) -> tuple[list[str], list[str]]:
+    expected = {
+        "guardrail_weakening",
+        "paid_external_action",
+        "private_data_exposure",
+        "irreversible_execution",
+    }
+    errors = [
+        f"authority trigger state is unusable: unknown trigger {name!r}"
+        for name in sorted(set(triggers) - expected)
+    ]
+    errors.extend(
+        f"authority trigger state is unusable: missing trigger {name!r}"
+        for name in sorted(expected - set(triggers))
+    )
+    errors.extend(
+        f"authority trigger state is unusable: trigger {name!r} must be boolean"
+        for name, value in sorted(triggers.items())
+        if name in expected and not isinstance(value, bool)
+    )
+    active = sorted(name for name, value in triggers.items() if name in expected and value is True)
+    return active, errors
 
 
 def _expected_council_scope(root: Path, base: str) -> dict[str, str]:
@@ -496,6 +520,10 @@ def _council_quality_errors(report: dict[str, Any]) -> list[str]:
     roles = report.get("covered_roles")
     dissent = report.get("dissent")
     checks = (
+        (
+            report.get("purpose") == "policy_maintenance",
+            "council purpose must be policy_maintenance",
+        ),
         (report.get("tier") == "high", "council tier must be high"),
         (report.get("status") == "advisory_clear", "council status must be advisory_clear"),
         (report.get("complete") is True, "council must be complete"),
@@ -571,7 +599,8 @@ def validate_policy_maintenance(root: Path, policy: dict[str, Any], base: str) -
         }
     authorized, errors = _selected_request(root, policy, actual)
     classifications = classify_policy_changes(root, base, actual)
-    authority_triggers = _active_authority_triggers(root)
+    authority_triggers, authority_trigger_errors = _authority_trigger_state(root)
+    errors.extend(authority_trigger_errors)
     human_required = bool(authority_triggers) or any(
         item["classification"] == "weakening" for item in classifications
     )
@@ -590,11 +619,14 @@ def validate_policy_maintenance(root: Path, policy: dict[str, Any], base: str) -
         "authorized_changes": authorized,
         "classifications": classifications,
         "authority_triggers": authority_triggers,
+        "authority_trigger_errors": authority_trigger_errors,
         "human_authority_required": human_required,
         "human_authority_errors": human_errors,
         "agent_council_authority_required": council_required,
         "agent_council_authority": council_authority,
         "agent_council_authority_errors": council_errors,
         "errors": errors,
-        "exit_code": QUALITY_FAILURE if errors else PASS,
+        "exit_code": CONFIGURATION_ERROR
+        if authority_trigger_errors
+        else (QUALITY_FAILURE if errors else PASS),
     }
