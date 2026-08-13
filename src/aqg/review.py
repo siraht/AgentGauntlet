@@ -1004,15 +1004,35 @@ def _council_scope_is_clear(
     return all(checks)
 
 
-def _is_test_expectation_resolution(finding: Any) -> bool:
+def _cited_materials(value: Any) -> set[Any]:
+    if not isinstance(value, list):
+        return set()
+    return {ref.get("material") for ref in value if isinstance(ref, dict)}
+
+
+def _claim_covers_paths(claim: str, affected_paths: set[str]) -> bool:
+    return bool(affected_paths) and all(path in claim for path in affected_paths)
+
+
+def _is_test_expectation_resolution(finding: Any, affected_paths: set[str]) -> bool:
+    if not isinstance(finding, dict):
+        return False
+    claim = finding.get("claim")
+    if not isinstance(claim, str) or not claim.strip():
+        return False
     return (
-        isinstance(finding, dict)
-        and finding.get("severity") == "info"
+        finding.get("severity") == "info"
         and finding.get("category") == "test-expectation-resolution"
+        and _claim_covers_paths(claim, affected_paths)
+        and {"current.diff.patch", "review/current.json"}.issubset(
+            _cited_materials(finding.get("evidence_refs"))
+        )
     )
 
 
-def _test_expectation_resolution_roles(root: Path, run_id: str) -> set[str]:
+def _test_expectation_resolution_roles(
+    root: Path, run_id: str, affected_paths: set[str]
+) -> set[str]:
     run_dir = root / ".aqg" / "council" / run_id
     roles: set[str] = set()
     for path in sorted(run_dir.rglob("ballots/*.json")):
@@ -1021,13 +1041,18 @@ def _test_expectation_resolution_roles(root: Path, run_id: str) -> set[str]:
         reviewer = ballot.get("reviewer") if isinstance(ballot, dict) else None
         if not isinstance(findings, list) or not isinstance(reviewer, dict):
             continue
-        if any(_is_test_expectation_resolution(finding) for finding in findings):
+        if any(_is_test_expectation_resolution(finding, affected_paths) for finding in findings):
             roles.add(str(reviewer.get("role")))
     return roles
 
 
 def _clear_high_council_for_scope(
-    root: Path, base: str, revision: str, change_fp: str, control_fp: str
+    root: Path,
+    base: str,
+    revision: str,
+    change_fp: str,
+    control_fp: str,
+    affected_paths: set[str],
 ) -> str | None:
     from .council_service import report_council
 
@@ -1039,7 +1064,8 @@ def _clear_high_council_for_scope(
         return None
     run_id = str(report["run_id"])
     required_roles = {"adversarial", "test_evidence"}
-    if not required_roles.issubset(_test_expectation_resolution_roles(root, run_id)):
+    roles = _test_expectation_resolution_roles(root, run_id, affected_paths)
+    if not required_roles.issubset(roles):
         return None
     return run_id
 
@@ -1068,7 +1094,15 @@ def _resolved_review_findings(
     control_fp: str,
     findings: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    council_run_id = _clear_high_council_for_scope(root, base, revision, change_fp, control_fp)
+    affected_paths = {
+        str(path)
+        for finding in findings
+        if finding.get("code") == "test-expectation-deleted"
+        for path in finding.get("paths", [])
+    }
+    council_run_id = _clear_high_council_for_scope(
+        root, base, revision, change_fp, control_fp, affected_paths
+    )
     _resolve_deleted_expectations(findings, council_run_id)
     return _sort_review_findings(findings)
 

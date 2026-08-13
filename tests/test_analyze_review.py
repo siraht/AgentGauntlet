@@ -1269,11 +1269,16 @@ def test_only_exact_verified_diverse_high_council_can_resolve_deleted_oracles(
     monkeypatch.setattr(review, "_test_expectation_resolution_roles", resolution_roles)
     assert (
         _clear_high_council_for_scope(
-            tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+            tmp_path,
+            "base",
+            "candidate",
+            "sha256:change",
+            "sha256:control",
+            {"tests/test_app.py"},
         )
         == "council-exact"
     )
-    resolution_roles.assert_called_once_with(tmp_path, "council-exact")
+    resolution_roles.assert_called_once_with(tmp_path, "council-exact", {"tests/test_app.py"})
 
     for mutate in (
         lambda report: report.update(status="advisory_blocked"),
@@ -1295,7 +1300,12 @@ def test_only_exact_verified_diverse_high_council_can_resolve_deleted_oracles(
         monkeypatch.setattr(council_service, "report_council", lambda _root, r=report: r)
         assert (
             _clear_high_council_for_scope(
-                tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+                tmp_path,
+                "base",
+                "candidate",
+                "sha256:change",
+                "sha256:control",
+                {"tests/test_app.py"},
             )
             is None
         )
@@ -1304,7 +1314,12 @@ def test_only_exact_verified_diverse_high_council_can_resolve_deleted_oracles(
     monkeypatch.setattr(council_service, "report_council", lambda _root: _clear_council_report())
     assert (
         _clear_high_council_for_scope(
-            tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+            tmp_path,
+            "base",
+            "candidate",
+            "sha256:change",
+            "sha256:control",
+            {"tests/test_app.py"},
         )
         is None
     )
@@ -1314,10 +1329,24 @@ def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_pa
     run_dir = tmp_path / ".aqg" / "council" / "council-exact" / "ballots"
     run_dir.mkdir(parents=True)
 
-    def ballot(role: str, severity: str, category: str) -> dict[str, Any]:
+    def ballot(
+        role: str,
+        severity: str,
+        category: str,
+        *,
+        claim: str = "tests/test_app.py preserves its removed oracle",
+        materials: tuple[str, ...] = ("current.diff.patch", "review/current.json"),
+    ) -> dict[str, Any]:
         return {
             "reviewer": {"role": role},
-            "findings": [{"severity": severity, "category": category}],
+            "findings": [
+                {
+                    "severity": severity,
+                    "category": category,
+                    "claim": claim,
+                    "evidence_refs": [{"material": material} for material in materials],
+                }
+            ],
         }
 
     (run_dir / "000.json").write_text(
@@ -1341,16 +1370,69 @@ def test_resolution_roles_require_explicit_info_claims_from_each_reviewer(tmp_pa
         json.dumps({"reviewer": None, "findings": []}),
         encoding="utf-8",
     )
+    (run_dir / "-003.json").write_text(
+        json.dumps({"reviewer": {"role": "ignored"}, "findings": [None]}),
+        encoding="utf-8",
+    )
+    (run_dir / "-004.json").write_text(
+        json.dumps(
+            {
+                "reviewer": {"role": "ignored"},
+                "findings": [
+                    {
+                        "severity": "info",
+                        "category": "test-expectation-resolution",
+                        "claim": "tests/test_app.py preserves its removed oracle",
+                        "evidence_refs": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    assert _test_expectation_resolution_roles(tmp_path, "council-exact") == {"adversarial"}
+    affected = {"tests/test_app.py"}
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == {
+        "adversarial"
+    }
 
     (run_dir / "001.json").write_text(
         json.dumps(ballot("test_evidence", "info", "test-expectation-resolution")),
         encoding="utf-8",
     )
-    assert _test_expectation_resolution_roles(tmp_path, "council-exact") == {
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == {
         "adversarial",
         "test_evidence",
+    }
+
+    for index, invalid in enumerate(
+        (
+            ballot("test_evidence", "info", "test-expectation-resolution", claim=""),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                claim=None,  # type: ignore[arg-type]
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                claim="an unrelated test is strong",
+            ),
+            ballot(
+                "test_evidence",
+                "info",
+                "test-expectation-resolution",
+                materials=("current.diff.patch",),
+            ),
+        ),
+        start=10,
+    ):
+        (run_dir / f"{index:03d}.json").write_text(json.dumps(invalid), encoding="utf-8")
+    (run_dir / "001.json").unlink()
+    assert _test_expectation_resolution_roles(tmp_path, "council-exact", affected) == {
+        "adversarial"
     }
 
 
@@ -1400,6 +1482,7 @@ def test_resolved_findings_bind_all_candidate_scope_inputs(
             "severity": "blocker",
             "detail": "deleted",
             "action": "inspect",
+            "paths": ["tests/test_app.py"],
         }
     ]
 
@@ -1408,9 +1491,40 @@ def test_resolved_findings_bind_all_candidate_scope_inputs(
     )
 
     resolve.assert_called_once_with(
-        tmp_path, "base", "candidate", "sha256:change", "sha256:control"
+        tmp_path,
+        "base",
+        "candidate",
+        "sha256:change",
+        "sha256:control",
+        {"tests/test_app.py"},
     )
     assert result[0]["severity"] == "review"
+
+
+def test_resolved_findings_fail_closed_when_deleted_oracle_has_no_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import aqg.review as review
+
+    resolve = Mock(return_value=None)
+    monkeypatch.setattr(review, "_clear_high_council_for_scope", resolve)
+    findings = [
+        {
+            "code": "test-expectation-deleted",
+            "severity": "blocker",
+            "detail": "deleted",
+            "action": "inspect",
+        }
+    ]
+
+    result = _resolved_review_findings(
+        tmp_path, "base", "candidate", "sha256:change", "sha256:control", findings
+    )
+
+    resolve.assert_called_once_with(
+        tmp_path, "base", "candidate", "sha256:change", "sha256:control", set()
+    )
+    assert result[0]["severity"] == "blocker"
 
 
 def test_review_evidence_preserves_fail_closed_collaborator_inputs(

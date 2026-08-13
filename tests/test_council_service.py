@@ -702,7 +702,7 @@ def test_candidate_council_must_adjudicate_deleted_oracles_instead_of_echoing_sc
             "policy_maintenance",
             "126ac9aefa387a6bf68b0023e134f88e055e9a395869ff01bcc9a3689082e7ff",
         ),
-        ("candidate", "bb7e3c3532d23edba1d7323c265447d33ce639eb7ee022f9ff32178321b66462"),
+        ("candidate", "aa0c84402f5e0d5f6d2922685c8c737cc25d5b62be6dc5018ae0032994979470"),
     ],
 )
 def test_review_purpose_authority_text_is_an_exact_contract(
