@@ -804,6 +804,7 @@ function openView(name) {
     document.title = `${nav.textContent.trim()} · AQG Control Surface`;
   }
 }
+// AQG_DASHBOARD_WIRING_START
 $$(".nav").forEach((button) =>
   button.addEventListener("click", () => openView(button.dataset.view)),
 );

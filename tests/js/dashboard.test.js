@@ -9,7 +9,8 @@ const dashboardScript = fs.readFileSync(
 );
 
 function dashboardModel() {
-  const wiringMarker = '$$(".nav").forEach((button) =>';
+  // The comment survives source instrumentation, unlike executable syntax.
+  const wiringMarker = "// AQG_DASHBOARD_WIRING_START";
   const modelSource = dashboardScript.slice(
     0,
     dashboardScript.indexOf(wiringMarker),
