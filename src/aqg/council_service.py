@@ -216,12 +216,45 @@ def _pre_council_assurance_context(
     return context
 
 
+def _project_council_value(value: Any) -> Any:
+    if isinstance(value, str) and len(value.encode()) > 4096:
+        raw = value.encode()
+        return {
+            "projected": True,
+            "utf8_bytes": len(raw),
+            "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        }
+    if isinstance(value, Mapping):
+        return {str(key): _project_council_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_project_council_value(item) for item in value]
+    return value
+
+
+def _council_gate_detail(path: Path) -> str | bytes:
+    raw = path.read_bytes()
+    if len(raw) <= 50_000:
+        return raw
+    projected = _project_council_value(json.loads(raw))
+    return _json_text(
+        {
+            "schema_version": 1,
+            "kind": "aqg-council-gate-projection",
+            "source": path.name,
+            "source_bytes": len(raw),
+            "source_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            "projection_rule": "strings over 4096 UTF-8 bytes become length-and-digest records",
+            "detail": projected,
+        }
+    )
+
+
 def _add_candidate_run_inputs(
     run_dir: Path, summary: Mapping[str, Any], inputs: dict[str, str | bytes]
 ) -> None:
     inputs["run/retrospective.json"] = (run_dir / "retrospective.json").read_bytes()
     for path in sorted((run_dir / "gates").glob("*.details.json")):
-        inputs[f"run/gates/{path.name}"] = path.read_bytes()
+        inputs[f"run/gates/{path.name}"] = _council_gate_detail(path)
     assurance = read_json(run_dir / "gates" / "assurance.details.json")
     inputs["controller/pre-council-assurance.json"] = _json_text(
         _pre_council_assurance_context(summary, assurance)

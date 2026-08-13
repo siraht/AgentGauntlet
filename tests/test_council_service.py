@@ -496,6 +496,75 @@ def test_candidate_bundle_contains_every_manifested_gate_detail(
     }
 
 
+def test_oversized_gate_transcripts_are_digest_projected_without_losing_metrics(
+    tmp_path: Path,
+) -> None:
+    detail_path = tmp_path / "mutation_changed.details.json"
+    transcript = "mutant-result\n" * 5000
+    payload = {
+        "gate": "mutation_changed",
+        "status": "pass",
+        "metrics": {"killed": 314, "survived": 0},
+        "survivors": [{"id": "example", "detail": transcript}],
+        "command": {"stdout": transcript, "exit_code": 0},
+    }
+    raw = (json.dumps(payload) + "\n").encode()
+    detail_path.write_bytes(raw)
+
+    projected = json.loads(str(service._council_gate_detail(detail_path)))
+
+    assert set(projected) == {
+        "schema_version",
+        "kind",
+        "source",
+        "source_bytes",
+        "source_sha256",
+        "projection_rule",
+        "detail",
+    }
+    assert projected["schema_version"] == 1
+    assert projected["kind"] == "aqg-council-gate-projection"
+    assert projected["source"] == detail_path.name
+    assert projected["source_bytes"] == len(raw)
+    assert projected["source_sha256"] == "sha256:" + hashlib.sha256(raw).hexdigest()
+    assert (
+        projected["projection_rule"]
+        == "strings over 4096 UTF-8 bytes become length-and-digest records"
+    )
+    assert projected["detail"]["metrics"] == {"killed": 314, "survived": 0}
+    assert projected["detail"]["survivors"][0]["id"] == "example"
+    assert projected["detail"]["survivors"][0]["detail"]["projected"] is True
+    assert projected["detail"]["command"]["stdout"] == {
+        "projected": True,
+        "utf8_bytes": len(transcript.encode()),
+        "sha256": "sha256:" + hashlib.sha256(transcript.encode()).hexdigest(),
+    }
+
+
+def test_small_gate_detail_remains_exact_bytes(tmp_path: Path) -> None:
+    detail_path = tmp_path / "unit.details.json"
+    detail_path.write_bytes(b'{"gate":"unit","status":"pass"}\n')
+
+    assert service._council_gate_detail(detail_path) == detail_path.read_bytes()
+
+
+def test_projection_thresholds_are_exact(tmp_path: Path) -> None:
+    assert service._project_council_value("x" * 4096) == "x" * 4096
+    projected = service._project_council_value("x" * 4097)
+    assert projected["utf8_bytes"] == 4097
+
+    prefix, suffix = b'{"pad":"', b'"}'
+    exact = prefix + b"x" * (50_000 - len(prefix) - len(suffix)) + suffix
+    exact_path = tmp_path / "exact.details.json"
+    exact_path.write_bytes(exact)
+    assert service._council_gate_detail(exact_path) == exact
+
+    oversized = prefix + b"x" * (50_001 - len(prefix) - len(suffix)) + suffix
+    oversized_path = tmp_path / "oversized.details.json"
+    oversized_path.write_bytes(oversized)
+    assert isinstance(service._council_gate_detail(oversized_path), str)
+
+
 def test_public_plan_boundary_rejects_malformed_seed_profile_before_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
