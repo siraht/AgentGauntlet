@@ -22,6 +22,7 @@ from aqg.debt_store import (
     _proposed_baseline,
     _validate_shadow_scope,
     _verified_shadow_documents,
+    debt_control_fingerprint,
     load_current_debt_baseline,
     propose_debt_baseline,
     review_debt_proposal,
@@ -253,6 +254,8 @@ def test_shadow_scope_uses_exact_baseline_exclusion_and_base(
     )
     changes = Mock(return_value="sha256:" + "3" * 64)
     monkeypatch.setattr("aqg.debt_store.control_fingerprint", controls)
+    debt_controls = Mock(return_value="sha256:" + "2" * 64)
+    monkeypatch.setattr("aqg.debt_store.debt_control_fingerprint", debt_controls)
     monkeypatch.setattr("aqg.debt_store.change_fingerprint", changes)
     summary = {
         "run_id": "run-1",
@@ -265,12 +268,13 @@ def test_shadow_scope_uses_exact_baseline_exclusion_and_base(
     actual = _validate_shadow_scope(tmp_path, "run-1", summary)
 
     assert actual == ("sha256:" + "2" * 64, "sha256:" + "3" * 64)
-    assert controls.call_args_list == [
-        call(tmp_path),
-        call(tmp_path, exclude_patterns=["quality/baselines/debt.json"]),
-    ]
+    controls.assert_called_once_with(tmp_path)
+    debt_controls.assert_called_once_with(tmp_path)
     changes.assert_called_once_with(tmp_path, "origin/main")
     changes.reset_mock()
+    controls.reset_mock()
+    controls.side_effect = None
+    controls.return_value = "sha256:" + "1" * 64
     summary["base_ref"] = None
 
     with pytest.raises(ConfigurationError, match="review surface changed"):
@@ -476,3 +480,24 @@ def test_reviewed_baseline_install_and_freshness_lifecycle(
     policy.write_text(policy.read_text() + "\n# stale control\n", encoding="utf-8")
     with pytest.raises(ConfigurationError, match="policy fingerprint is stale"):
         load_current_debt_baseline(tmp_path, baseline_path)
+
+
+def test_debt_control_fingerprint_ignores_only_promotion_state(tmp_path: Path) -> None:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "debt@example.invalid")
+    _git(tmp_path, "config", "user.name", "Debt Controls")
+    (tmp_path / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "app.py")
+    _git(tmp_path, "commit", "-qm", "seed")
+    initialize_project(tmp_path, owner="@quality", install=False, ci=False, mode="adopt")
+
+    before = debt_control_fingerprint(tmp_path)
+    path = tmp_path / "quality" / "project.json"
+    project = json.loads(path.read_text(encoding="utf-8"))
+    project["enforcement"].update({"stage": "ratchet", "scope": "changed"})
+    path.write_text(json.dumps(project), encoding="utf-8")
+    assert debt_control_fingerprint(tmp_path) == before
+
+    project["thresholds"]["coverage"]["lines"] += 1
+    path.write_text(json.dumps(project), encoding="utf-8")
+    assert debt_control_fingerprint(tmp_path) != before

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from .evidence_manifest import (
     write_evidence_json,
 )
 from .maintenance import require_local_maintenance_change
+from .project import load_project
 from .util import (
     change_fingerprint,
     control_fingerprint,
@@ -24,6 +26,25 @@ from .util import (
     sha256_file,
     utc_now,
 )
+
+
+def debt_control_fingerprint(root: Path) -> str:
+    """Bind debt to substantive controls, excluding separately governed promotion state."""
+    project_path = root / "quality" / "project.json"
+    project = copy.deepcopy(load_project(root)) if project_path.is_file() else {}
+    enforcement = project.get("enforcement")
+    if isinstance(enforcement, dict):
+        enforcement.pop("stage", None)
+        enforcement.pop("scope", None)
+    payload = {
+        "other_controls": control_fingerprint(
+            root,
+            exclude_patterns=["quality/baselines/debt.json", "quality/project.json"],
+        ),
+        "project_without_promotion_state": project,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _object(path: Path, label: str) -> dict[str, Any]:
@@ -78,10 +99,7 @@ def _validate_shadow_scope(root: Path, resolved: str, summary: dict[str, Any]) -
         raise ConfigurationError(
             f"controls changed after shadow run {resolved}; run a new shadow audit"
         )
-    baseline_controls = control_fingerprint(
-        root,
-        exclude_patterns=["quality/baselines/debt.json"],
-    )
+    baseline_controls = debt_control_fingerprint(root)
     measured_change = summary.get("change_fingerprint")
     base_ref = summary.get("base_ref")
     if not isinstance(base_ref, str) or measured_change != change_fingerprint(root, base_ref):
@@ -309,8 +327,7 @@ def _require_current_proposal_source(
         == proposal["measurement"]["manifest_fingerprint"],
         retrospective.get("inventory") == proposal["inventory"],
         f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}" == proposal["policy_fingerprint"],
-        control_fingerprint(root, exclude_patterns=["quality/baselines/debt.json"])
-        == proposal["control_fingerprint"],
+        debt_control_fingerprint(root) == proposal["control_fingerprint"],
     )
     if not all(expected):
         raise ConfigurationError(
@@ -392,10 +409,7 @@ def load_current_debt_baseline(root: Path, path: Path) -> dict[str, Any]:
     expected_policy = f"sha256:{sha256_file(root / 'quality' / 'policy.toml')}"
     if baseline["policy_fingerprint"] != expected_policy:
         raise ConfigurationError("debt baseline policy fingerprint is stale")
-    expected_controls = control_fingerprint(
-        root,
-        exclude_patterns=[path.relative_to(root).as_posix()],
-    )
+    expected_controls = debt_control_fingerprint(root)
     if baseline["control_fingerprint"] != expected_controls:
         raise ConfigurationError("debt baseline control fingerprint is stale")
     code, _, stderr = git_output(
