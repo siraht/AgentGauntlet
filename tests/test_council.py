@@ -27,6 +27,7 @@ from aqg.council import (
     canonical_json,
     create_ballot,
     fingerprint,
+    provider_identity,
     validate_ballot,
     validate_candidate_bundle,
     validate_council_result,
@@ -374,6 +375,205 @@ def test_aqg_council_003_provider_specs_have_exact_no_shell_argument_shapes() ->
     tampered["command"].remove("--ignore-rules")
     with pytest.raises(ConfigurationError, match="protected argument shape"):
         validate_provider_spec(tampered)
+
+
+def test_all_provider_identities_are_exact_contracts() -> None:
+    expected = {
+        "grok-4.5": ("grok", "xai:grok.com", "https://grok.com", "grok"),
+        "synthetic/hf:zai-org/GLM-5.2": (
+            "synthetic",
+            "synthetic:api.synthetic.new",
+            "https://api.synthetic.new/openai/v1",
+            "synthetic:glm",
+        ),
+        "opencode/deepseek-v4-flash-free": (
+            "opencode",
+            "opencode:opencode.ai",
+            "https://opencode.ai/zen/v1",
+            "opencode:deepseek",
+        ),
+        "codex/gpt-5.6-sol": ("codex", "openai:codex", "local-subscription", "openai:gpt"),
+        "gemini/gemini-3-flash-preview": (
+            "gemini",
+            "google:gemini-cli",
+            "oauth-personal-free-quota",
+            "google:gemini",
+        ),
+        "claude/sonnet": (
+            "claude",
+            "anthropic:claude-cli",
+            "local-subscription",
+            "anthropic:sonnet",
+        ),
+    }
+    actual = {
+        model: (
+            identity["provider_id"],
+            identity["provider_group"],
+            identity["endpoint_origin"],
+            identity["model_family"],
+        )
+        for model in expected
+        for identity in (provider_identity(model),)
+    }
+    assert actual == expected
+
+
+def test_all_file_provider_commands_and_protocols_are_exact() -> None:
+    schema = canonical_json(review_payload_json_schema()).decode()
+    codex_prefix = [
+        "codex",
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-5.6-sol",
+        "--output-schema",
+        SCHEMA_FILENAME,
+        "--json",
+        "--color",
+        "never",
+        "--cd",
+        ".",
+    ]
+    for feature in (
+        "apps",
+        "browser_use",
+        "browser_use_external",
+        "computer_use",
+        "image_generation",
+        "in_app_browser",
+        "multi_agent",
+        "multi_agent_v2",
+        "shell_tool",
+        "skill_search",
+        "standalone_web_search",
+        "unified_exec",
+        "workspace_dependencies",
+    ):
+        codex_prefix.extend(("--disable", feature))
+    commands = {
+        "grok-4.5": [
+            "grok",
+            "--prompt-file",
+            PROMPT_FILENAME,
+            "--model",
+            "grok-4.5",
+            "--output-format",
+            "json",
+            "--json-schema",
+            schema,
+            "--no-memory",
+            "--no-subagents",
+            "--disable-web-search",
+            "--permission-mode",
+            "plan",
+            "--max-turns",
+            "1",
+            "--tools",
+            "",
+            "--verbatim",
+        ],
+        "synthetic/hf:zai-org/GLM-5.2": [
+            "opencode",
+            "run",
+            "--pure",
+            "--model",
+            "synthetic/hf:zai-org/GLM-5.2",
+            "--format",
+            "json",
+            "--agent",
+            "plan",
+        ],
+        "opencode/deepseek-v4-flash-free": [
+            "opencode",
+            "run",
+            "--pure",
+            "--model",
+            "opencode/deepseek-v4-flash-free",
+            "--format",
+            "json",
+            "--agent",
+            "plan",
+        ],
+        "codex/gpt-5.6-sol": [*codex_prefix, "-"],
+        "gemini/gemini-3-flash-preview": [
+            "gemini",
+            "--prompt",
+            "",
+            "--model",
+            "gemini-3-flash-preview",
+            "--output-format",
+            "json",
+            "--approval-mode",
+            "plan",
+            "--admin-policy",
+            GEMINI_POLICY_FILENAME,
+            "--sandbox",
+            "--skip-trust",
+        ],
+        "claude/sonnet": [
+            "claude",
+            "--print",
+            "--model",
+            "sonnet",
+            "--output-format",
+            "json",
+            "--json-schema",
+            schema,
+            "--permission-mode",
+            "plan",
+            "--tools",
+            "",
+            "--no-session-persistence",
+            "--disable-slash-commands",
+            "--safe-mode",
+            "--no-chrome",
+            "--strict-mcp-config",
+            "--mcp-config",
+            '{"mcpServers":{}}',
+            "--setting-sources",
+            "",
+        ],
+    }
+    protocols = {
+        "grok-4.5": ("grok", "json-document"),
+        "synthetic/hf:zai-org/GLM-5.2": ("opencode", "json-or-jsonl"),
+        "opencode/deepseek-v4-flash-free": ("opencode", "json-or-jsonl"),
+        "codex/gpt-5.6-sol": ("codex", "jsonl"),
+        "gemini/gemini-3-flash-preview": ("gemini", "json-document"),
+        "claude/sonnet": ("claude", "json-document"),
+    }
+    for model, expected_command in commands.items():
+        spec = validate_provider_spec(build_file_provider_spec(model))
+        assert spec["command"] == expected_command
+        assert (spec["executable"], spec["output_protocol"]) == protocols[model]
+
+
+def test_every_file_provider_command_rejects_argument_tampering() -> None:
+    models = (
+        "grok-4.5",
+        "synthetic/hf:zai-org/GLM-5.2",
+        "opencode/deepseek-v4-flash-free",
+        "codex/gpt-5.6-sol",
+        "gemini/gemini-3-flash-preview",
+        "claude/sonnet",
+    )
+    prompt_slots = {"codex/gpt-5.6-sol": {43}, "gemini/gemini-3-flash-preview": {2}}
+    for model in models:
+        spec = build_file_provider_spec(model)
+        for index, argument in enumerate(spec["command"]):
+            if index in prompt_slots.get(model, set()):
+                continue
+            tampered = dict(spec)
+            tampered["command"] = list(spec["command"])
+            tampered["command"][index] = argument + "-tampered"
+            with pytest.raises(ConfigurationError, match="command|protected argument shape"):
+                validate_provider_spec(tampered)
 
 
 def test_aqg_council_004_minimal_environment_scrubs_unapproved_secrets() -> None:
