@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from aqg.adapters import _bin, _control_path
+from aqg.adapters import _bin, _control_path, _expand_project_command, _project_test_env
 from aqg.errors import ConfigurationError
 from aqg.policy import load_policy
 from aqg.project import load_project
@@ -50,6 +50,22 @@ def test_trusted_mode_ignores_candidate_policy_project_and_tool_paths(
     assert load_project(subject)["name"] == trusted.name
     assert _bin(subject, "ruff", "python").is_relative_to(trusted)
     assert _control_path(subject, "quality/config/python/ruff.toml").startswith(str(trusted))
+    expanded = _expand_project_command(subject, ["$AQG_JS_BIN/vitest", "run"])
+    assert expanded[0] == str(
+        trusted / "quality" / "tools" / "js" / "node_modules" / ".bin" / "vitest"
+    )
+
+
+def test_trusted_candidate_tests_do_not_inherit_outer_aqg_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AQG_DIFF_BASE", "unavailable-origin/main")
+    environment = _project_test_env(CI="1")
+    assert environment["AQG_DIFF_BASE"] == ""
+    assert environment["AQG_RUN_ID"] == ""
+    assert environment["AQG_GATE"] == ""
+    assert environment["AQG_PROFILE"] == ""
+    assert environment["AQG_ROOT"] == ""
 
 
 def test_trusted_policy_path_must_be_absolute(

@@ -475,7 +475,8 @@ def _typecheck(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
 
 
 def _expand_project_command(root: Path, command: list[str]) -> list[str]:
-    js_bin = str(root / "quality" / "tools" / "js" / "node_modules" / ".bin")
+    control_root = _trusted_control_root(root)
+    js_bin = str(control_root / "quality" / "tools" / "js" / "node_modules" / ".bin")
     py_bin = str(_bin(root, "python", "python").parent)
     return [part.replace("$AQG_JS_BIN", js_bin).replace("$AQG_PY_BIN", py_bin) for part in command]
 
