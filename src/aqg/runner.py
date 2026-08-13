@@ -259,34 +259,45 @@ def run_gate(
     return code, evidence
 
 
-def run_profile(
-    root: Path,
-    policy: dict[str, Any],
-    profile_name: str,
-    *,
-    keep_going: bool = False,
-    quiet: bool = False,
-    shadow: bool = False,
-) -> tuple[int, dict[str, Any]]:
+def _profile_definition(policy: dict[str, Any], profile_name: str) -> dict[str, Any]:
     errors = validate_policy(policy)
     if errors:
         raise ConfigurationError("; ".join(errors))
     profile = policy.get("profiles", {}).get(profile_name)
     if not isinstance(profile, dict):
         raise ConfigurationError(f"unknown execution profile {profile_name!r}")
-    raw_run_id = (
-        os.environ.get("AQG_RUN_ID")
-        or f"{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
-    )
-    run_id = validate_run_id(raw_run_id)
-    run_dir = create_exclusive_run_dir(root, run_id)
-    profile_started_at = utc_now()
-    started = time.monotonic()
-    start_provenance = _provenance(root)
+    return profile
+
+
+def _new_profile_run(root: Path) -> tuple[str, Path]:
+    generated = f"{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    run_id = validate_run_id(os.environ.get("AQG_RUN_ID") or generated)
+    return run_id, create_exclusive_run_dir(root, run_id)
+
+
+def _print_gate_result(
+    gate_name: object, code: int, evidence: dict[str, Any], started: float
+) -> None:
+    marker = "✓" if code == PASS else "✗"
+    detail = evidence.get("stderr", "").strip().splitlines()
+    tail = f" · {detail[-1][:140]}" if code != PASS and detail else ""
+    elapsed = human_duration(int((time.monotonic() - started) * 1000))
+    print(f"  {marker} {gate_name} [{STATUS_NAMES[code]}] {elapsed}{tail}")
+
+
+def _execute_profile_gates(
+    root: Path,
+    policy: dict[str, Any],
+    profile_name: str,
+    profile: dict[str, Any],
+    run_id: str,
+    provenance: dict[str, Any],
+    *,
+    keep_going: bool,
+    quiet: bool,
+) -> tuple[list[dict[str, Any]], int]:
     results: list[dict[str, Any]] = []
     final = PASS
-    if not quiet:
-        print(f"AQG {profile_name} · run {run_id}")
     for gate_name in profile.get("gates", []):
         gate_started = time.monotonic()
         if not quiet:
@@ -298,50 +309,63 @@ def run_profile(
             run_id,
             profile_name,
             owned_run=True,
-            provenance=start_provenance,
+            provenance=provenance,
         )
         results.append(evidence)
-        if code > final:
-            final = code
+        final = max(final, code)
         if not quiet:
-            marker = "✓" if code == PASS else "✗"
-            detail = evidence.get("stderr", "").strip().splitlines()
-            tail = f" · {detail[-1][:140]}" if code != PASS and detail else ""
-            print(
-                f"  {marker} {gate_name} [{STATUS_NAMES[code]}] {human_duration(int((time.monotonic() - gate_started) * 1000))}{tail}"
-            )
+            _print_gate_result(gate_name, code, evidence, gate_started)
         if code != PASS and not keep_going:
             break
-    end_provenance = _provenance(root)
+    return results, final
+
+
+def _record_workspace_integrity(
+    root: Path,
+    run_dir: Path,
+    run_id: str,
+    results: list[dict[str, Any]],
+    start_provenance: dict[str, Any],
+    end_provenance: dict[str, Any],
+    final: int,
+    *,
+    quiet: bool,
+) -> tuple[bool, int]:
     workspace_mutated = (
         start_provenance["change_fingerprint"] != end_provenance["change_fingerprint"]
     )
-    if workspace_mutated:
-        integrity = {
-            "schema_version": "2",
-            "run_id": run_id,
-            "gate": "workspace_integrity",
-            "status": STATUS_NAMES[QUALITY_FAILURE],
-            "exit_code": QUALITY_FAILURE,
-            "raw_exit_code": QUALITY_FAILURE,
-            "command": "AQG internal workspace fingerprint comparison",
-            "started_at": utc_now(),
-            "duration_ms": 0,
-            "timed_out": False,
-            **end_provenance,
-            "stdout": "",
-            "stderr": "A required gate changed the tracked or untracked review surface. Tests and checkers must be observational unless an explicit update command is used.",
-            "before_change_fingerprint": start_provenance["change_fingerprint"],
-        }
-        results.append(integrity)
-        write_evidence_json(run_dir / "gates" / "workspace_integrity.json", integrity)
-        final = max(final, QUALITY_FAILURE)
-        if not quiet:
-            print(
-                "  ✗ workspace_integrity [quality_failure] · a checker modified the review surface"
-            )
+    if not workspace_mutated:
+        return False, final
+    integrity = {
+        "schema_version": "2",
+        "run_id": run_id,
+        "gate": "workspace_integrity",
+        "status": STATUS_NAMES[QUALITY_FAILURE],
+        "exit_code": QUALITY_FAILURE,
+        "raw_exit_code": QUALITY_FAILURE,
+        "command": "AQG internal workspace fingerprint comparison",
+        "started_at": utc_now(),
+        "duration_ms": 0,
+        "timed_out": False,
+        **end_provenance,
+        "stdout": "",
+        "stderr": "A required gate changed the tracked or untracked review surface. Tests and checkers must be observational unless an explicit update command is used.",
+        "before_change_fingerprint": start_provenance["change_fingerprint"],
+    }
+    results.append(integrity)
+    write_evidence_json(run_dir / "gates" / "workspace_integrity.json", integrity)
+    if not quiet:
+        print("  ✗ workspace_integrity [quality_failure] · a checker modified the review surface")
+    return True, max(final, QUALITY_FAILURE)
 
-    measured_gate_exit = final
+
+def _profile_retrospective(
+    root: Path,
+    run_dir: Path,
+    profile_name: str,
+    results: list[dict[str, Any]],
+    final: int,
+) -> tuple[dict[str, Any], int, str]:
     project = load_project(root)
     details, thresholds, traceability, baseline, baseline_error, stage = _retrospective_inputs(
         root, run_dir, project, profile_name
@@ -359,55 +383,158 @@ def run_profile(
         final = max(final, CONFIGURATION_ERROR)
     elif baseline is not None and stage == "ratchet":
         final = ratchet_exit_code(retrospective)
-    # Shadow is an observational migration mode. Every measured outcome is
-    # preserved in immutable evidence, but no checker result may block ordinary
-    # development before a reviewed baseline exists. Failures to create or
-    # finalize the evidence itself still raise before this point.
+    return retrospective, final, stage
+
+
+def _gate_summaries(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    keys = ("status", "exit_code", "duration_ms")
+    return [{"name": item["gate"], **{key: item[key] for key in keys}} for item in results]
+
+
+def _profile_summary(context: dict[str, Any], retrospective: dict[str, Any]) -> dict[str, Any]:
+    final = context["final"]
+    shadow = context["shadow"]
     command_exit = PASS if shadow else final
-    summary = {
+    return {
         "schema_version": "2",
-        "run_id": run_id,
-        "profile": profile_name,
-        "enforcement_stage": stage,
+        "run_id": context["run_id"],
+        "profile": context["profile_name"],
+        "enforcement_stage": context["stage"],
         "mode": "shadow" if shadow else "enforce",
         "status": STATUS_NAMES[final],
         "exit_code": command_exit,
         "observed_exit_code": final,
-        "measured_gate_exit_code": measured_gate_exit,
+        "measured_gate_exit_code": context["measured_gate_exit"],
         "command_status": STATUS_NAMES[command_exit],
-        "started_at": profile_started_at,
-        "duration_ms": int((time.monotonic() - started) * 1000),
-        **end_provenance,
-        "workspace_mutated": workspace_mutated,
-        "start_change_fingerprint": start_provenance["change_fingerprint"],
+        "started_at": context["profile_started_at"],
+        "duration_ms": int((time.monotonic() - context["started"]) * 1000),
+        **context["end_provenance"],
+        "workspace_mutated": context["workspace_mutated"],
+        "start_change_fingerprint": context["start_provenance"]["change_fingerprint"],
         "retrospective": {
             "certification": retrospective["certification"],
             "counts": retrospective["counts"],
         },
-        "gates": [
-            {
-                "name": item["gate"],
-                "status": item["status"],
-                "exit_code": item["exit_code"],
-                "duration_ms": item["duration_ms"],
-            }
-            for item in results
-        ],
+        "gates": _gate_summaries(context["results"]),
     }
-    write_evidence_json(run_dir / "summary.json", summary)
-    write_run_manifest(run_dir, run_id)
-    write_json(root / ".aqg" / "latest.json", {"run_id": run_id, "path": str(run_dir), **summary})
+
+
+def _print_profile_result(profile_name: str, final: int, shadow: bool, duration: int) -> None:
+    observation = " (shadow observations; non-blocking)" if shadow and final == 1 else ""
+    print(f"AQG {profile_name}: {STATUS_NAMES[final]}{observation} in {human_duration(duration)}")
+
+
+def _print_profile_start(profile_name: str, run_id: str, quiet: bool) -> None:
     if not quiet:
-        print(
-            f"AQG {profile_name}: {STATUS_NAMES[final]}"
-            + (
-                " (shadow observations; non-blocking)"
-                if shadow and final == QUALITY_FAILURE
-                else ""
-            )
-            + f" in {human_duration(int(str(summary['duration_ms'])))}"
+        print(f"AQG {profile_name} · run {run_id}")
+
+
+def _finalize_profile(
+    root: Path, run_dir: Path, context: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    retrospective, final, stage = _profile_retrospective(
+        root,
+        run_dir,
+        context["profile_name"],
+        context["results"],
+        context["final"],
+    )
+    context.update(final=final, stage=stage)
+    summary = _profile_summary(context, retrospective)
+    write_evidence_json(run_dir / "summary.json", summary)
+    write_run_manifest(run_dir, context["run_id"])
+    write_json(
+        root / ".aqg" / "latest.json",
+        {"run_id": context["run_id"], "path": str(run_dir), **summary},
+    )
+    if not context["quiet"]:
+        _print_profile_result(
+            context["profile_name"], final, context["shadow"], int(summary["duration_ms"])
         )
-    return command_exit, summary
+    return int(summary["exit_code"]), summary
+
+
+def _profile_context(
+    run_id: str,
+    profile_name: str,
+    shadow: bool,
+    final: int,
+    profile_started_at: str,
+    started: float,
+    end_provenance: dict[str, Any],
+    workspace_mutated: bool,
+    start_provenance: dict[str, Any],
+    results: list[dict[str, Any]],
+    quiet: bool,
+) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "profile_name": profile_name,
+        "shadow": shadow,
+        "final": final,
+        "measured_gate_exit": final,
+        "profile_started_at": profile_started_at,
+        "started": started,
+        "end_provenance": end_provenance,
+        "workspace_mutated": workspace_mutated,
+        "start_provenance": start_provenance,
+        "results": results,
+        "quiet": quiet,
+    }
+
+
+def _run_profile(
+    root: Path,
+    policy: dict[str, Any],
+    profile_name: str,
+    settings: tuple[bool, bool, bool],
+) -> tuple[int, dict[str, Any]]:
+    keep_going, quiet, shadow = settings
+    profile = _profile_definition(policy, profile_name)
+    run_id, run_dir = _new_profile_run(root)
+    profile_started_at, started = utc_now(), time.monotonic()
+    start_provenance = _provenance(root)
+    _print_profile_start(profile_name, run_id, quiet)
+    results, final = _execute_profile_gates(
+        root,
+        policy,
+        profile_name,
+        profile,
+        run_id,
+        start_provenance,
+        keep_going=keep_going,
+        quiet=quiet,
+    )
+    end_provenance = _provenance(root)
+    workspace_mutated, final = _record_workspace_integrity(
+        root, run_dir, run_id, results, start_provenance, end_provenance, final, quiet=quiet
+    )
+    context = _profile_context(
+        run_id,
+        profile_name,
+        shadow,
+        final,
+        profile_started_at,
+        started,
+        end_provenance,
+        workspace_mutated,
+        start_provenance,
+        results,
+        quiet,
+    )
+    return _finalize_profile(root, run_dir, context)
+
+
+def run_profile(
+    root: Path,
+    policy: dict[str, Any],
+    profile_name: str,
+    *,
+    keep_going: bool = False,
+    quiet: bool = False,
+    shadow: bool = False,
+) -> tuple[int, dict[str, Any]]:
+    return _run_profile(root, policy, profile_name, (keep_going, quiet, shadow))
 
 
 def list_runs(root: Path, limit: int = 50) -> list[dict[str, Any]]:

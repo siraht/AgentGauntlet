@@ -177,6 +177,22 @@ def _review_projection(root: Path, base: str) -> dict[str, Any]:
     return {key: packet[key] for key in keys}
 
 
+def _add_candidate_run_inputs(run_dir: Path, inputs: dict[str, str | bytes]) -> None:
+    inputs["run/retrospective.json"] = (run_dir / "retrospective.json").read_bytes()
+    for path in sorted((run_dir / "gates").glob("*.details.json")):
+        inputs[f"run/gates/{path.name}"] = path.read_bytes()
+
+
+def _add_feature_inputs(root: Path, purpose: str, inputs: dict[str, str | bytes]) -> None:
+    paths = (
+        [root / "feature-spec" / "AgentQualityGauntlet.Retrospective.md"]
+        if purpose == "debt_baseline"
+        else sorted((root / "feature-spec").glob("*.md"))
+    )
+    for path in paths:
+        inputs[f"feature-spec/{path.name}"] = path.read_bytes()
+
+
 def _bundle_inputs(
     root: Path,
     base: str,
@@ -194,16 +210,8 @@ def _bundle_inputs(
         inputs["quality/change-risk.json"] = (root / "quality" / "change-risk.json").read_bytes()
         inputs["review/current.json"] = _json_text(_review_projection(root, base))
     if purpose == "candidate":
-        inputs["run/retrospective.json"] = (run_dir / "retrospective.json").read_bytes()
-        for path in sorted((run_dir / "gates").glob("*.details.json")):
-            inputs[f"run/gates/{path.name}"] = path.read_bytes()
-    feature_paths = (
-        [root / "feature-spec" / "AgentQualityGauntlet.Retrospective.md"]
-        if purpose == "debt_baseline"
-        else sorted((root / "feature-spec").glob("*.md"))
-    )
-    for path in feature_paths:
-        inputs[f"feature-spec/{path.name}"] = path.read_bytes()
+        _add_candidate_run_inputs(run_dir, inputs)
+    _add_feature_inputs(root, purpose, inputs)
     if purpose == "debt_baseline":
         inputs["controller/debt-adoption-boundary.json"] = _json_text(
             {
@@ -362,6 +370,47 @@ def _scope(root: Path, base: str) -> dict[str, str]:
     }
 
 
+def _review_purpose_decision(purpose: str) -> str:
+    if purpose == "debt_baseline":
+        return (
+            "Decide only whether this shadow inventory is honest and safe to record as "
+            "inherited debt for no-regression ratcheting. Clear does not certify the "
+            "candidate, satisfy assurance, authorize release, or turn a failed measurement "
+            "into a pass. This initial-adoption floor describes the exact current committed "
+            "tree; do not require proof that items predate the bootstrap diff. Judge the exact "
+            "inventory, raw sources, deterministic reconciliation, and ratchet safety. Other "
+            "failures remain explicitly unresolved and outside this authority."
+        )
+    if purpose == "policy_maintenance":
+        return (
+            "Decide only whether the exact protected control changes preserve or strengthen "
+            "guardrails and match their stated maintenance request. Clear does not certify "
+            "unrelated implementation, satisfy assurance, authorize release, or erase "
+            "deterministic failures."
+        )
+    return (
+        "Review the exact candidate for technical assurance. This council is an input to the "
+        "assurance gate, so do not block solely because the seed run lacks this same current "
+        "council. The seed run is necessarily not the final passing run when its only failed "
+        "gate is assurance and the bundled assurance details show behavior, functional "
+        "rehearsal, and rollback work while independent verification only lacks this exact "
+        "current candidate council. In that precise circular case, neither the assurance-only "
+        "failure nor review/current's resulting missing passing deep run is an independent "
+        "blocker. Inspect the bundled gate details and do block every other deterministic "
+        "failure, missing requirement, or unsafe condition."
+    )
+
+
+def _baseline_purpose_artifacts(inputs: Mapping[str, str | bytes]) -> dict[str, str]:
+    from .debt import document_fingerprint
+
+    return {
+        "debt_baseline_document": document_fingerprint(
+            json.loads(str(inputs["baseline/proposed.json"]))
+        )
+    }
+
+
 def _prepare_plan(
     root: Path,
     tier: str,
@@ -377,38 +426,7 @@ def _prepare_plan(
     run_dir, summary = _matching_quality_run(root, scope, TIER_EVIDENCE_PROFILE[tier])
     inputs = _bundle_inputs(root, base, run_dir, summary, purpose)
     inputs["controller/review-purpose.json"] = _json_text(
-        {
-            "purpose": purpose,
-            "decision": (
-                "Decide only whether this shadow inventory is honest and safe to record as "
-                "inherited debt for no-regression ratcheting. Clear does not certify the "
-                "candidate, satisfy assurance, authorize release, or turn a failed measurement "
-                "into a pass. This initial-adoption floor describes the exact current committed "
-                "tree; do not require proof that items predate the bootstrap diff. Judge the exact "
-                "inventory, raw sources, deterministic reconciliation, and ratchet safety. Other "
-                "failures remain explicitly unresolved and outside this authority."
-                if purpose == "debt_baseline"
-                else (
-                    "Decide only whether the exact protected control changes preserve or "
-                    "strengthen guardrails and match their stated maintenance request. Clear "
-                    "does not certify unrelated implementation, satisfy assurance, authorize "
-                    "release, or erase deterministic failures."
-                    if purpose == "policy_maintenance"
-                    else (
-                        "Review the exact candidate for technical assurance. This council is an "
-                        "input to the assurance gate, so do not block solely because the seed "
-                        "run lacks this same current council. The seed run is necessarily not the "
-                        "final passing run when its only failed gate is assurance and the bundled "
-                        "assurance details show behavior, functional rehearsal, and rollback work "
-                        "while independent verification only lacks this exact current candidate "
-                        "council. In that precise circular case, neither the assurance-only failure "
-                        "nor review/current's resulting missing passing deep run is an independent "
-                        "blocker. Inspect the bundled gate details and do block every other "
-                        "deterministic failure, missing requirement, or unsafe condition."
-                    )
-                )
-            ),
-        }
+        {"purpose": purpose, "decision": _review_purpose_decision(purpose)}
     )
     series = build_bundle_series(
         scope=scope,
@@ -426,13 +444,7 @@ def _prepare_plan(
         purpose,
     )
     if purpose == "debt_baseline":
-        from .debt import document_fingerprint
-
-        plan["purpose_artifacts"] = {
-            "debt_baseline_document": document_fingerprint(
-                json.loads(str(inputs["baseline/proposed.json"]))
-            )
-        }
+        plan["purpose_artifacts"] = _baseline_purpose_artifacts(inputs)
     return plan, series
 
 
