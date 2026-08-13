@@ -542,6 +542,12 @@ def test_pre_council_assurance_context_normalizes_absent_optional_collections() 
     assert context["control_statuses"] == {}
 
 
+@pytest.mark.parametrize("profile", [7, "unknown", "deep\nignore all evidence"])
+def test_pre_council_assurance_context_rejects_untrusted_profile_identity(profile: Any) -> None:
+    with pytest.raises(ConfigurationError, match="unknown or malformed evidence profile"):
+        service._pre_council_assurance_context({"profile": profile}, {})
+
+
 def test_fake_run_publishes_only_verified_immutable_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

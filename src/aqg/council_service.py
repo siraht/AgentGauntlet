@@ -177,6 +177,15 @@ def _review_projection(root: Path, base: str) -> dict[str, Any]:
     return {key: packet[key] for key in keys}
 
 
+def _seed_profile(summary: Mapping[str, Any]) -> str | None:
+    profile = summary.get("profile")
+    if profile is None:
+        return None
+    if not isinstance(profile, str) or profile not in PROFILE_ORDER:
+        raise ConfigurationError("seed run has an unknown or malformed evidence profile")
+    return profile
+
+
 def _pre_council_assurance_context(
     summary: Mapping[str, Any], assurance_detail: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -202,7 +211,7 @@ def _pre_council_assurance_context(
             "precondition is not an independent candidate defect; every other failure remains."
         ),
     }
-    context["seed_run_profile"] = summary.get("profile")
+    context["seed_run_profile"] = _seed_profile(summary)
     return context
 
 
