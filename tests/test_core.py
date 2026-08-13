@@ -1263,6 +1263,8 @@ class SetupContractTests(RepoCase):
             encoding="utf-8"
         )
         self.assertIn("tools install --ci --browsers", workflow)
+        self.assertIn('if [[ "$STAGE" == "shadow" ]]', workflow)
+        self.assertIn("check-risk --shadow --keep-going", workflow)
         self.assertEqual(workflow.count("continue-on-error: true"), 1)
         self.assertIn('github.event_name }}" == "workflow_dispatch"', workflow)
         self.assertIn("github.event.repository.default_branch", workflow)

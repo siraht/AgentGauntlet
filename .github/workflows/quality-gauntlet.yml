@@ -95,7 +95,14 @@ jobs:
       - name: Install hash-locked AQG toolchains
         run: python quality/qg.py tools install --ci --browsers
       - name: Run the risk-selected authoritative profile
-        run: python quality/qg.py check-risk --keep-going --quiet
+        shell: bash
+        run: |
+          STAGE="$(python -c 'import json; print(json.load(open("quality/project.json"))["enforcement"]["stage"])')"
+          if [[ "$STAGE" == "shadow" ]]; then
+            python quality/qg.py check-risk --shadow --keep-going --quiet
+          else
+            python quality/qg.py check-risk --keep-going --quiet
+          fi
       - name: Generate the review packet
         if: always()
         run: >-

@@ -702,7 +702,14 @@ jobs:
           python3 quality/qg.py doctor --strict-tools
           python3 quality/qg.py risk-card --json
       - name: Run required quality profile
-        run: python3 quality/qg.py check-risk --keep-going
+        shell: bash
+        run: |
+          STAGE="$(python3 -c 'import json; print(json.load(open("quality/project.json"))["enforcement"]["stage"])')"
+          if [[ "$STAGE" == "shadow" ]]; then
+            python3 quality/qg.py check-risk --shadow --keep-going
+          else
+            python3 quality/qg.py check-risk --keep-going
+          fi
       - name: Generate review packet and SARIF
         if: always()
         continue-on-error: true
