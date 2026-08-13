@@ -90,7 +90,7 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "opencode/deepseek-v4-flash-free",
+        "gemini/gemini-3-flash-preview",
     ]
 
 
@@ -166,12 +166,12 @@ def test_high_tier_uses_no_cost_reviewers_without_synthetic_spend(
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "opencode/deepseek-v4-flash-free",
+        "gemini/gemini-3-flash-preview",
     ]
     assert {member["provider_group"] for member in plan["members"]} == {
         "xai:grok.com",
         "openai:codex",
-        "opencode:opencode.ai",
+        "google:gemini-cli",
     }
     assert not any(member["provider_id"] == "synthetic" for member in plan["members"])
 

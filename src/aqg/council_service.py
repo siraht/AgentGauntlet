@@ -76,7 +76,7 @@ TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
         ("adversarial", "grok-4.5"),
         ("test_evidence", "codex/gpt-5.6-sol"),
         ("security_trust", "codex/gpt-5.6-sol"),
-        ("operability_rollback", "opencode/deepseek-v4-flash-free"),
+        ("operability_rollback", "gemini/gemini-3-flash-preview"),
     ),
 }
 
