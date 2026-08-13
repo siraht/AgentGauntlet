@@ -108,6 +108,14 @@ function actionStatus() {
 }
 function ownerDecisionPresentation(state) {
   const presentations = {
+    works: { status: "pass", title: "Functional checks passed" },
+    not_tested: { status: "review", title: "Not tested" },
+    broken: { status: "quality_failure", title: "Functional defect found" },
+    unusable: { status: "configuration_error", title: "Evidence unusable" },
+    human_decision_needed: {
+      status: "review",
+      title: "Human decision needed",
+    },
     blocked: { status: "quality_failure", title: "Do not merge" },
     ready_for_authoritative_check: {
       status: "pass",
@@ -141,7 +149,9 @@ function ownerDecisionAction(lead) {
 function renderOwnerDecision(item, merge) {
   const owner = item.owner_status || {};
   const lead = (merge.reasons || [])[0];
-  const presentation = ownerDecisionPresentation(merge.state);
+  const presentation = ownerDecisionPresentation(
+    merge.functional_state || merge.state,
+  );
   const detail = ownerDecisionDetail(lead);
   const action = ownerDecisionAction(lead);
   const meta = [
@@ -269,6 +279,11 @@ function renderDecision(item) {
   renderLegacyDecision(item);
 }
 function decisionSemantic(state) {
+  if (state === "works") return "pass";
+  if (state === "broken") return "quality_failure";
+  if (state === "unusable") return "configuration_error";
+  if (state === "human_decision_needed") return "review";
+  if (state === "not_tested") return "neutral";
   if (["allowed", "ready_for_authoritative_check"].includes(state))
     return "pass";
   if (state === "blocked") return "quality_failure";
@@ -276,10 +291,17 @@ function decisionSemantic(state) {
 }
 function decisionCard(name, decision = {}) {
   const reason = decision.reasons?.[0];
-  const semantic = decisionSemantic(decision.state);
-  const symbols = { pass: "✓", quality_failure: "!", neutral: "?" };
+  const displayedState = decision.functional_state || decision.state;
+  const semantic = decisionSemantic(displayedState);
+  const symbols = {
+    pass: "✓",
+    quality_failure: "!",
+    configuration_error: "×",
+    review: "•",
+    neutral: "?",
+  };
   const symbol = symbols[semantic];
-  return `<article class="decision-card ${semantic}"><div class="decision-card-head"><span class="decision-symbol" aria-hidden="true">${symbol}</span><div><p>${esc(name)}</p><strong>${esc(human(decision.state || "not proven"))}</strong></div></div><p>${esc(reason?.message || "No trusted decision evidence is available.")}</p><small>${reason?.action ? `<b>Next:</b> ${esc(reason.action)}` : "No next action recorded."}</small></article>`;
+  return `<article class="decision-card ${semantic}"><div class="decision-card-head"><span class="decision-symbol" aria-hidden="true">${symbol}</span><div><p>${esc(name)}</p><strong>${esc(human(displayedState || "not tested"))}</strong></div></div><p>${esc(reason?.message || "No functional problem is reported by current evidence.")}</p><small>${reason?.action ? `<b>Next:</b> ${esc(reason.action)}` : "No next action recorded."}</small></article>`;
 }
 function renderDecisionDeck(owner) {
   const decisions = owner.decisions || {};

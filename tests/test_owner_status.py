@@ -2,6 +2,7 @@
 # Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-003 AQG-OWNER-004
 # Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-005 AQG-OWNER-006 AQG-OWNER-007
 # Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-008 AQG-OWNER-009
+# Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-010
 """Owner readiness projection contracts."""
 
 from __future__ import annotations
@@ -15,11 +16,16 @@ from aqg import owner_status
 from aqg.util import write_json
 
 
-def _run(*, profile: str = "deep", retrospective: dict[str, Any] | None = None) -> dict[str, Any]:
+def _run(
+    *,
+    profile: str = "deep",
+    status: str = "pass",
+    retrospective: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "run_id": f"{profile}-run",
         "profile": profile,
-        "status": "pass",
+        "status": status,
         "revision": "revision",
         "base_ref": "main",
         "change_fingerprint": "change",
@@ -161,9 +167,12 @@ def test_current_verified_evidence_is_shared_but_merge_never_invents_authority(
         }
     ]
     assert payload["decisions"]["develop"]["state"] == "allowed"
+    assert payload["decisions"]["develop"]["functional_state"] == "works"
     assert payload["decisions"]["merge"]["state"] == "not_proven"
+    assert payload["decisions"]["merge"]["functional_state"] == "works"
     assert _codes(payload["decisions"]["merge"]) == {"authoritative_ci_not_reported"}
     assert payload["decisions"]["release"]["state"] == "blocked"
+    assert payload["decisions"]["release"]["functional_state"] == "not_tested"
 
 
 def test_unverified_current_manifest_blocks_merge(
@@ -182,6 +191,7 @@ def test_unverified_current_manifest_blocks_merge(
     assert payload["evidence"][0]["state"] == "unverified"
     assert payload["evidence"][0]["manifest_verified"] is False
     assert payload["decisions"]["merge"]["state"] == "blocked"
+    assert payload["decisions"]["merge"]["functional_state"] == "unusable"
     assert "evidence_deep_unverified" in _codes(payload["decisions"]["merge"])
 
 
@@ -245,6 +255,73 @@ def test_missing_council_is_explicit_and_next_action_is_deterministic(
     assert first["council"]["state"] == "not_configured"
     assert first["next_action"] == second["next_action"]
     assert first["next_action"]["code"] == "evidence_deep_missing"
+    assert first["decisions"]["merge"]["functional_state"] == "not_tested"
+
+
+@pytest.mark.parametrize(
+    ("run_status", "expected"),
+    [
+        ("quality_failure", "broken"),
+        ("configuration_error", "unusable"),
+        ("infrastructure_error", "unusable"),
+    ],
+)
+def test_functional_projection_distinguishes_defects_from_unusable_measurements(
+    status_inputs: dict[str, list[dict[str, Any]]],
+    tmp_path: Path,
+    run_status: str,
+    expected: str,
+) -> None:
+    """AQG-OWNER-009: result failures and unusable measurements stay distinct."""
+    _write_review(tmp_path)
+    status_inputs["runs"][:] = [_run(status=run_status)]
+
+    payload = owner_status.build_owner_status(tmp_path)
+
+    assert payload["decisions"]["merge"]["functional_state"] == expected
+    assert payload["decisions"]["merge"]["state"] == "blocked"
+
+
+def test_functional_projection_identifies_a_genuine_human_decision(
+    status_inputs: dict[str, list[dict[str, Any]]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AQG-OWNER-007: an explicit authority boundary is not a functional defect."""
+    _write_review(tmp_path)
+    monkeypatch.setattr(
+        owner_status,
+        "validate_required_approvals",
+        lambda root, risk: {
+            "required": ["guardrail-exception"],
+            "results": {},
+            "errors": ["guardrail-exception: owner decision required"],
+            "exit_code": 1,
+        },
+    )
+
+    payload = owner_status.build_owner_status(tmp_path)
+
+    assert payload["decisions"]["merge"]["functional_state"] == "human_decision_needed"
+
+
+def test_functional_projection_calls_missing_retrospective_measurement_not_tested(
+    status_inputs: dict[str, list[dict[str, Any]]], tmp_path: Path
+) -> None:
+    """AQG-OWNER-009: absent evidence is not a defect or damaged measurement."""
+    _write_review(tmp_path)
+    status_inputs["runs"][:] = [
+        _run(
+            retrospective={
+                "certification": "unknown",
+                "counts": {"missing_evidence": 1},
+            }
+        )
+    ]
+
+    payload = owner_status.build_owner_status(tmp_path)
+
+    assert payload["decisions"]["merge"]["functional_state"] == "not_tested"
 
 
 def test_verified_current_council_is_visible_but_does_not_invent_authority(

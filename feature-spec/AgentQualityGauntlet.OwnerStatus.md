@@ -28,6 +28,14 @@
 - `AQG-OWNER-009` Missing, malformed, stale, or tampered evidence MUST remain
   visible with its actual classification and MUST NOT be collapsed into an
   ordinary quality failure or pass.
+- `AQG-OWNER-010` Each Develop, Merge, and Release decision MUST preserve its
+  raw authority state and reasons while adding a functional state of `works`,
+  `not_tested`, `broken`, `unusable`, or `human_decision_needed`. Missing or
+  deliberately unevaluated measurements, including a release not yet
+  evaluated, MUST be `not_tested`; verified quality failures MUST be `broken`;
+  stale, malformed, tampered, configuration-error, or infrastructure-error
+  evidence MUST be `unusable`; and only an explicit reserved authority boundary
+  MAY be `human_decision_needed`.
 - `AQG-OWNER-010` Owner-facing evidence MUST distinguish `works`, `not_tested`,
   `broken`, `unusable`, and `human_decision_needed` without changing the raw
   gate result or exit-code contract.

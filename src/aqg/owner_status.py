@@ -38,6 +38,45 @@ RETROSPECTIVE_BLOCKERS = (
     ("infrastructure_errors", "retrospective infrastructure error"),
     ("unknown_product_intent", "unknown product intent"),
 )
+FUNCTIONAL_STATES = (
+    "works",
+    "not_tested",
+    "broken",
+    "unusable",
+    "human_decision_needed",
+)
+FUNCTIONAL_PRECEDENCE = {
+    "works": 0,
+    "human_decision_needed": 1,
+    "not_tested": 2,
+    "broken": 3,
+    "unusable": 4,
+}
+FUNCTIONAL_IGNORED_REASON_CODES = frozenset(
+    {"authoritative_ci_not_reported", "release_authority_not_reported", "shadow_observations"}
+)
+FUNCTIONAL_REASON_STATES = {
+    "release_not_evaluated": "not_tested",
+    "missing_evidence": "not_tested",
+    "review_blockers": "broken",
+    "regressions": "broken",
+    "new_debt": "broken",
+    "human_review_required": "human_decision_needed",
+    "approval_missing_or_stale": "human_decision_needed",
+    "unknown_product_intent": "human_decision_needed",
+    "risk_invalid": "unusable",
+    "onboarding_blocked": "unusable",
+    "retrospective_invalid": "unusable",
+    "invalid_debt": "unusable",
+    "configuration_errors": "unusable",
+    "infrastructure_errors": "unusable",
+}
+FUNCTIONAL_SUFFIX_STATES = (
+    ("_missing", "not_tested"),
+    ("_stale", "unusable"),
+    ("_invalid", "unusable"),
+    ("_unverified", "unusable"),
+)
 
 
 def _as_mapping(value: Any) -> dict[str, Any]:
@@ -487,13 +526,76 @@ def _release_decision(reasons: list[dict[str, str]]) -> dict[str, Any]:
     )
 
 
+def _evidence_failure_state(code: str, context: Mapping[str, Any]) -> str:
+    profile = code.removeprefix("evidence_").removesuffix("_current_failure")
+    evidence = next((item for item in context["evidence"] if item.get("profile") == profile), None)
+    run_id = evidence.get("run_id") if evidence else None
+    run: dict[str, Any] = next(
+        (item for item in context["runs"] if item.get("run_id") == run_id), {}
+    )
+    status = run.get("status")
+    if status == "quality_failure":
+        return "broken"
+    return "unusable"
+
+
+def _release_failure_state(context: Mapping[str, Any]) -> str:
+    release = _profile_evidence(context["root"], context["runs"], "release", context["scope"])
+    run_id = release.get("run_id")
+    run: dict[str, Any] = next(
+        (item for item in context["runs"] if item.get("run_id") == run_id), {}
+    )
+    return "broken" if run.get("status") == "quality_failure" else "unusable"
+
+
+def _functional_reason_state(code: str, context: Mapping[str, Any]) -> str | None:
+    if code in FUNCTIONAL_IGNORED_REASON_CODES:
+        return None
+    if code.startswith("evidence_") and code.endswith("_current_failure"):
+        return _evidence_failure_state(code, context)
+    if code.startswith("release_evidence_") and code.endswith("_current_failure"):
+        return _release_failure_state(context)
+    exact = FUNCTIONAL_REASON_STATES.get(code)
+    suffix = next(
+        (state for ending, state in FUNCTIONAL_SUFFIX_STATES if code.endswith(ending)), None
+    )
+    return exact or suffix or "unusable"
+
+
+def _functional_state(
+    decision: Mapping[str, Any], context: Mapping[str, Any], *, surface: str
+) -> str:
+    codes = [str(reason.get("code", "")) for reason in decision.get("reasons", [])]
+    if surface == "release" and "release_not_evaluated" in codes:
+        return "not_tested"
+    states = [
+        state for code in codes if (state := _functional_reason_state(code, context)) is not None
+    ]
+    if not states:
+        return "works"
+    return max(states, key=FUNCTIONAL_PRECEDENCE.__getitem__)
+
+
+def _functional_decision(
+    decision: dict[str, Any], context: Mapping[str, Any], *, surface: str
+) -> dict[str, Any]:
+    functional_state = _functional_state(decision, context, surface=surface)
+    if functional_state not in FUNCTIONAL_STATES:  # defensive contract assertion
+        raise ConfigurationError(f"unknown functional state: {functional_state}")
+    return {**decision, "functional_state": functional_state}
+
+
 def _decisions(context: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     develop_reasons = _develop_reasons(context)
     develop = _decision("blocked" if develop_reasons else "allowed", develop_reasons)
     merge_reasons = _merge_reasons(context, develop)
     merge = _merge_decision(merge_reasons)
     release = _release_decision(_release_reasons(context, merge_reasons))
-    return {"develop": develop, "merge": merge, "release": release}
+    decisions = {"develop": develop, "merge": merge, "release": release}
+    return {
+        surface: _functional_decision(decision, context, surface=surface)
+        for surface, decision in decisions.items()
+    }
 
 
 def _next_action(decisions: Mapping[str, Mapping[str, Any]]) -> dict[str, str] | None:

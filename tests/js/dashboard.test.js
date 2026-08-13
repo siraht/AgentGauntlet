@@ -215,6 +215,55 @@ test("owner and legacy decisions fail closed across every disposition", () => {
   ).toEqual(["pass", "pass", "quality_failure", "neutral"]);
 });
 
+test("the dashboard names and styles all five functional states", () => {
+  // Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-010
+  const { ownerDecisionPresentation, decisionSemantic } = dashboardModel();
+  const states = [
+    "works",
+    "not_tested",
+    "broken",
+    "unusable",
+    "human_decision_needed",
+  ];
+
+  expect(states.map((state) => ownerDecisionPresentation(state).title)).toEqual(
+    [
+      "Functional checks passed",
+      "Not tested",
+      "Functional defect found",
+      "Evidence unusable",
+      "Human decision needed",
+    ],
+  );
+  expect(states.map(decisionSemantic)).toEqual([
+    "pass",
+    "neutral",
+    "quality_failure",
+    "configuration_error",
+    "review",
+  ]);
+});
+
+test("decision cards prefer functional state without discarding raw authority", () => {
+  const { decisionCard } = dashboardModel();
+
+  const markup = decisionCard("release", {
+    state: "blocked",
+    functional_state: "not_tested",
+    reasons: [
+      {
+        message:
+          "The current risk profile does not request a release decision.",
+        action: "Start a release evaluation.",
+      },
+    ],
+  });
+
+  expect(markup).toContain("not tested");
+  expect(markup).toContain("does not request a release decision");
+  expect(markup).not.toContain("quality_failure");
+});
+
 test("retrospective and council summaries keep unknowns visible", () => {
   const { retrospectiveCounts, councilEmptyMarkup } = dashboardModel();
 
