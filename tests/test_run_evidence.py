@@ -293,6 +293,34 @@ def test_latest_is_not_updated_when_manifest_finalization_fails(tmp_path: Path) 
     assert not (tmp_path / ".aqg" / "latest.json").exists()
 
 
+def test_profile_summary_records_wall_clock_start_before_gate_execution(tmp_path: Path) -> None:
+    provenance = {
+        "revision": "candidate",
+        "base_ref": "main",
+        "change_fingerprint": "sha256:change",
+        "control_fingerprint": "sha256:control",
+    }
+    started_at = "2026-08-13T09:00:00+00:00"
+    with (
+        mock.patch.dict(os.environ, {"AQG_RUN_ID": "timed-run"}, clear=False),
+        mock.patch("aqg.runner._provenance", return_value=provenance),
+        mock.patch("aqg.runner.load_project", return_value=_project()),
+        mock.patch(
+            "aqg.runner.utc_now",
+            side_effect=[started_at, "2026-08-13T09:00:01+00:00"],
+        ),
+    ):
+        code, summary = run_profile(
+            tmp_path,
+            _profile_policy("python3 -c \"print('ok')\""),
+            "fast",
+            quiet=True,
+        )
+
+    assert code == PASS
+    assert summary["started_at"] == started_at
+
+
 def test_shadow_run_preserves_quality_observation_but_returns_non_blocking(tmp_path: Path) -> None:
     script = tmp_path / "failing_report.py"
     script.write_text(

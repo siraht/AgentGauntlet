@@ -280,6 +280,7 @@ def run_profile(
     )
     run_id = validate_run_id(raw_run_id)
     run_dir = create_exclusive_run_dir(root, run_id)
+    profile_started_at = utc_now()
     started = time.monotonic()
     start_provenance = _provenance(root)
     results: list[dict[str, Any]] = []
@@ -374,7 +375,7 @@ def run_profile(
         "observed_exit_code": final,
         "measured_gate_exit_code": measured_gate_exit,
         "command_status": STATUS_NAMES[command_exit],
-        "started_at": utc_now(),
+        "started_at": profile_started_at,
         "duration_ms": int((time.monotonic() - started) * 1000),
         **end_provenance,
         "workspace_mutated": workspace_mutated,
