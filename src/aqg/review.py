@@ -1099,6 +1099,15 @@ def _is_test_expectation_resolution(finding: dict[str, Any]) -> bool:
     )
 
 
+def _complete_oracle_resolution(
+    finding: Any, affected_paths: set[str], diff: str | None
+) -> set[str] | None:
+    if not isinstance(finding, dict) or not _is_test_expectation_resolution(finding):
+        return None
+    resolved = _resolved_oracle_paths(finding, affected_paths, diff)
+    return resolved if _claim_covers_paths(resolved, affected_paths) else None
+
+
 def _test_expectation_resolution_roles(
     root: Path, run_id: str, affected_paths: set[str]
 ) -> set[str]:
@@ -1122,10 +1131,9 @@ def _ballot_oracle_resolution(path: Path, affected_paths: set[str]) -> tuple[str
         return None
     diff = _bundle_diff(path)
     for finding in findings:
-        if isinstance(finding, dict) and _is_test_expectation_resolution(finding):
-            resolved = _resolved_oracle_paths(finding, affected_paths, diff)
-            if _claim_covers_paths(resolved, affected_paths):
-                return str(reviewer.get("role")), resolved
+        resolved = _complete_oracle_resolution(finding, affected_paths, diff)
+        if resolved is not None:
+            return str(reviewer.get("role")), resolved
     return None
 
 
