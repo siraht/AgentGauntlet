@@ -55,3 +55,18 @@ def test_release_verifier_rejects_unlisted_archive_content() -> None:
         rejected = verify_release(output, smoke=False)
         assert rejected["status"] == "invalid"
         assert any("checksum mismatch" in error for error in rejected["errors"])
+
+
+def test_publish_workflow_requires_exact_tag_risk_selected_evidence() -> None:
+    # Feature-Spec: AgentQualityGauntlet AQG-CORE-020 AQG-CORE-025 AQG-CORE-028
+    workflow = (ROOT / ".github" / "workflows" / "publish-release.yml").read_text(
+        encoding="utf-8"
+    )
+
+    quality = workflow.index("name: Prove exact-tag risk-selected quality evidence")
+    publish = workflow.index("name: Publish immutable artifacts")
+    assert quality < publish
+    assert "AQG_DIFF_BASE: HEAD^" in workflow
+    assert "python quality/qg.py tools install --ci --browsers" in workflow
+    assert "python quality/qg.py check-risk --keep-going" in workflow
+    assert "python quality/qg.py evidence verify --run-id latest" in workflow
