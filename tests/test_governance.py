@@ -110,7 +110,7 @@ class GitHubGovernanceContractTests(unittest.TestCase):
             *sorted(
                 path
                 for path in (root / ".github" / "workflows").glob("*.yml")
-                if path.name != "trusted-policy-evidence.yml"
+                if path.name not in {"trusted-policy-evidence.yml", "publish-release.yml"}
             ),
             root / "ci" / "github-actions-quality.yml.example",
         ]
@@ -145,6 +145,24 @@ class GitHubGovernanceContractTests(unittest.TestCase):
         self.assertIn("python ../trusted/quality/qg.py", workflow)
         self.assertNotIn("python quality/qg.py check-risk", workflow)
         self.assertNotIn("secrets:", workflow)
+
+    def test_release_publication_is_explicit_reproducible_and_non_overwriting(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github" / "workflows" / "publish-release.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("git merge-base --is-ancestor HEAD origin/main", workflow)
+        self.assertIn('test "$RELEASE_TAG" = "v$VERSION"', workflow)
+        self.assertEqual(workflow.count("python scripts/build_release.py"), 2)
+        self.assertIn("diff -qr dist-one dist-two", workflow)
+        self.assertIn("python scripts/verify_release.py dist-one", workflow)
+        self.assertIn("sha256sum -c SHA256SUMS", workflow)
+        self.assertIn(
+            "Release $RELEASE_TAG already exists; refusing implicit replacement", workflow
+        )
+        self.assertIn("gh release create", workflow)
+        self.assertNotIn("gh release delete", workflow)
 
 
 if __name__ == "__main__":
