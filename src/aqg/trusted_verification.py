@@ -16,6 +16,7 @@ from .util import (
     git_revision,
     read_json,
     sha256_file,
+    sha256_paths,
 )
 
 TRUSTED_EVIDENCE_SCHEMA_VERSION = 1
@@ -76,10 +77,18 @@ def _trusted_paths() -> tuple[dict[str, Path], list[str]]:
 
 
 def _grader_identity(paths: Mapping[str, Path]) -> dict[str, str]:
+    runtime_files = [
+        path
+        for parent in (paths["root"] / "src" / "aqg", paths["root"] / "quality" / "_aqg")
+        if parent.is_dir()
+        for path in parent.rglob("*")
+        if path.is_file()
+    ]
     return {
         "launcher_sha256": _digest(paths["launcher"]),
         "policy_sha256": _digest(paths["policy"]),
         "project_sha256": _digest(paths["project"]),
+        "runtime_sha256": "sha256:" + sha256_paths(paths["root"], runtime_files),
         "control_fingerprint": control_fingerprint(paths["root"]),
     }
 

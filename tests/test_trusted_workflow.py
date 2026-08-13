@@ -46,6 +46,9 @@ def test_workflow_writer_emits_verifiable_environment_anchor(tmp_path: Path) -> 
     (quality / "qg.py").write_text("print('trusted')\n", encoding="utf-8")
     (quality / "policy.toml").write_text("version = 2\n", encoding="utf-8")
     (quality / "project.json").write_text("{}\n", encoding="utf-8")
+    runtime = trusted / "src" / "aqg" / "runtime.py"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("VALUE = 'trusted'\n", encoding="utf-8")
     github_env = tmp_path / "github.env"
     output = tmp_path / "verifier-evidence"
     completed = subprocess.run(

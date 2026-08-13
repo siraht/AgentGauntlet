@@ -21,6 +21,7 @@ class TrustFixture:
     subject: Path
     trusted: Path
     launcher: Path
+    runtime: Path
     evidence_dir: Path
     scope: dict[str, str]
     manifest_sha256: str
@@ -52,6 +53,9 @@ def trust_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TrustFixtu
     launcher.write_text("print('trusted')\n", encoding="utf-8")
     policy.write_text("version = 2\n", encoding="utf-8")
     project.write_text("{}\n", encoding="utf-8")
+    runtime = trusted / "src" / "aqg" / "runtime.py"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("VALUE = 'trusted'\n", encoding="utf-8")
     base = "HEAD"
     evidence_dir = tmp_path / "trusted-verifier"
     created = write_trusted_verifier_evidence(
@@ -84,6 +88,7 @@ def trust_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TrustFixtu
         subject=subject,
         trusted=trusted,
         launcher=launcher,
+        runtime=runtime,
         evidence_dir=evidence_dir,
         scope=scope,
         manifest_sha256=str(created["manifest_sha256"]),
@@ -147,6 +152,15 @@ def test_trusted_grader_mutation_after_attestation_is_rejected(
     trust_fixture: TrustFixture,
 ) -> None:
     trust_fixture.launcher.write_text("print('candidate changed grader')\n", encoding="utf-8")
+    report = verify_trusted_verifier_evidence(trust_fixture.subject, trust_fixture.scope)
+    assert report["status"] == "unusable"
+    assert any("current trusted grader" in error for error in report["errors"])
+
+
+def test_imported_trusted_runtime_mutation_after_attestation_is_rejected(
+    trust_fixture: TrustFixture,
+) -> None:
+    trust_fixture.runtime.write_text("VALUE = 'candidate replacement'\n", encoding="utf-8")
     report = verify_trusted_verifier_evidence(trust_fixture.subject, trust_fixture.scope)
     assert report["status"] == "unusable"
     assert any("current trusted grader" in error for error in report["errors"])
