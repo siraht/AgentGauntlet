@@ -1841,6 +1841,19 @@ def _python_mutation_selection_refusal(
     return _python_mutation_selection_refusal_core(selection, minimum_coverage)
 
 
+def _mutmut_python_path(mutmut: str, work: Path) -> str:
+    """Expose the checker environment to mutmut's child Python processes."""
+    entries = [str(work), str(work / "src")]
+    checker_lib = Path(mutmut).resolve().parent.parent / "lib"
+    entries.extend(
+        str(path) for path in sorted(checker_lib.glob("python*/site-packages")) if path.is_dir()
+    )
+    inherited = os.environ.get("PYTHONPATH")
+    if inherited:
+        entries.append(inherited)
+    return os.pathsep.join(entries)
+
+
 def _run_mutmut_campaign(
     root: Path,
     project: dict[str, Any],
@@ -1851,7 +1864,7 @@ def _run_mutmut_campaign(
     _copy_for_mutmut(root, work)
     _append_mutmut_config(work, project, changed)
     mutmut = _tool(root, "mutmut", "python")
-    python_path = os.pathsep.join([str(work), str(work / "src"), os.environ.get("PYTHONPATH", "")])
+    python_path = _mutmut_python_path(mutmut, work)
     run = run_command(
         [mutmut, "run", *(mutant_selectors or [])],
         cwd=work,

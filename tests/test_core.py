@@ -50,6 +50,7 @@ from aqg.adapters import (
     _mutmut_allows_decorators,
     _mutmut_function_candidates,
     _mutmut_module_name,
+    _mutmut_python_path,
     _mutmut_results_command,
     _nontrivial_changed_lines,
     _parse_mutmut_results,
@@ -2209,6 +2210,22 @@ class SetupContractTests(RepoCase):
             run_command.call_args_list[1].args[0],
             ["/tools/mutmut", "results", "--all=true"],
         )
+
+    def test_mutmut_python_path_exposes_checker_packages_to_child_processes(self) -> None:
+        checker = self.root / "checker"
+        mutmut = checker / "bin" / "mutmut"
+        packages = checker / "lib" / "python3.13" / "site-packages"
+        packages.mkdir(parents=True)
+        mutmut.parent.mkdir(parents=True, exist_ok=True)
+        mutmut.touch()
+        work = self.root / "sandbox"
+
+        with patch.dict(os.environ, {"PYTHONPATH": "/inherited/packages"}):
+            entries = _mutmut_python_path(str(mutmut), work).split(os.pathsep)
+
+        self.assertEqual(entries[:2], [str(work), str(work / "src")])
+        self.assertIn(str(packages), entries)
+        self.assertEqual(entries[-1], "/inherited/packages")
 
     def test_python_mutation_refuses_low_changed_function_selection_coverage(self) -> None:
         source = self.root / "src"
