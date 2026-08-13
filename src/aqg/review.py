@@ -10,7 +10,7 @@ import token
 import tokenize
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from .approvals import validate_required_approvals
 from .checks import test_feature_traceability
@@ -1022,35 +1022,73 @@ def _claim_covers_paths(resolved_paths: set[str], affected_paths: set[str]) -> b
     return bool(affected_paths) and resolved_paths == affected_paths
 
 
-def _bundle_diff(ballot_path: Path) -> str | None:
+def _bundle_materials(ballot_path: Path) -> list[Any]:
     try:
         bundle = read_json(ballot_path.parent.parent / "candidate-bundle.json")
     except (ConfigurationError, OSError):
-        return None
+        return []
     materials = bundle.get("materials") if isinstance(bundle, dict) else None
-    if not isinstance(materials, list):
+    return materials if isinstance(materials, list) else []
+
+
+def _diff_material_content(material: Any) -> str | None:
+    if not isinstance(material, dict):
         return None
-    for material in materials:
-        if isinstance(material, dict) and material.get("name") == "current.diff.patch":
-            content = material.get("content")
-            return content if isinstance(content, str) else None
+    if material.get("name") != "current.diff.patch":
+        return None
+    content = material.get("content")
+    return content if isinstance(content, str) else None
+
+
+def _bundle_diff(ballot_path: Path) -> str | None:
+    for material in _bundle_materials(ballot_path):
+        content = _diff_material_content(material)
+        if content is not None:
+            return content
     return None
 
 
-def _resolution_values(resolution: Any) -> tuple[str, str, str] | None:
-    if not isinstance(resolution, dict):
-        return None
+def _valid_resolution_object(resolution: Any) -> TypeGuard[dict[str, Any]]:
     expected = {"path", "removed_oracle", "replacement_oracle", "preserved_behavior"}
-    if set(resolution) != expected:
+    return isinstance(resolution, dict) and set(resolution) == expected
+
+
+def _nonempty_resolution_strings(resolution: dict[str, Any]) -> bool:
+    values = resolution.values()
+    return all(isinstance(value, str) and bool(value.strip()) for value in values)
+
+
+def _resolution_values(resolution: Any) -> tuple[str, str, str] | None:
+    if not _valid_resolution_object(resolution):
         return None
-    path = resolution.get("path")
-    removed = resolution.get("removed_oracle")
-    replacement = resolution.get("replacement_oracle")
-    behavior = resolution.get("preserved_behavior")
-    values = (path, removed, replacement, behavior)
-    if not all(isinstance(value, str) and value.strip() for value in values):
+    if not _nonempty_resolution_strings(resolution):
         return None
-    return str(path), str(removed), str(replacement)
+    return (
+        str(resolution["path"]),
+        str(resolution["removed_oracle"]),
+        str(resolution["replacement_oracle"]),
+    )
+
+
+def _path_has_oracle_lines(
+    path: str,
+    affected_paths: set[str],
+    deleted: dict[str, set[str]],
+    added: dict[str, set[str]],
+) -> bool:
+    return path in affected_paths and path in deleted and path in added
+
+
+def _oracle_pair_matches(
+    path: str,
+    removed: str,
+    replacement: str,
+    deleted: dict[str, set[str]],
+    added: dict[str, set[str]],
+) -> bool:
+    if removed == replacement:
+        return False
+    return removed in deleted[path] and replacement in added[path]
 
 
 def _resolution_path(
@@ -1063,27 +1101,30 @@ def _resolution_path(
     if values is None:
         return None
     path, removed, replacement = values
-    if path not in affected_paths:
+    if not _path_has_oracle_lines(path, affected_paths, deleted, added):
         return None
-    if removed == replacement:
-        return None
-    if path not in deleted or path not in added:
-        return None
-    if removed not in deleted[path] or replacement not in added[path]:
+    if not _oracle_pair_matches(path, removed, replacement, deleted, added):
         return None
     return path
 
 
+def _finding_resolutions(finding: Any) -> list[Any]:
+    resolutions = finding.get("oracle_resolutions") if isinstance(finding, dict) else None
+    return resolutions if isinstance(resolutions, list) else []
+
+
 def _resolved_oracle_paths(finding: Any, affected_paths: set[str], diff: str | None) -> set[str]:
-    if not isinstance(finding, dict) or diff is None:
-        return set()
-    resolutions = finding.get("oracle_resolutions")
-    if not isinstance(resolutions, list):
+    resolutions = _finding_resolutions(finding)
+    if diff is None or not resolutions:
         return set()
     deleted = _oracle_lines(_deleted_lines(diff))
     added = _oracle_lines(_added_lines(diff))
-    paths = (_resolution_path(item, affected_paths, deleted, added) for item in resolutions)
-    return {path for path in paths if path is not None}
+    resolved: set[str] = set()
+    for item in resolutions:
+        path = _resolution_path(item, affected_paths, deleted, added)
+        if path is not None:
+            resolved.add(path)
+    return resolved
 
 
 def _is_test_expectation_resolution(finding: dict[str, Any]) -> bool:
@@ -1123,18 +1164,32 @@ def _test_expectation_resolution_roles(
     return resolved_roles
 
 
-def _ballot_oracle_resolution(path: Path, affected_paths: set[str]) -> tuple[str, set[str]] | None:
-    ballot = read_json(path)
+def _ballot_parts(ballot: Any) -> tuple[list[Any], dict[str, Any]] | None:
     findings = ballot.get("findings") if isinstance(ballot, dict) else None
     reviewer = ballot.get("reviewer") if isinstance(ballot, dict) else None
     if not isinstance(findings, list) or not isinstance(reviewer, dict):
         return None
-    diff = _bundle_diff(path)
+    return findings, reviewer
+
+
+def _first_complete_resolution(
+    findings: list[Any], affected_paths: set[str], diff: str | None
+) -> set[str] | None:
     for finding in findings:
         resolved = _complete_oracle_resolution(finding, affected_paths, diff)
         if resolved is not None:
-            return str(reviewer.get("role")), resolved
+            return resolved
     return None
+
+
+def _ballot_oracle_resolution(path: Path, affected_paths: set[str]) -> tuple[str, set[str]] | None:
+    parts = _ballot_parts(read_json(path))
+    if parts is None:
+        return None
+    findings, reviewer = parts
+    diff = _bundle_diff(path)
+    resolved = _first_complete_resolution(findings, affected_paths, diff)
+    return (str(reviewer.get("role")), resolved) if resolved is not None else None
 
 
 def _clear_high_council_for_scope(

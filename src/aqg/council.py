@@ -420,45 +420,43 @@ def validate_review_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _validate_finding(raw: Any, index: int, ids: set[str]) -> dict[str, Any]:
+    item = _require_mapping(raw, f"findings[{index}]")
+    keys = {
+        "id",
+        "severity",
+        "category",
+        "claim",
+        "evidence_refs",
+        "oracle_resolutions",
+        "recommendation",
+    }
+    _require_exact_keys(item, f"findings[{index}]", keys)
+    finding_id = _require_string(item["id"], f"findings[{index}].id")
+    if finding_id in ids or item["severity"] not in SEVERITIES:
+        raise ConfigurationError(f"findings[{index}] has duplicate id or invalid severity")
+    return {
+        "id": finding_id,
+        "severity": item["severity"],
+        "category": _require_string(item["category"], f"findings[{index}].category"),
+        "claim": _require_string(item["claim"], f"findings[{index}].claim"),
+        "evidence_refs": _validate_evidence_refs(item["evidence_refs"], index),
+        "oracle_resolutions": _validate_oracle_resolutions(item["oracle_resolutions"], index),
+        "recommendation": _require_string(
+            item["recommendation"], f"findings[{index}].recommendation"
+        ),
+    }
+
+
 def _validate_findings(raw_findings: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_findings, Sequence) or isinstance(raw_findings, (str, bytes)):
         raise ConfigurationError("review payload findings must be an array")
     findings: list[dict[str, Any]] = []
     ids: set[str] = set()
     for index, raw in enumerate(raw_findings):
-        item = _require_mapping(raw, f"findings[{index}]")
-        _require_exact_keys(
-            item,
-            f"findings[{index}]",
-            {
-                "id",
-                "severity",
-                "category",
-                "claim",
-                "evidence_refs",
-                "oracle_resolutions",
-                "recommendation",
-            },
-        )
-        finding_id = _require_string(item["id"], f"findings[{index}].id")
-        if finding_id in ids or item["severity"] not in SEVERITIES:
-            raise ConfigurationError(f"findings[{index}] has duplicate id or invalid severity")
-        refs = _validate_evidence_refs(item["evidence_refs"], index)
-        resolutions = _validate_oracle_resolutions(item["oracle_resolutions"], index)
-        findings.append(
-            {
-                "id": finding_id,
-                "severity": item["severity"],
-                "category": _require_string(item["category"], f"findings[{index}].category"),
-                "claim": _require_string(item["claim"], f"findings[{index}].claim"),
-                "evidence_refs": refs,
-                "oracle_resolutions": resolutions,
-                "recommendation": _require_string(
-                    item["recommendation"], f"findings[{index}].recommendation"
-                ),
-            }
-        )
-        ids.add(finding_id)
+        finding = _validate_finding(raw, index, ids)
+        findings.append(finding)
+        ids.add(finding["id"])
     return sorted(findings, key=lambda item: item["id"])
 
 
