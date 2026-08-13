@@ -417,6 +417,8 @@ def test_all_provider_identities_are_exact_contracts() -> None:
         for identity in (provider_identity(model),)
     }
     assert actual == expected
+    assert provider_identity("synthetic/foo-bar-baz")["model_family"] == "synthetic:foo"
+    assert provider_identity("claude/sonnet-latest-fast")["model_family"] == "anthropic:sonnet"
     with pytest.raises(ConfigurationError, match="^model_id must be a non-empty string$"):
         provider_identity(None)  # type: ignore[arg-type]
 
@@ -600,6 +602,30 @@ def test_every_file_provider_command_rejects_argument_tampering() -> None:
             tampered["command"][index] = argument + "-tampered"
             with pytest.raises(ConfigurationError, match="command|protected argument shape"):
                 validate_provider_spec(tampered)
+
+
+def test_provider_command_failures_name_the_exact_protected_adapter() -> None:
+    expected = {
+        "grok-4.5": "grok provider command does not match the protected argument shape",
+        "synthetic/hf:zai-org/GLM-5.2": (
+            "OpenCode provider command does not match the protected argument shape"
+        ),
+        "opencode/deepseek-v4-flash-free": (
+            "OpenCode provider command does not match the protected argument shape"
+        ),
+        "codex/gpt-5.6-sol": "Codex provider command does not match the protected argument shape",
+        "gemini/gemini-3-flash-preview": (
+            "Gemini provider command does not match the protected argument shape"
+        ),
+        "claude/sonnet": "Claude provider command does not match the protected argument shape",
+    }
+    for model, message in expected.items():
+        tampered = build_file_provider_spec(model)
+        tampered["command"] = list(tampered["command"])
+        tampered["command"][1] += "-tampered"
+        with pytest.raises(ConfigurationError) as raised:
+            validate_provider_spec(tampered)
+        assert str(raised.value) == message
 
 
 def test_aqg_council_004_minimal_environment_scrubs_unapproved_secrets() -> None:
