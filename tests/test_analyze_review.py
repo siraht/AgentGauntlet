@@ -1328,6 +1328,7 @@ def test_current_manifested_passing_run_clears_missing_profile_evidence(tmp_path
     assert packet["evidence"] == [{"profile": profile, "status": "current_pass", "run_id": run_id}]
     assert f"missing-current-{profile}-evidence" not in _by_code(packet)
     assert packet["summary"]["evidence_status"] == "current"
+    # Feature-Spec: AgentQualityGauntlet.OwnerStatus AQG-OWNER-011
     # Functional assurance is independent of optional legacy approval records.
     assert packet["summary"]["approval_status"] == "not_required"
     assert "missing-or-stale-human-approval" not in _by_code(packet)
