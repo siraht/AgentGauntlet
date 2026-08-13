@@ -363,8 +363,13 @@ def test_debt_review_bundle_contains_exact_inventory_proposal_and_gate_provenanc
 
     assert json.loads(str(inputs["baseline/proposed.json"])) == proposal
     assert json.loads(bytes(inputs["run/retrospective.json"]).decode()) == retrospective
-    assert "run/gates/structure.details.json" in inputs
-    assert "run/gates/coverage.details.json" in inputs
+    assert "run/gates/structure.json" in inputs
+    assert "run/gates/coverage.json" in inputs
+    assert "run/gates/structure.details.json" not in inputs
+    provenance = json.loads(str(inputs["controller/debt-item-provenance.json"]))
+    assert provenance["items"][0]["fingerprint"] == "structure:src/legacy.py:legacy"
+    assert provenance["items"][0]["source_gate"] == "structure.details.json"
+    assert provenance["items"][0]["source_detail_sha256"].startswith("sha256:")
     eligibility = json.loads(str(inputs["controller/debt-eligibility.json"]))
     assert eligibility["inventory_count"] == 1
     assert eligibility["inventory_categories"] == ["structure"]

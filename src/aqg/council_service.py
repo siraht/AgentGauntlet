@@ -217,6 +217,26 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
         "unknown_product_intent",
     )
     exclusions = {key: retrospective.get(key, []) for key in excluded_keys}
+    source_reports = {
+        "coverage": "coverage.details.json",
+        "crap": "structure.details.json",
+        "structure": "structure.details.json",
+    }
+    source_hashes = {
+        name: "sha256:" + sha256_file(run_dir / "gates" / name)
+        for name in sorted(set(source_reports.values()))
+    }
+    provenance = [
+        {
+            "fingerprint": str(item.get("fingerprint")),
+            "source_gate": source_reports.get(str(item.get("category"))),
+            "source_detail_sha256": source_hashes.get(
+                str(source_reports.get(str(item.get("category"))))
+            ),
+        }
+        for item in inventory
+        if isinstance(item, Mapping)
+    ]
     inputs.update(
         {
             "baseline/proposed.json": _json_text(proposal),
@@ -239,14 +259,23 @@ def _add_debt_review_inputs(root: Path, run_dir: Path, inputs: dict[str, str | b
                     "non_baselinable": exclusions,
                 }
             ),
+            "controller/debt-item-provenance.json": _json_text(
+                {
+                    "schema_version": 1,
+                    "items": provenance,
+                    "rule": (
+                        "Every proposed inventory fingerprint maps to the immutable source gate "
+                        "detail report identified by this run's manifest."
+                    ),
+                }
+            ),
             "run/retrospective.json": (run_dir / "retrospective.json").read_bytes(),
         }
     )
     for gate in ("coverage", "structure"):
-        for suffix in ("json", "details.json"):
-            path = run_dir / "gates" / f"{gate}.{suffix}"
-            if path.is_file():
-                inputs[f"run/gates/{path.name}"] = path.read_bytes()
+        path = run_dir / "gates" / f"{gate}.json"
+        if path.is_file():
+            inputs[f"run/gates/{path.name}"] = path.read_bytes()
 
 
 def _json_text(value: Any) -> str:
