@@ -155,17 +155,67 @@ class GitHubGovernanceContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("git merge-base --is-ancestor HEAD origin/main", workflow)
+        self.assertIn("comparison_sha:", workflow)
+        self.assertIn('[[ "$COMPARISON_SHA" =~ ^[0-9a-f]{40}$ ]]', workflow)
+        self.assertIn('git -C subject merge-base --is-ancestor "$COMPARISON_SHA" HEAD', workflow)
+        self.assertNotIn("HEAD^", workflow)
+        self.assertNotIn("HEAD~1", workflow)
         self.assertIn('test "$RELEASE_TAG" = "v$VERSION"', workflow)
-        self.assertEqual(workflow.count("python scripts/build_release.py"), 2)
+        self.assertEqual(workflow.count("python3 scripts/build_release.py"), 2)
         self.assertIn("diff -qr dist-one dist-two", workflow)
-        self.assertIn("python scripts/verify_release.py dist-one", workflow)
+        self.assertIn("python3 ../trusted/scripts/verify_release.py dist-one", workflow)
+        self.assertIn("python3 trusted/scripts/verify_release.py payload/dist-one", workflow)
         self.assertIn("sha256sum -c SHA256SUMS", workflow)
         self.assertIn(
             "Release $RELEASE_TAG already exists; refusing implicit replacement", workflow
         )
         self.assertIn("gh release create", workflow)
         self.assertNotIn("gh release delete", workflow)
+
+    def test_release_separates_candidate_execution_review_credentials_and_publish_token(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github" / "workflows" / "publish-release.yml").read_text(
+            encoding="utf-8"
+        )
+
+        prepare = workflow.split("  prepare-evidence:\n", 1)[1].split("\n  council:\n", 1)[0]
+        council = workflow.split("  council:\n", 1)[1].split("\n  quality-and-build:\n", 1)[0]
+        quality = workflow.split("  quality-and-build:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        publish = workflow.split("  publish:\n", 1)[1]
+
+        self.assertIn("runs-on: ubuntu-latest", prepare)
+        self.assertIn("runs-on: [self-hosted, aqg-review]", council)
+        self.assertNotIn("pytest", council)
+        self.assertNotIn("scripts/build_release.py", council)
+        self.assertIn("needs: council", quality)
+        self.assertIn("Verify authority before candidate execution", quality)
+        self.assertLess(
+            quality.index("Verify authority before candidate execution"),
+            quality.index("Prove source and functional contracts"),
+        )
+        self.assertIn("permissions:\n      contents: write", publish)
+        self.assertNotIn("scripts/build_release.py", publish)
+        self.assertIn("trusted/scripts/verify_release.py", publish)
+
+    def test_release_council_is_exact_tag_high_and_precedes_final_checks(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github" / "workflows" / "publish-release.yml").read_text(
+            encoding="utf-8"
+        )
+
+        council = workflow.index("name: Run and verify exact-tag high council")
+        authority = workflow.index("name: Verify authority before candidate execution")
+        risk = workflow.index("name: Prove risk-selected and release profiles with trusted grader")
+        publish = workflow.index("name: Publish immutable artifacts")
+        self.assertLess(council, authority)
+        self.assertLess(authority, risk)
+        self.assertLess(risk, publish)
+        self.assertIn("--tier high --purpose candidate --data-classification public", workflow)
+        self.assertIn("trusted/scripts/verify_release_authority.py", workflow)
+        self.assertIn("council verify --run-id", workflow)
+        self.assertEqual(workflow.count("include-hidden-files: true"), 4)
 
 
 if __name__ == "__main__":

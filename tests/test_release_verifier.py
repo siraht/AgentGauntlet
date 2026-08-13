@@ -79,10 +79,13 @@ def test_publish_workflow_requires_exact_tag_risk_selected_evidence() -> None:
     # Feature-Spec: AgentQualityGauntlet AQG-CORE-020 AQG-CORE-025 AQG-CORE-028
     workflow = (ROOT / ".github" / "workflows" / "publish-release.yml").read_text(encoding="utf-8")
 
-    quality = workflow.index("name: Prove exact-tag risk-selected quality evidence")
+    authority = workflow.index("name: Verify authority before candidate execution")
+    quality = workflow.index("name: Prove risk-selected and release profiles with trusted grader")
     publish = workflow.index("name: Publish immutable artifacts")
+    assert authority < quality
     assert quality < publish
-    assert "AQG_DIFF_BASE: HEAD^" in workflow
-    assert "python quality/qg.py tools install --ci --browsers" in workflow
-    assert "python quality/qg.py check-risk --keep-going" in workflow
-    assert "python quality/qg.py evidence verify --run-id latest" in workflow
+    assert "AQG_DIFF_BASE: ${{ inputs.comparison_sha }}" in workflow
+    assert "HEAD^" not in workflow
+    assert "python3 quality/qg.py tools install --ci --browsers" in workflow
+    assert "../trusted/quality/qg.py --root . check-risk" in workflow
+    assert "../trusted/quality/qg.py --root . evidence verify --run-id latest" in workflow
