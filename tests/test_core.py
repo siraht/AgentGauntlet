@@ -374,6 +374,38 @@ class ConfigurationValidationTests(RepoCase):
             with self.subTest(key=key):
                 self.assertIn(expected, validate_project(self._replace(project, key, None)))
 
+    def test_project_validator_preserves_assurance_command_and_timeout_contracts(self) -> None:
+        project = self._valid_project()
+        valid = self._replace(
+            project,
+            "assurance",
+            {
+                "rehearsal_command": ["python3", "scripts/rehearse.py", "--output", "{output}"],
+                "timeout_seconds": 600,
+            },
+        )
+        self.assertEqual(validate_project(valid), [])
+
+        cases = (
+            ("invalid", "assurance must be an object"),
+            (
+                {"rehearsal_command": [], "timeout_seconds": 600},
+                "assurance.rehearsal_command must be a non-empty string array",
+            ),
+            (
+                {"rehearsal_command": ["python3", "rehearse.py"], "timeout_seconds": 600},
+                "assurance.rehearsal_command must contain {output}",
+            ),
+            (
+                {"rehearsal_command": ["rehearse", "{output}"], "timeout_seconds": True},
+                "assurance.timeout_seconds must be a positive integer",
+            ),
+        )
+        for assurance, expected in cases:
+            with self.subTest(assurance=assurance):
+                errors = validate_project(self._replace(project, "assurance", assurance))
+                self.assertIn(expected, errors)
+
     def test_policy_validator_reports_gate_policy_and_risk_contracts(self) -> None:
         policy = tomllib.loads(render_policy("@quality"))
         self.assertEqual(validate_policy(policy), [])

@@ -231,26 +231,33 @@ def _validate_web(project: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _validate_assurance(project: dict[str, Any]) -> list[str]:
-    assurance = project.get("assurance")
-    if assurance is None:
-        return []
-    if not isinstance(assurance, dict):
-        return ["assurance must be an object"]
-    errors: list[str] = []
+def _validate_assurance_command(assurance: dict[str, Any]) -> list[str]:
     command = assurance.get("rehearsal_command")
     if (
         not isinstance(command, list)
         or not command
         or any(not isinstance(item, str) or not item for item in command)
     ):
-        errors.append("assurance.rehearsal_command must be a non-empty string array")
-    elif not any("{output}" in item for item in command):
-        errors.append("assurance.rehearsal_command must contain {output}")
+        return ["assurance.rehearsal_command must be a non-empty string array"]
+    if not any("{output}" in item for item in command):
+        return ["assurance.rehearsal_command must contain {output}"]
+    return []
+
+
+def _validate_assurance_timeout(assurance: dict[str, Any]) -> list[str]:
     timeout = assurance.get("timeout_seconds", 600)
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout < 1:
-        errors.append("assurance.timeout_seconds must be a positive integer")
-    return errors
+        return ["assurance.timeout_seconds must be a positive integer"]
+    return []
+
+
+def _validate_assurance(project: dict[str, Any]) -> list[str]:
+    assurance = project.get("assurance")
+    if assurance is None:
+        return []
+    if not isinstance(assurance, dict):
+        return ["assurance must be an object"]
+    return [*_validate_assurance_command(assurance), *_validate_assurance_timeout(assurance)]
 
 
 def _is_number_in_range(value: object, low: float, high: float) -> bool:
