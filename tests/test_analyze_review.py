@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +19,10 @@ from aqg.evidence_manifest import write_run_manifest
 from aqg.policy import load_policy
 from aqg.reporting import review_to_sarif
 from aqg.review import (
+    _consume_replacement,
     _html,
     _markdown,
+    _test_expectation_key,
     analyze_review,
     review_exit_code,
     write_review_packet,
@@ -826,7 +829,6 @@ def test_mixed_diff_ordering_summary_and_render_surfaces(tmp_path: Path) -> None
         "policy-plane-change",
         "risk-factor-external_contract",
         "swallowed-broad-exception",
-        "test-expectation-deleted",
         "dependency-change",
         "dependency-lifecycle-script-change",
         "expected-output-change",
@@ -836,7 +838,7 @@ def test_mixed_diff_ordering_summary_and_render_surfaces(tmp_path: Path) -> None
         "weak-test-oracle",
     }
     assert expected_subset <= set(codes)
-    assert packet["summary"]["blockers"] >= 5
+    assert packet["summary"]["blockers"] >= 4
     assert packet["summary"]["human_review"] >= 4
     assert packet["summary"]["warnings"] >= 2
     assert review_exit_code(packet) == 1
@@ -1073,6 +1075,109 @@ def test_moved_test_expectation_is_not_reported_as_deleted(tmp_path: Path) -> No
     packet = _packet(root)
 
     assert "test-expectation-deleted" not in _by_code(packet)
+
+
+def test_strengthened_test_expectation_is_not_reported_as_deleted(tmp_path: Path) -> None:
+    """A changed exact assertion is replacement evidence, not a net oracle deletion."""
+    root = _baseline_repo(tmp_path)
+    test_path = root / "tests" / "test_app.py"
+    test_path.write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    ballots = [1, 2, 3, 4]\n"
+        "    assert len(ballots) == 4\n",
+        encoding="utf-8",
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "four-ballot-contract")
+    test_path.write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    ballots = [1, 2, 3, 4, 5]\n"
+        "    assert len(ballots) == 5\n"
+        "    assert ballots[-1] == 5\n",
+        encoding="utf-8",
+    )
+
+    packet = _packet(root)
+
+    assert "test-expectation-deleted" not in _by_code(packet)
+
+
+def test_unittest_assertions_replace_deleted_harness_assertions(tmp_path: Path) -> None:
+    """Executable unittest expectations offset a removed test-harness assertion."""
+    root = _baseline_repo(tmp_path)
+    test_path = root / "tests" / "test_app.py"
+    test_path.write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "assert LOADER_READY\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "loader-harness")
+    test_path.write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "import unittest\n"
+        "class CalculationTest(unittest.TestCase):\n"
+        "    def test_calculate(self) -> None:\n"
+        "        self.assertEqual(calculate(1), 2)\n"
+        "        self.assertTrue(LOADER_READY)\n",
+        encoding="utf-8",
+    )
+
+    packet = _packet(root)
+
+    assert "test-expectation-deleted" not in _by_code(packet)
+
+
+def test_replacement_consumption_is_exact_and_bounded() -> None:
+    key = "assert calculate(1) == 2"
+    added = Counter({key: 1})
+    capacity = Counter({"tests/test_app.py": 3})
+
+    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is True
+    assert added == Counter()
+    assert capacity == Counter({"tests/test_app.py": 2})
+    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is True
+    assert capacity == Counter({"tests/test_app.py": 1})
+    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is True
+    assert capacity == Counter()
+    assert _consume_replacement(added, capacity, "tests/test_app.py", key) is False
+
+
+def test_exact_and_changed_replacements_cannot_hide_net_deletion(tmp_path: Path) -> None:
+    root = _baseline_repo(tmp_path)
+    test_path = root / "tests" / "test_app.py"
+    test_path.write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n"
+        "    assert calculate(2) == 3\n"
+        "    assert calculate(3) == 4\n",
+        encoding="utf-8",
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "three-expectations")
+    test_path.write_text(
+        "# Feature-Spec: Product.Calculation\n"
+        "def test_calculate() -> None:\n"
+        "    assert calculate(1) == 2\n"
+        "    assert calculate(2) == 4\n",
+        encoding="utf-8",
+    )
+
+    deleted = _by_code(_packet(root))["test-expectation-deleted"]
+
+    assert deleted["paths"] == ["tests/test_app.py"]
+
+
+def test_expectation_identity_normalizes_whitespace() -> None:
+    assert (
+        _test_expectation_key("tests/test_app.py", "    assert   calculate(1)   ==   2")
+        == "assert calculate(1) == 2"
+    )
 
 
 def test_module_level_test_def_deletion_is_expectation_deleted(tmp_path: Path) -> None:
