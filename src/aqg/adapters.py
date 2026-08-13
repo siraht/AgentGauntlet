@@ -497,6 +497,10 @@ def _project_test_env(**values: str) -> dict[str, str]:
         "AQG_GATE": "",
         "AQG_PROFILE": "",
         "AQG_ROOT": "",
+        # A scoped maintenance capability belongs only to the AQG process
+        # that received it. Candidate-controlled commands must not inherit it.
+        "AQG_POLICY_MAINTENANCE": "",
+        "AQG_MAINTENANCE_REQUEST": "",
         **values,
     }
 

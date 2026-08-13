@@ -60,12 +60,16 @@ def test_trusted_candidate_tests_do_not_inherit_outer_aqg_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("AQG_DIFF_BASE", "unavailable-origin/main")
+    monkeypatch.setenv("AQG_POLICY_MAINTENANCE", "1")
+    monkeypatch.setenv("AQG_MAINTENANCE_REQUEST", "maintenance-secret")
     environment = _project_test_env(CI="1")
     assert environment["AQG_DIFF_BASE"] == ""
     assert environment["AQG_RUN_ID"] == ""
     assert environment["AQG_GATE"] == ""
     assert environment["AQG_PROFILE"] == ""
     assert environment["AQG_ROOT"] == ""
+    assert environment["AQG_POLICY_MAINTENANCE"] == ""
+    assert environment["AQG_MAINTENANCE_REQUEST"] == ""
 
 
 def test_trusted_policy_path_must_be_absolute(
