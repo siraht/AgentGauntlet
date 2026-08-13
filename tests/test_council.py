@@ -152,8 +152,7 @@ def test_aqg_council_001_candidate_bundle_is_canonical_and_content_addressed() -
     ]
     assert validate_candidate_bundle(first) == first
     assert (
-        _bundle(source="def answer():\n    return 41\n")["bundle_sha256"]
-        != first["bundle_sha256"]
+        _bundle(source="def answer():\n    return 41\n")["bundle_sha256"] != first["bundle_sha256"]
     )
 
 

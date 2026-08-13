@@ -340,7 +340,10 @@ def _review_purpose(bundle: Mapping[str, Any]) -> dict[str, str]:
         ),
     }
     for material in bundle.get("materials", []):
-        if not isinstance(material, Mapping) or material.get("name") != "controller/review-purpose.json":
+        if (
+            not isinstance(material, Mapping)
+            or material.get("name") != "controller/review-purpose.json"
+        ):
             continue
         try:
             payload = json.loads(str(material.get("content", "")))

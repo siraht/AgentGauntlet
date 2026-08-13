@@ -308,9 +308,7 @@ def test_prepare_plan_preserves_every_evidence_binding(
         inputs=inputs,
         max_bundle_bytes=1,
     )
-    plan_payload.assert_called_once_with(
-        "high", run_dir, series, 1, "public", routing, "candidate"
-    )
+    plan_payload.assert_called_once_with("high", run_dir, series, 1, "public", routing, "candidate")
 
 
 def test_fake_run_publishes_only_verified_immutable_evidence(

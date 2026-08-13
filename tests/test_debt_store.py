@@ -149,9 +149,7 @@ def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
 
     candidate_review = json.loads(json.dumps(report))
     candidate_review["purpose"] = "candidate"
-    assert "council purpose must be debt_baseline" in _council_quality_errors(
-        candidate_review
-    )
+    assert "council purpose must be debt_baseline" in _council_quality_errors(candidate_review)
 
     wrong_scope = json.loads(json.dumps(report))
     wrong_scope["scope"]["revision"] = "other"
