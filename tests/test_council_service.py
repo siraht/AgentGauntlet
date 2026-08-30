@@ -94,7 +94,7 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "claude/sonnet",
+        "opencode/deepseek-v4-flash-free",
     ]
 
     paths["opencode"] = "/tools/opencode"
@@ -165,23 +165,23 @@ def test_plan_contract_is_exact(tmp_path: Path) -> None:
     }
 
 
-def test_high_tier_uses_no_cost_reviewers_without_synthetic_spend(
+def test_high_tier_uses_available_reviewers_without_synthetic_spend(
     tmp_path: Path,
 ) -> None:
     plan, _series = _prepared(tmp_path, "high")
 
-    assert service._high_operability_model() == "claude/sonnet"
+    assert service._high_operability_model() == "opencode/deepseek-v4-flash-free"
     assert [member["model_id"] for member in plan["members"]] == [
         "grok-4.5",
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "claude/sonnet",
+        "opencode/deepseek-v4-flash-free",
     ]
     assert {member["provider_group"] for member in plan["members"]} == {
         "xai:grok.com",
         "openai:codex",
-        "anthropic:claude-cli",
+        "opencode:opencode.ai",
     }
     assert not any(member["provider_id"] == "synthetic" for member in plan["members"])
 

@@ -63,8 +63,8 @@ REVIEW_PURPOSES = ("candidate", "debt_baseline", "policy_maintenance")
 
 
 def _high_operability_model() -> str:
-    """Return the no-cost third-provider route sized for high-tier bundles."""
-    return "claude/sonnet"
+    """Return the no-cost third-provider route without requiring Claude access."""
+    return "opencode/deepseek-v4-flash-free"
 
 
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
