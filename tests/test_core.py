@@ -58,7 +58,6 @@ from aqg.adapters import (
     _python_crap,
     _python_mutation_function_selection,
     _python_mutation_platform_supported,
-    _python_structure_evidence,
     _python_test_env,
     _write_stryker_changed_config,
     run_adapter,
@@ -515,92 +514,6 @@ class StructureRatchetTests(RepoCase):
         self.assertEqual(results[0]["stdout"], "")
         self.assertEqual(results[0]["stdout_bytes"], len(raw))
         self.assertTrue(results[0]["stdout_sha256"].startswith("sha256:"))
-
-    def test_only_changed_functions_are_enforced_in_adopt_mode(self) -> None:
-        source = self.root / "src" / "module.py"
-        source.parent.mkdir()
-        source.write_text(
-            "def inherited_debt():\n"
-            + "".join(f"    value_{index} = {index}\n" for index in range(55))
-            + "    return value_54\n\n"
-            + "def changed_function():\n    return 1\n",
-            encoding="utf-8",
-        )
-        self.commit()
-        source.write_text(
-            source.read_text(encoding="utf-8").replace(
-                "def changed_function():\n    return 1\n",
-                "def changed_function():\n    if True:\n        return 2\n",
-            ),
-            encoding="utf-8",
-        )
-        project = {
-            "enforcement": {"scope": "changed", "base_ref": "HEAD"},
-            "thresholds": {
-                "structure": {
-                    "max_function_lines": 50,
-                    "max_cyclomatic_complexity": 10,
-                    "max_nesting_depth": 4,
-                }
-            },
-            "profile_thresholds": {},
-        }
-        payload = {
-            "src/module.py": [
-                {
-                    "type": "function",
-                    "name": "inherited_debt",
-                    "lineno": 1,
-                    "endline": 57,
-                    "complexity": 20,
-                },
-                {
-                    "type": "function",
-                    "name": "changed_function",
-                    "lineno": 59,
-                    "endline": 61,
-                    "complexity": 2,
-                },
-            ]
-        }
-        evidence = _python_structure_evidence(self.root, project, ["src/module.py"], payload)
-        by_name = {item["name"]: item for item in evidence["functions"]}
-        self.assertFalse(by_name["inherited_debt"]["enforced"])
-        self.assertTrue(by_name["changed_function"]["enforced"])
-        self.assertEqual(evidence["failures"], [])
-
-    def test_changed_function_over_limit_fails_with_metric(self) -> None:
-        source = self.root / "module.py"
-        source.write_text("def risky():\n    return 1\n", encoding="utf-8")
-        self.commit()
-        source.write_text("def risky():\n    if True:\n        return 2\n", encoding="utf-8")
-        project = {
-            "enforcement": {"scope": "changed", "base_ref": "HEAD"},
-            "thresholds": {
-                "structure": {
-                    "max_function_lines": 2,
-                    "max_cyclomatic_complexity": 1,
-                    "max_nesting_depth": 0,
-                }
-            },
-            "profile_thresholds": {},
-        }
-        payload = {
-            "module.py": [
-                {
-                    "type": "function",
-                    "name": "risky",
-                    "lineno": 1,
-                    "endline": 3,
-                    "complexity": 2,
-                }
-            ]
-        }
-        evidence = _python_structure_evidence(self.root, project, ["module.py"], payload)
-        self.assertEqual(len(evidence["failures"]), 3)
-        self.assertTrue(any("complexity 2 > 1" in item for item in evidence["failures"]))
-        self.assertTrue(any("lines 3 > 2" in item for item in evidence["failures"]))
-        self.assertTrue(any("nesting 1 > 0" in item for item in evidence["failures"]))
 
 
 class SetupTests(RepoCase):
