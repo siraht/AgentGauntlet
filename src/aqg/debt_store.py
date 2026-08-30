@@ -25,6 +25,7 @@ from .util import (
     read_json,
     sha256_file,
     utc_now,
+    write_json,
 )
 
 
@@ -396,6 +397,7 @@ def review_debt_proposal(
     authority: str = "council",
     reviewer: str | None = None,
     review_run_id: str | None = None,
+    replace: bool = False,
 ) -> dict[str, Any]:
     """Install a proposal after exact-candidate council or reserved human review."""
     proposal_id = validate_run_id(proposal_id)
@@ -406,14 +408,15 @@ def review_debt_proposal(
     summary, retrospective, run_dir = _proposal_source_documents(root, proposal)
     _require_current_proposal_source(root, proposal, summary, retrospective, run_dir)
     target = root / "quality" / "baselines" / "debt.json"
-    if target.exists():
+    exists = target.exists()
+    if exists and not replace:
         raise ConfigurationError(
             "reviewed debt baseline already exists; replacement is not implicit"
         )
     request = require_local_maintenance_change(
         root,
         "quality/baselines/debt.json",
-        "add",
+        "modify" if exists else "add",
     )
     identity = _review_identity(
         root,
@@ -442,7 +445,10 @@ def _install_reviewed_baseline(
         }
     )
     reviewed = validate_baseline(reviewed)
-    write_evidence_json(target, reviewed)
+    if target.exists():
+        write_json(target, reviewed)
+    else:
+        write_evidence_json(target, reviewed)
     return {
         "schema_version": 1,
         "path": str(target),

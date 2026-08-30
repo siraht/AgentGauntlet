@@ -524,6 +524,26 @@ def test_reviewed_baseline_install_and_freshness_lifecycle(
     assert reviewed["baseline"]["state"] == "reviewed"
     assert load_current_debt_baseline(tmp_path, baseline_path)["reviewer"] == ("owner@example.test")
 
+    _run(tmp_path, "replacement-shadow", revision=git_revision(tmp_path))
+    replacement = propose_debt_baseline(tmp_path, "replacement-shadow")
+    request = create_maintenance_request(
+        tmp_path,
+        [{"path": "quality/baselines/debt.json", "operation": "modify"}],
+        reason="Replace a stale reviewed inventory after remeasurement",
+        requester="builder@example.test",
+    )
+    monkeypatch.setenv("AQG_MAINTENANCE_REQUEST", request["request_id"])
+    replaced = review_debt_proposal(
+        tmp_path,
+        replacement["proposal_id"],
+        authority="human",
+        reviewer="owner@example.test",
+        replace=True,
+    )
+    assert load_current_debt_baseline(tmp_path, Path(replaced["path"]))["reviewer"] == (
+        "owner@example.test"
+    )
+
     policy = tmp_path / "quality" / "policy.toml"
     policy.write_text(policy.read_text() + "\n# stale control\n", encoding="utf-8")
     with pytest.raises(ConfigurationError, match="policy fingerprint is stale"):

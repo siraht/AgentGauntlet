@@ -583,6 +583,11 @@ def _add_baseline_parsers(sub: Any) -> None:
         action="store_true",
         help="for --authority human, assert item-by-item review",
     )
+    baseline_review.add_argument(
+        "--replace",
+        action="store_true",
+        help="replace an existing reviewed baseline using an exact modify request",
+    )
 
 
 def _add_maintenance_promotion_parsers(sub: Any) -> None:
@@ -1423,6 +1428,7 @@ def _review_debt_baseline(args: argparse.Namespace, root: Path) -> dict[str, Any
         authority=args.authority,
         reviewer=args.reviewer,
         review_run_id=args.review_run_id,
+        replace=args.replace,
     )
 
 

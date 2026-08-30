@@ -241,6 +241,7 @@ class CliControlSurfaceTests(unittest.TestCase):
             authority="council",
             reviewer=None,
             review_run_id="council-exact",
+            replace=False,
         )
 
     def test_global_flags_work_after_the_subcommand(self) -> None:
