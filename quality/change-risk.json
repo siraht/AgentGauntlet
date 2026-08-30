@@ -1,6 +1,6 @@
 {
   "schema_version": "1",
-  "summary": "Replace ceremonial human approval requirements with verifiable functional artifacts and independent agent review, while preserving explicit human authority for weakened guardrails, spending money, private-data exposure, and irreversible actions.",
+  "summary": "Add deterministic source-file, ABC, JavaScript, and CSS resource budgets with genuine changed-code no-regression enforcement while preserving development speed and explicit authority boundaries.",
   "risk_profile": "high_assurance",
   "production_scope": true,
   "reversible": true,
@@ -34,7 +34,10 @@
     "Oversized council candidates use a content-addressed diff-only bundle series with repeated shared context, per-chunk quorum, conservative aggregation, exact reconstruction, and explicit cross-chunk visibility limitations.",
     "Agent review remains advisory unless protected policy explicitly assigns it an assurance gate; even then it cannot override deterministic failures, missing product intent, or explicit human-authority boundaries.",
     "A connected greenfield TypeScript, HTML, and CSS pilot proves installation, unit/property testing, structure, coverage, acceptance behavior, and generation of browser/accessibility wiring; live browser and mutation evidence remain separate explicit controls.",
-    "The development loop gains only conservative speedups whose selection and cache provenance are recorded and whose uncertainty falls back to the complete applicable suite."
+    "The development loop gains only conservative speedups whose selection and cache provenance are recorded and whose uncertainty falls back to the complete applicable suite.",
+    "Governed source files gain physical-line and byte warning/hard limits, and Python, JavaScript, and TypeScript functions gain versioned ABC measurements alongside cyclomatic complexity.",
+    "Ratchet mode reports inherited structural debt without blocking unrelated work, but blocks new or worsened function complexity, length, nesting, ABC, file length, or file bytes and fails closed when comparison evidence is unavailable.",
+    "PR, deep, and release profiles enforce individual and aggregate raw and deterministic-gzip budgets for explicit JavaScript and CSS artifact roots; fast development checks retain source and function structure controls without running a build."
   ],
   "behavior_preserved": [
     "Exit 0 means pass, exit 1 quality failure, exit 2 configuration failure, and exit 3 infrastructure failure.",

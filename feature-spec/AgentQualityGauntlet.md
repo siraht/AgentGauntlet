@@ -67,6 +67,15 @@
   be authorized by deterministic gates plus current independent agent review.
   Human authority remains REQUIRED before weakening a guardrail, spending
   money, exposing private data, or executing an irreversible action.
+- `AQG-CORE-029` AQG MUST measure governed source files with deterministic
+  physical-line and raw-byte budgets and MUST measure Python, JavaScript, and
+  TypeScript functions with versioned ABC semantics. In ratchet mode, inherited
+  over-limit measurements remain visible but only new or worsened measurements
+  block; missing comparison evidence MUST fail closed.
+- `AQG-CORE-030` AQG MUST enforce explicit individual and aggregate raw and
+  deterministic-gzip budgets for built JavaScript and CSS artifacts. Required
+  build roots, fresh build evidence, or applicable artifact classes that are
+  missing, malformed, unreadable, or unsafe MUST NOT pass.
 
 ## Related specifications
 
