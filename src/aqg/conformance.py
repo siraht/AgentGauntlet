@@ -14,6 +14,7 @@ from .constants import PASS, QUALITY_FAILURE
 from .doctor import _js_bin, _venv_bin
 from .golden import run_goldens
 from .review import analyze_review
+from .threshold_defaults import default_thresholds
 from .util import atomic_write, run_command, utc_now, write_json
 
 
@@ -70,6 +71,10 @@ def _project(stacks: dict[str, bool] | None = None) -> dict[str, Any]:
             "applicable": False,
             "reason": "No runnable web surface in the conformance project.",
         },
+        "resource_budget": {
+            "applicable": False,
+            "reason": "No built web artifacts in the conformance project.",
+        },
         "reproducible_build": {
             "applicable": False,
             "reason": "No build command in the conformance project.",
@@ -93,6 +98,7 @@ def _project(stacks: dict[str, bool] | None = None) -> dict[str, Any]:
         "javascript": {"test_runner": "vitest", "unit_command": None, "build_command": None},
         "python": {"source_paths": ["src"], "test_paths": ["tests"], "pytest_args": []},
         "web": {"base_url": None, "start_command": None},
+        "resource_budget": {"mode": "disabled", "roots": [], "build_command": None},
         "enforcement": {
             "mode": "adopt",
             "scope": "changed",
@@ -101,30 +107,7 @@ def _project(stacks: dict[str, bool] | None = None) -> dict[str, Any]:
             "existing_debt_must_not_increase": True,
         },
         "gates": gates,
-        "thresholds": {
-            "coverage": {
-                "lines": 85,
-                "branches": 75,
-                "functions": 80,
-                "statements": 85,
-                "changed_lines": 90,
-                "allow_missing": False,
-            },
-            "structure": {
-                "max_function_lines": 50,
-                "max_cyclomatic_complexity": 10,
-                "max_crap": 15,
-                "max_nesting_depth": 4,
-            },
-            "mutation": {
-                "minimum_score": 70,
-                "maximum_survivors": 0,
-                "minimum_selection_coverage": 80,
-                "changed_only": True,
-            },
-            "security": {"audit_level": "high", "allow_unreviewed_ignores": False},
-            "performance": {"lighthouse_performance": 0.8, "lighthouse_accessibility": 0.95},
-        },
+        "thresholds": default_thresholds(),
         "profile_thresholds": {"fast": {}, "pr": {}, "deep": {}, "release": {}},
     }
 
