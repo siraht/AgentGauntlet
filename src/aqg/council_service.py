@@ -470,10 +470,15 @@ def _review_purpose_decision(purpose: str) -> str:
             "Decide only whether this shadow inventory is honest and safe to record as "
             "inherited debt for no-regression ratcheting. Clear does not certify the "
             "candidate, satisfy assurance, authorize release, or turn a failed measurement "
-            "into a pass. This initial-adoption floor describes the exact current committed "
-            "tree; do not require proof that items predate the bootstrap diff. Judge the exact "
-            "inventory, raw sources, deterministic reconciliation, and ratchet safety. Other "
-            "failures remain explicitly unresolved and outside this authority."
+            "into a pass. Measured failures below target, missing evidence, infrastructure "
+            "errors, and unknown product intent are expected baseline categories: preserve "
+            "them as explicit unresolved debt and do not block solely because they exist or "
+            "miss future thresholds. This initial-adoption floor describes the exact current "
+            "committed tree; do not require proof that items predate the bootstrap diff. Block "
+            "only when the inventory is dishonest, incomplete relative to its raw evidence, "
+            "unbound to the exact candidate, or unsafe for genuine no-regression comparison. "
+            "Judge the exact inventory, raw sources, deterministic reconciliation, and ratchet "
+            "safety. Other failures remain explicitly unresolved and outside this authority."
         )
     if purpose == "policy_maintenance":
         return (

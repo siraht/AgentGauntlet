@@ -705,10 +705,19 @@ def test_candidate_council_must_adjudicate_deleted_oracles_instead_of_echoing_sc
     assert "adversarial and test-evidence coverage" in decision
 
 
+def test_debt_baseline_review_judges_inventory_trust_not_existing_debt() -> None:
+    decision = service._review_purpose_decision("debt_baseline")
+
+    assert "Measured failures below target" in decision
+    assert "missing evidence, infrastructure errors, and unknown product intent" in decision
+    assert "do not block solely because they exist or miss future thresholds" in decision
+    assert "unsafe for genuine no-regression comparison" in decision
+
+
 @pytest.mark.parametrize(
     ("purpose", "expected_sha256"),
     [
-        ("debt_baseline", "e5c8836f4ccaa9cf8b00600b834a5298dfd9e07e23d1df4672d367e1dba9f537"),
+        ("debt_baseline", "62faf0cb06e53415c16c134dcbe9f7cfe3db7affaf7cb4a878892dfbebf47a23"),
         (
             "policy_maintenance",
             "126ac9aefa387a6bf68b0023e134f88e055e9a395869ff01bcc9a3689082e7ff",
