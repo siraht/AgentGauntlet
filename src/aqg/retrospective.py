@@ -26,11 +26,12 @@ TAXONOMY = (
 )
 _MISSING = re.compile(r"\b(?:missing|absent|unavailable)\b", re.IGNORECASE)
 _EXIT_BUCKET = {1: "measured_failures", 2: "configuration_errors", 3: "infrastructure_errors"}
-_BASELINABLE_GATES = {"structure", "coverage", "test_integrity"}
+_BASELINABLE_GATES = {"structure", "coverage", "test_integrity", "resource_budget"}
 _GATE_DEBT_CATEGORIES = {
     "structure": {"structure"},
     "coverage": {"coverage", "crap"},
     "test_integrity": {"test_integrity"},
+    "resource_budget": {"resource_budget"},
 }
 
 

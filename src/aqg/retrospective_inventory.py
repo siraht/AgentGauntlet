@@ -12,6 +12,7 @@ _STRUCTURE_METRICS = (
     ("complexity", "max_cyclomatic_complexity"),
     ("lines", "max_function_lines"),
     ("nesting", "max_nesting_depth"),
+    ("abc_magnitude", "max_abc_score"),
 )
 _COVERAGE_METRICS = ("lines", "branches", "functions", "statements")
 
@@ -80,21 +81,35 @@ def _function_structure_items(
         return []
     items: list[dict[str, Any]] = []
     for metric, limit_name in _STRUCTURE_METRICS:
-        value = _number(function.get(metric))
-        limit = _number(limits.get(limit_name))
-        if value is None or limit is None or value <= limit:
-            continue
-        items.append(
-            _metric_item(
-                fingerprint=f"structure:{metric}:{path}:{name}",
-                category="structure",
-                path=path,
-                value=value,
-                direction="higher_is_worse",
-                location=_location(function.get("line")),
-            )
-        )
+        item = _function_metric_item(function, limits, path, name, metric, limit_name)
+        if item:
+            items.append(item)
     return items
+
+
+def _function_metric_item(
+    function: Mapping[str, Any],
+    limits: Mapping[str, Any],
+    path: str,
+    name: str,
+    metric: str,
+    limit_name: str,
+) -> dict[str, Any] | None:
+    enforcement_key = "abc_enforced" if metric == "abc_magnitude" else f"{metric}_enforced"
+    if function.get(enforcement_key) is False:
+        return None
+    value = _number(function.get(metric))
+    limit = _number(limits.get(limit_name))
+    if value is None or limit is None or value <= limit:
+        return None
+    return _metric_item(
+        fingerprint=f"structure:{metric}:{path}:{name}",
+        category="structure",
+        path=path,
+        value=value,
+        direction="higher_is_worse",
+        location=_location(function.get("line")),
+    )
 
 
 def _structure_inventory(
@@ -109,6 +124,69 @@ def _structure_inventory(
             if report.get("scope") == "changed-functions" and function.get("enforced") is False:
                 continue
             items.extend(_function_structure_items(function, limits))
+    items.extend(_source_budget_structure_inventory(detail))
+    return items
+
+
+def _source_budget_structure_inventory(detail: Mapping[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    source_budgets = _mapping(detail.get("source_budgets"))
+    for file in _sequence(source_budgets.get("files")):
+        if isinstance(file, Mapping):
+            items.extend(_source_file_budget_items(source_budgets, file))
+    return items
+
+
+def _source_file_budget_items(
+    report: Mapping[str, Any], file: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    if report.get("scope") == "changed-files" and file.get("enforced") is False:
+        return []
+    path = _text(file.get("path"))
+    if not path:
+        return []
+    return [
+        item
+        for breach in _sequence(file.get("breaches"))
+        if (item := _source_breach_item(path, breach)) is not None
+    ]
+
+
+def _source_breach_item(path: str, breach: Any) -> dict[str, Any] | None:
+    if not isinstance(breach, Mapping) or breach.get("level") != "hard":
+        return None
+    metric = _text(breach.get("metric"))
+    value = _number(breach.get("value"))
+    if not metric or value is None:
+        return None
+    return _metric_item(
+        fingerprint=f"structure:file_{metric}:{path}",
+        category="structure",
+        path=path,
+        value=value,
+        direction="higher_is_worse",
+    )
+
+
+def _resource_budget_inventory(detail: Mapping[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for finding in _sequence(detail.get("findings")):
+        if not isinstance(finding, Mapping) or finding.get("status") != "failure":
+            continue
+        scope = _text(finding.get("scope"))
+        metric = _text(finding.get("metric"))
+        value = _number(finding.get("observed"))
+        if not scope or not metric or value is None:
+            continue
+        items.append(
+            _metric_item(
+                fingerprint=f"resource_budget:{metric}:{scope}",
+                category="resource_budget",
+                path=scope,
+                value=value,
+                direction="higher_is_worse",
+            )
+        )
     return items
 
 
@@ -237,10 +315,23 @@ def debt_inventory(
         if not isinstance(detail, Mapping):
             continue
         identified = _text(detail.get("gate"))
-        if gate_name == "structure" or identified == "structure":
-            items.extend(_structure_inventory(detail, thresholds))
-        elif gate_name == "coverage" or identified == "coverage":
-            items.extend(_coverage_inventory(detail, thresholds))
-        elif gate_name == "test_integrity" or identified == "test_integrity":
-            items.extend(_integrity_inventory(detail))
+        items.extend(_gate_inventory(gate_name, identified, detail, thresholds))
     return normalize_inventory(_unique(items))
+
+
+def _gate_inventory(
+    gate_name: str,
+    identified: str,
+    detail: Mapping[str, Any],
+    thresholds: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    gate = identified or gate_name
+    if gate == "structure":
+        return _structure_inventory(detail, thresholds)
+    if gate == "coverage":
+        return _coverage_inventory(detail, thresholds)
+    if gate == "test_integrity":
+        return _integrity_inventory(detail)
+    if gate == "resource_budget":
+        return _resource_budget_inventory(detail)
+    return []

@@ -21,6 +21,7 @@ from .detect import Detection, detect_project
 from .errors import ConfigurationError, InfrastructureError
 from .policy import render_policy
 from .project import load_project
+from .threshold_defaults import assurance_thresholds, default_thresholds
 from .util import (
     atomic_write,
     command_exists,
@@ -285,88 +286,6 @@ def _python_commands(detection: Detection) -> dict[str, list[str] | None]:
     return {"unit": None, "collect": None}
 
 
-def _default_thresholds() -> dict[str, Any]:
-    return {
-        "coverage": {
-            "lines": 85,
-            "branches": 75,
-            "functions": 80,
-            "statements": 85,
-            "changed_lines": 90,
-            "allow_missing": False,
-        },
-        "structure": {
-            "max_function_lines": 50,
-            "max_cyclomatic_complexity": 10,
-            "max_crap": 15,
-            "max_nesting_depth": 4,
-        },
-        "mutation": {
-            "minimum_score": 70,
-            "maximum_survivors": 0,
-            "minimum_selection_coverage": 80,
-            "changed_only": True,
-        },
-        "security": {"audit_level": "high", "allow_unreviewed_ignores": False},
-        "performance": {
-            "lighthouse_performance": 0.8,
-            "lighthouse_accessibility": 0.95,
-            "sample_count": 3,
-            "warmup_runs": 1,
-            "max_score_spread": 0.1,
-        },
-    }
-
-
-def _assurance_thresholds() -> dict[str, Any]:
-    return {
-        "fast": {},
-        "pr": {},
-        "deep": {
-            "coverage": {
-                "lines": 90,
-                "branches": 85,
-                "functions": 90,
-                "statements": 90,
-                "changed_lines": 95,
-            },
-            "structure": {
-                "max_function_lines": 40,
-                "max_cyclomatic_complexity": 8,
-                "max_crap": 8,
-                "max_nesting_depth": 4,
-            },
-            "mutation": {
-                "minimum_score": 85,
-                "maximum_survivors": 0,
-                "minimum_selection_coverage": 90,
-            },
-            "performance": {"lighthouse_performance": 0.9, "lighthouse_accessibility": 0.98},
-        },
-        "release": {
-            "coverage": {
-                "lines": 95,
-                "branches": 90,
-                "functions": 95,
-                "statements": 95,
-                "changed_lines": 95,
-            },
-            "structure": {
-                "max_function_lines": 30,
-                "max_cyclomatic_complexity": 5,
-                "max_crap": 5,
-                "max_nesting_depth": 3,
-            },
-            "mutation": {
-                "minimum_score": 90,
-                "maximum_survivors": 0,
-                "minimum_selection_coverage": 95,
-            },
-            "performance": {"lighthouse_performance": 0.95, "lighthouse_accessibility": 0.99},
-        },
-    }
-
-
 def _core_gates(detection: Detection, has_code: bool) -> dict[str, dict[str, Any]]:
     source_reason = "No supported source files were detected."
     code_reason = "No JavaScript/TypeScript/Python production source was detected."
@@ -423,6 +342,10 @@ def _extended_gates(
         ),
         "performance": _gate(
             bool(has_web and web.get("start_command")), "No runnable web surface was detected."
+        ),
+        "resource_budget": _gate(
+            has_web,
+            "No JavaScript, CSS, HTML, or supported web-framework surface was detected.",
         ),
         "reproducible_build": _gate(
             bool(detection.build_command), "No deterministic build command was detected."
@@ -507,6 +430,49 @@ def _enforcement_settings(root: Path, mode: str) -> dict[str, Any]:
     }
 
 
+def _resource_budget_settings(detection: Detection, has_web: bool) -> dict[str, Any]:
+    if not has_web:
+        return {"mode": "disabled", "roots": [], "build_command": None}
+    if detection.build_command:
+        frameworks = set(detection.frameworks)
+        root = (
+            ".next/static"
+            if "next" in frameworks
+            else ".output/public"
+            if "nuxt" in frameworks
+            else "build"
+            if "sveltekit" in frameworks
+            else "dist"
+        )
+        return {"mode": "build", "roots": [root], "build_command": detection.build_command}
+    roots = sorted(set(detection.html_paths + detection.css_paths + detection.source_paths))
+    return {"mode": "source_static", "roots": roots or ["."], "build_command": None}
+
+
+def _assembled_project_config(
+    root: Path,
+    detection: Detection,
+    mode: str,
+    has_web: bool,
+    web: dict[str, Any],
+    gates: dict[str, dict[str, Any]],
+    stack_settings: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        **_project_identity(detection),
+        "paths": _project_paths(detection),
+        **stack_settings,
+        "web": web,
+        "resource_budget": _resource_budget_settings(detection, has_web),
+        "enforcement": _enforcement_settings(root, mode),
+        "thresholds": default_thresholds(),
+        "profile_thresholds": assurance_thresholds(),
+        "assurance": None,
+        "gates": gates,
+        "notes": detection.notes,
+    }
+
+
 def build_project_config(
     root: Path,
     detection: Detection,
@@ -542,18 +508,7 @@ def build_project_config(
         )
     )
     stack_settings = _stack_settings(detection, js_commands, python_commands)
-    return {
-        **_project_identity(detection),
-        "paths": _project_paths(detection),
-        **stack_settings,
-        "web": web,
-        "enforcement": _enforcement_settings(root, mode),
-        "thresholds": _default_thresholds(),
-        "profile_thresholds": _assurance_thresholds(),
-        "assurance": None,
-        "gates": gates,
-        "notes": detection.notes,
-    }
+    return _assembled_project_config(root, detection, mode, has_web, web, gates, stack_settings)
 
 
 def _render_agents_addendum() -> str:
@@ -1120,6 +1075,44 @@ def current_onboarding(root: Path) -> dict[str, Any]:
     }
 
 
+_JAVASCRIPT_TOOL_TEMPLATES = (
+    ("js/package.json", "quality/tools/js/package.json"),
+    ("js/eslint.config.mjs", "quality/tools/js/config/eslint.config.mjs"),
+    ("js/aqg-abc-plugin.mjs", "quality/tools/js/config/aqg-abc-plugin.mjs"),
+    ("js/aqg-abc.config.mjs", "quality/tools/js/config/aqg-abc.config.mjs"),
+    ("js/stylelint.config.mjs", "quality/tools/js/config/stylelint.config.mjs"),
+    ("js/htmlvalidate.json", "quality/tools/js/config/htmlvalidate.json"),
+    ("js/vitest.config.mjs", "quality/tools/js/config/vitest.config.mjs"),
+    ("js/playwright.config.mjs", "quality/tools/js/config/playwright.config.mjs"),
+    ("js/stryker.config.mjs", "quality/tools/js/config/stryker.config.mjs"),
+    ("js/tsconfig.aqg.json", "quality/config/js/tsconfig.aqg.json"),
+    ("js/lighthouserc.json", "quality/tools/js/config/lighthouserc.json"),
+)
+
+_PYTHON_TOOL_TEMPLATES = (
+    ("python/requirements.in", "quality/tools/python/requirements.in"),
+    ("python/ruff.toml", "quality/config/python/ruff.toml"),
+    ("python/mypy.ini", "quality/config/python/mypy.ini"),
+    ("python/pytest.ini", "quality/config/python/pytest.ini"),
+    ("python/bandit.yaml", "quality/config/python/bandit.yaml"),
+)
+
+
+def _copy_tool_templates(root: Path, templates: tuple[tuple[str, str], ...]) -> None:
+    for template, destination in templates:
+        _copy_text(template, root / destination, force=True)
+
+
+def _install_javascript_scaffold(root: Path, project: dict[str, Any]) -> None:
+    _copy_tool_templates(root, _JAVASCRIPT_TOOL_TEMPLATES)
+    if project["gates"]["acceptance"]["applicable"] and not _acceptance_files_exist(root):
+        _copy_text(
+            "js/aqg-smoke.spec.mjs",
+            root / "tests" / "aqg-browser" / "aqg-smoke.spec.mjs",
+            force=False,
+        )
+
+
 def initialize_project(
     root: Path,
     *,
@@ -1161,33 +1154,9 @@ def initialize_project(
         (quality / directory).mkdir(parents=True, exist_ok=True)
     _copy_resource_tree(_resource("templates/common/schemas"), quality / "schemas")
     if detection.javascript or detection.html or detection.css:
-        for template, destination in (
-            ("js/package.json", "quality/tools/js/package.json"),
-            ("js/eslint.config.mjs", "quality/tools/js/config/eslint.config.mjs"),
-            ("js/stylelint.config.mjs", "quality/tools/js/config/stylelint.config.mjs"),
-            ("js/htmlvalidate.json", "quality/tools/js/config/htmlvalidate.json"),
-            ("js/vitest.config.mjs", "quality/tools/js/config/vitest.config.mjs"),
-            ("js/playwright.config.mjs", "quality/tools/js/config/playwright.config.mjs"),
-            ("js/stryker.config.mjs", "quality/tools/js/config/stryker.config.mjs"),
-            ("js/tsconfig.aqg.json", "quality/config/js/tsconfig.aqg.json"),
-            ("js/lighthouserc.json", "quality/tools/js/config/lighthouserc.json"),
-        ):
-            _copy_text(template, root / destination, force=True)
-        if project["gates"]["acceptance"]["applicable"] and not _acceptance_files_exist(root):
-            _copy_text(
-                "js/aqg-smoke.spec.mjs",
-                root / "tests" / "aqg-browser" / "aqg-smoke.spec.mjs",
-                force=False,
-            )
+        _install_javascript_scaffold(root, project)
     if detection.python:
-        for template, destination in (
-            ("python/requirements.in", "quality/tools/python/requirements.in"),
-            ("python/ruff.toml", "quality/config/python/ruff.toml"),
-            ("python/mypy.ini", "quality/config/python/mypy.ini"),
-            ("python/pytest.ini", "quality/config/python/pytest.ini"),
-            ("python/bandit.yaml", "quality/config/python/bandit.yaml"),
-        ):
-            _copy_text(template, root / destination, force=True)
+        _copy_tool_templates(root, _PYTHON_TOOL_TEMPLATES)
     _copy_text(
         "common/golden-scenarios.json", quality / "golden" / "scenarios.example.json", force=False
     )

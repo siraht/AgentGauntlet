@@ -1,4 +1,4 @@
-"""Policy loading, validation, risk resolution, and path protection."""
+"""Policy and risk."""
 
 from __future__ import annotations
 
@@ -148,23 +148,21 @@ requires_human_code_review = true
 requires_manual_qa = true
 
 [profiles.inner]
-gates = ["format", "lint", "typecheck"]
+gates = ["format","lint","typecheck"]
 max_total_seconds = 60
 
 [profiles.fast]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "secrets"]
+gates = ["format","lint","typecheck","test_integrity","unit","structure","secrets"]
 max_total_seconds = 600
 
 [profiles.pr]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "review", "security_fast", "policy_maintenance", "assurance"]
+gates = ["format","lint","typecheck","test_integrity","unit","structure","coverage","contracts","acceptance","resource_budget","review","security_fast","policy_maintenance","assurance"]
 max_total_seconds = 1800
-
 [profiles.deep]
-gates = ["format", "lint", "typecheck", "test_integrity", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "policy_maintenance", "assurance"]
+gates = ["format","lint","typecheck","test_integrity","unit","structure","coverage","contracts","acceptance","golden","mutation_changed","mutation_acceptance","resource_budget","review","security_fast","security_deep","supply_chain","performance","policy_maintenance","assurance"]
 max_total_seconds = 10800
-
 [profiles.release]
-gates = ["format", "lint", "typecheck", "test_integrity", "reproducible_build", "unit", "structure", "coverage", "contracts", "acceptance", "golden", "mutation_changed", "mutation_acceptance", "review", "security_fast", "security_deep", "supply_chain", "performance", "policy_maintenance", "assurance", "release_readiness"]
+gates = ["format","lint","typecheck","test_integrity","reproducible_build","unit","structure","coverage","contracts","acceptance","golden","mutation_changed","mutation_acceptance","resource_budget","review","security_fast","security_deep","supply_chain","performance","policy_maintenance","assurance","release_readiness"]
 max_total_seconds = 14400
 
 {gates}
@@ -191,6 +189,7 @@ GATE_NAMES = [
     "security_deep",
     "supply_chain",
     "performance",
+    "resource_budget",
     "reproducible_build",
     "release_readiness",
 ]
@@ -216,6 +215,7 @@ GATE_TIMEOUTS = {
     "security_deep": 3600,
     "supply_chain": 900,
     "performance": 3600,
+    "resource_budget": 1800,
     "reproducible_build": 3600,
     "release_readiness": 1800,
 }

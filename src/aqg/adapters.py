@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import fnmatch
-import hashlib
 import http.client
 import json
 import os
@@ -23,6 +22,10 @@ from typing import Any
 
 from .acceptance import run_acceptance_mutation
 from .assurance import evaluate_assurance
+from .budget_integration import (
+    measure_resource_budget,
+    source_budget_evidence,
+)
 from .checks import (
     crap_score,
     lint_features,
@@ -39,6 +42,7 @@ from .constants import (
 )
 from .errors import ConfigurationError
 from .golden import run_goldens
+from .javascript_structure_metrics import javascript_structure_evidence
 from .maintenance import validate_policy_maintenance
 from .performance import aggregate_scores, sampling_policy
 from .policy import load_policy, risk_summary
@@ -76,6 +80,7 @@ from .python_mutation_selection import (
 from .python_mutation_selection import (
     selection_refusal as _python_mutation_selection_refusal_core,
 )
+from .python_structure_metrics import base_radon_payload, python_structure_evidence
 from .review import analyze_review, review_exit_code, write_review_packet
 from .sbom import generate_sboms
 from .util import (
@@ -638,228 +643,75 @@ def _unit(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     return _write_report(root, "unit", code, {"applicability": "applicable", "commands": results})
 
 
-def _radon_blocks(payload: dict[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
-    for filename, blocks in payload.items():
-        for block in blocks:
-            if block.get("type") == "class":
-                for method in block.get("methods", []):
-                    yield filename, method
-            elif block.get("type") in {"function", "method"}:
-                yield filename, block
-
-
-def _function_nesting(node: ast.AST, depth: int = 0) -> int:
-    nesting_nodes = (
-        ast.If,
-        ast.For,
-        ast.AsyncFor,
-        ast.While,
-        ast.Try,
-        ast.With,
-        ast.AsyncWith,
-        ast.Match,
-    )
-    maximum = depth
-    for child in ast.iter_child_nodes(node):
-        if (
-            isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
-            and child is not node
-        ):
-            continue
-        child_depth = depth + 1 if isinstance(child, nesting_nodes) else depth
-        maximum = max(maximum, _function_nesting(child, child_depth))
-    return maximum
-
-
-def _python_ast_metrics(root: Path, files: list[str]) -> dict[tuple[str, int], dict[str, int]]:
-    metrics: dict[tuple[str, int], dict[str, int]] = {}
-    for filename in files:
-        try:
-            tree = ast.parse((root / filename).read_text(encoding="utf-8"), filename=filename)
-        except (OSError, SyntaxError):
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            end = int(getattr(node, "end_lineno", node.lineno))
-            metrics[(filename, int(node.lineno))] = {
-                "lines": end - int(node.lineno) + 1,
-                "nesting": _function_nesting(node),
-            }
-    return metrics
-
-
-def _python_structure_evidence(
-    root: Path, project: dict[str, Any], files: list[str], payload: dict[str, Any]
-) -> dict[str, Any]:
-    limits = _effective_thresholds(project)["structure"]
-    changed = _changed_lines(root, project) if _adopt_mode(project) else {}
-    ast_metrics = _python_ast_metrics(root, files)
-    functions: list[dict[str, Any]] = []
-    failures: list[str] = []
-    for filename, block in _radon_blocks(payload):
-        start = int(block.get("lineno", 0))
-        end = int(block.get("endline", start))
-        enforced = not _adopt_mode(project) or bool(
-            changed.get(filename, set()) & set(range(start, end + 1))
-        )
-        structural = ast_metrics.get((filename, start), {"lines": end - start + 1, "nesting": 0})
-        item = {
-            "path": filename,
-            "name": block.get("name"),
-            "line": start,
-            "end_line": end,
-            "complexity": int(block.get("complexity", 1)),
-            "lines": structural["lines"],
-            "nesting": structural["nesting"],
-            "enforced": enforced,
-        }
-        functions.append(item)
-        if not enforced:
-            continue
-        for metric, threshold in (
-            ("complexity", "max_cyclomatic_complexity"),
-            ("lines", "max_function_lines"),
-            ("nesting", "max_nesting_depth"),
-        ):
-            if item[metric] > limits[threshold]:
-                failures.append(
-                    f"{filename}:{start} {block.get('name')} {metric} "
-                    f"{item[metric]} > {limits[threshold]}"
-                )
-    return {
-        "functions": sorted(
-            functions, key=lambda item: (item["complexity"], item["lines"]), reverse=True
-        ),
-        "failures": failures,
-        "limits": limits,
-        "scope": "changed-functions" if _adopt_mode(project) else "full",
-    }
-
-
 def _javascript_structure_commands(root: Path, files: list[str]) -> list[CommandSpec]:
     if not files:
         return []
     eslint = _tool(root, "eslint", "js")
-    return [
-        (
-            [
-                eslint,
-                "--config",
-                _control_path(root, "quality/tools/js/config/eslint.config.mjs"),
-                "--max-warnings",
-                "0",
-                "--format",
-                "json",
-                *group,
-            ],
-            900,
-            None,
+    commands: list[CommandSpec] = []
+    for group in _chunks(files):
+        commands.append(
+            (
+                [
+                    eslint,
+                    "--config",
+                    _control_path(root, "quality/tools/js/config/eslint.config.mjs"),
+                    "--max-warnings",
+                    "0",
+                    "--format",
+                    "json",
+                    *group,
+                ],
+                900,
+                None,
+            )
         )
-        for group in _chunks(files)
-    ]
-
-
-_JS_COMPLEXITY = re.compile(
-    r"^(?:Arrow function|Function '(?P<name>[^']+)') has a complexity of (?P<value>\d+)\."
-)
+        commands.append(
+            (
+                [
+                    eslint,
+                    "--config",
+                    _control_path(root, "quality/tools/js/config/aqg-abc.config.mjs"),
+                    "--format",
+                    "json",
+                    *group,
+                ],
+                900,
+                None,
+            )
+        )
+    return commands
 
 
 def _javascript_structure_evidence(
     root: Path, project: dict[str, Any], results: list[dict[str, Any]]
 ) -> tuple[dict[str, Any], list[str]]:
-    """Normalize ESLint structure output and retain content-addressed raw provenance."""
-    limits = _effective_thresholds(project)["structure"]
-    changed = _changed_lines(root, project) if _adopt_mode(project) else {}
-    functions: list[dict[str, Any]] = []
-    findings: list[dict[str, Any]] = []
-    failures: list[str] = []
-    parse_errors: list[str] = []
-    for result in results:
-        raw = str(result.get("stdout", ""))
-        result["stdout_bytes"] = len(raw.encode())
-        result["stdout_sha256"] = "sha256:" + hashlib.sha256(raw.encode()).hexdigest()
-        result["stdout"] = ""
-        try:
-            reports = json.loads(raw)
-        except json.JSONDecodeError:
-            parse_errors.append("ESLint structure output was not valid JSON")
-            continue
-        if not isinstance(reports, list):
-            parse_errors.append("ESLint structure output was not an array")
-            continue
-        _collect_javascript_structure(
-            root, project, reports, changed, functions, findings, failures
-        )
-    return (
-        {
-            "functions": sorted(functions, key=lambda item: (item["path"], item["line"])),
-            "findings": sorted(findings, key=lambda item: (item["path"], item["line"])),
-            "failures": failures,
-            "limits": limits,
-            "scope": "changed-functions" if _adopt_mode(project) else "full",
-        },
-        parse_errors,
+    adopt_mode = _adopt_mode(project)
+    return javascript_structure_evidence(
+        root,
+        results,
+        _effective_thresholds(project)["structure"],
+        _changed_lines(root, project) if adopt_mode else {},
+        adopt_mode=adopt_mode,
     )
 
 
-def _collect_javascript_structure(
+def _python_structure_evidence(
     root: Path,
     project: dict[str, Any],
-    reports: list[Any],
-    changed: dict[str, set[int]],
-    functions: list[dict[str, Any]],
-    findings: list[dict[str, Any]],
-    failures: list[str],
-) -> None:
-    limit = _effective_thresholds(project)["structure"]["max_cyclomatic_complexity"]
-    for report in reports:
-        if not isinstance(report, dict):
-            continue
-        path = _relative_report_path(root, report.get("filePath"))
-        for message in report.get("messages", []):
-            if not isinstance(message, dict):
-                continue
-            finding = {
-                key: message.get(key)
-                for key in (
-                    "ruleId",
-                    "severity",
-                    "message",
-                    "line",
-                    "column",
-                    "endLine",
-                    "endColumn",
-                )
-            }
-            finding["path"] = path
-            findings.append(finding)
-            match = _JS_COMPLEXITY.match(str(message.get("message", "")))
-            if message.get("ruleId") != "complexity" or match is None or not path:
-                continue
-            line = int(message.get("line", 0))
-            column = int(message.get("column", 0))
-            name = match.group("name") or f"<arrow@{line}:{column}>"
-            enforced = not _adopt_mode(project) or line in changed.get(path, set())
-            item = {
-                "path": path,
-                "name": name,
-                "line": line,
-                "complexity": int(match.group("value")),
-                "enforced": enforced,
-            }
-            functions.append(item)
-            if enforced and item["complexity"] > limit:
-                failures.append(f"{path}:{line} {name} complexity {item['complexity']} > {limit}")
-
-
-def _relative_report_path(root: Path, value: Any) -> str:
-    if not isinstance(value, str) or not value:
-        return ""
-    try:
-        return Path(value).resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return ""
+    files: list[str],
+    payload: dict[str, Any],
+    base_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return python_structure_evidence(
+        root,
+        files,
+        payload,
+        _effective_thresholds(project)["structure"],
+        _changed_lines(root, project) if _adopt_mode(project) else {},
+        adopt_mode=_adopt_mode(project),
+        base_ref=_base_ref(project),
+        base_payload=base_payload,
+    )
 
 
 def _python_structure_analysis(
@@ -867,29 +719,23 @@ def _python_structure_analysis(
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if not files:
         return None, None
-    result = run_command(
-        [_tool(root, "radon", "python"), "cc", "-j", "-s", *files], cwd=root, timeout=900
-    )
+    radon = _tool(root, "radon", "python")
+    result = run_command([radon, "cc", "-j", "-s", *files], cwd=root, timeout=900)
     if result.code != 0:
         return result.as_dict(), None
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError:
         return result.as_dict(), None
-    return result.as_dict(), _python_structure_evidence(root, project, files, payload)
+    base_payload = (
+        base_radon_payload(root, files, _base_ref(project), radon) if _adopt_mode(project) else None
+    )
+    return result.as_dict(), _python_structure_evidence(root, project, files, payload, base_payload)
 
 
 def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    js_files = (
-        _scoped_files(root, project, _relative_files(root, JS_SUFFIXES, project, tests=False))
-        if project["stacks"].get("javascript")
-        else []
-    )
-    py_files = (
-        _scoped_files(root, project, _relative_files(root, PY_SUFFIXES, project, tests=False))
-        if project["stacks"].get("python")
-        else []
-    )
+    js_files = _structure_files(root, project, JS_SUFFIXES, "javascript")
+    py_files = _structure_files(root, project, PY_SUFFIXES, "python")
     code, results = _run_many(root, _javascript_structure_commands(root, js_files))
     javascript_evidence, javascript_errors = _javascript_structure_evidence(root, project, results)
     if javascript_errors:
@@ -899,6 +745,9 @@ def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
         results.append(radon)
         code = max(code, PASS if radon["code"] == 0 else INFRASTRUCTURE_ERROR)
     if python_evidence and python_evidence["failures"]:
+        code = max(code, QUALITY_FAILURE)
+    source_budgets = _source_structure_evidence(root, project)
+    if source_budgets["failures"]:
         code = max(code, QUALITY_FAILURE)
     return _write_report(
         root,
@@ -912,7 +761,29 @@ def _structure(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]
             "javascript": javascript_evidence,
             "javascript_errors": javascript_errors,
             "python": python_evidence,
+            "source_budgets": source_budgets,
         },
+    )
+
+
+def _structure_files(
+    root: Path, project: dict[str, Any], suffixes: set[str], stack: str
+) -> list[str]:
+    if not project["stacks"].get(stack):
+        return []
+    return _scoped_files(root, project, _relative_files(root, suffixes, project, tests=False))
+
+
+def _source_structure_evidence(root: Path, project: dict[str, Any]) -> dict[str, Any]:
+    files = _relative_files(root, JS_SUFFIXES | WEB_SUFFIXES | PY_SUFFIXES, project)
+    return source_budget_evidence(
+        root,
+        project,
+        _scoped_files(root, project, files),
+        thresholds=_effective_thresholds(project)["structure"],
+        base_ref=_base_ref(project),
+        adopt_mode=_adopt_mode(project),
+        is_test_path=lambda path: _is_test_path(path, project),
     )
 
 
@@ -2705,6 +2576,15 @@ def _performance(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, An
     )
 
 
+def _resource_budget(root: Path, project: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    code, payload = measure_resource_budget(
+        root,
+        project.get("resource_budget", {}),
+        _effective_thresholds(project)["resource_budget"],
+    )
+    return _write_report(root, "resource_budget", code, payload)
+
+
 def _directory_manifest(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
@@ -2833,6 +2713,7 @@ HANDLERS: dict[str, Callable[[Path, dict[str, Any]], tuple[int, dict[str, Any]]]
     "security_deep": _security_deep,
     "supply_chain": _supply_chain,
     "performance": _performance,
+    "resource_budget": _resource_budget,
     "reproducible_build": _reproducible_build,
     "release_readiness": _release_readiness,
 }

@@ -92,6 +92,10 @@
       "applicable": true,
       "reason": "The dependency-free dashboard is a public web control surface."
     },
+    "resource_budget": {
+      "applicable": true,
+      "reason": "The dependency-free dashboard ships JavaScript and CSS resources with deterministic source-static byte budgets."
+    },
     "release_readiness": {
       "applicable": true,
       "reason": "Release evidence is always applicable."
@@ -222,6 +226,7 @@
         "lighthouse_performance": 0.9
       },
       "structure": {
+        "max_abc_score": 15,
         "max_crap": 8,
         "max_cyclomatic_complexity": 8,
         "max_function_lines": 40,
@@ -248,6 +253,7 @@
         "lighthouse_performance": 0.95
       },
       "structure": {
+        "max_abc_score": 10,
         "max_crap": 5,
         "max_cyclomatic_complexity": 5,
         "max_function_lines": 30,
@@ -288,6 +294,11 @@
       "agent_ergonomics_audit/audit/regression_tests"
     ]
   },
+  "resource_budget": {
+    "build_command": null,
+    "mode": "source_static",
+    "roots": ["src/aqg/static"]
+  },
   "schema_version": 2,
   "stacks": {
     "css": true,
@@ -318,15 +329,35 @@
       "sample_count": 3,
       "warmup_runs": 1
     },
+    "resource_budget": {
+      "max_css_file_gzip_bytes": 76800,
+      "max_css_file_raw_bytes": 307200,
+      "max_css_total_gzip_bytes": 102400,
+      "max_css_total_raw_bytes": 409600,
+      "max_javascript_file_gzip_bytes": 256000,
+      "max_javascript_file_raw_bytes": 1048576,
+      "max_javascript_total_gzip_bytes": 409600,
+      "max_javascript_total_raw_bytes": 1677722,
+      "warning_ratio": 0.8
+    },
     "security": {
       "allow_unreviewed_ignores": false,
       "audit_level": "high"
     },
     "structure": {
+      "max_abc_score": 20,
       "max_crap": 15,
       "max_cyclomatic_complexity": 10,
+      "max_css_file_lines": 450,
       "max_function_lines": 50,
-      "max_nesting_depth": 4
+      "max_nesting_depth": 4,
+      "max_source_file_bytes": 102400,
+      "max_source_file_lines": 500,
+      "max_test_file_lines": 800,
+      "warn_css_file_lines": 300,
+      "warn_source_file_bytes": 76800,
+      "warn_source_file_lines": 300,
+      "warn_test_file_lines": 600
     }
   },
   "web": {

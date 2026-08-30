@@ -109,7 +109,14 @@ def _validate_threshold_groups(thresholds: Any) -> list[str]:
         return ["thresholds must be an object"]
     return [
         f"thresholds.{group} must be an object"
-        for group in ("coverage", "structure", "mutation", "security", "performance")
+        for group in (
+            "coverage",
+            "structure",
+            "mutation",
+            "security",
+            "performance",
+            "resource_budget",
+        )
         if not isinstance(thresholds.get(group), dict)
     ]
 
@@ -136,11 +143,62 @@ def _validate_structure_thresholds(thresholds: Any) -> list[str]:
         "max_cyclomatic_complexity",
         "max_crap",
         "max_nesting_depth",
+        "warn_source_file_lines",
+        "max_source_file_lines",
+        "warn_css_file_lines",
+        "max_css_file_lines",
+        "warn_test_file_lines",
+        "max_test_file_lines",
+        "warn_source_file_bytes",
+        "max_source_file_bytes",
+        "max_abc_score",
     ):
         value = structure.get(key)
         if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
             errors.append(f"thresholds.structure.{key} must be a positive number")
+    for warning, maximum in (
+        ("warn_source_file_lines", "max_source_file_lines"),
+        ("warn_css_file_lines", "max_css_file_lines"),
+        ("warn_test_file_lines", "max_test_file_lines"),
+        ("warn_source_file_bytes", "max_source_file_bytes"),
+    ):
+        if not errors and structure[warning] > structure[maximum]:
+            errors.append(f"thresholds.structure.{warning} must not exceed {maximum}")
     return errors
+
+
+_RESOURCE_BUDGET_THRESHOLD_KEYS = tuple(
+    f"max_{kind}_{scope}_{encoding}_bytes"
+    for kind in ("javascript", "css")
+    for scope in ("file", "total")
+    for encoding in ("raw", "gzip")
+)
+
+
+def _resource_budget_size_errors(budget: dict[str, Any]) -> list[str]:
+    return [
+        f"thresholds.resource_budget.{key} must be a positive integer"
+        for key in _RESOURCE_BUDGET_THRESHOLD_KEYS
+        if not _is_positive_int(budget.get(key))
+    ]
+
+
+def _resource_budget_ratio_errors(budget: dict[str, Any]) -> list[str]:
+    ratio = budget.get("warning_ratio")
+    if not isinstance(ratio, (int, float)) or isinstance(ratio, bool) or not 0 < ratio < 1:
+        return ["thresholds.resource_budget.warning_ratio must be between 0 and 1"]
+    return []
+
+
+def _validate_resource_budget_thresholds(thresholds: Any) -> list[str]:
+    budget = thresholds.get("resource_budget", {}) if isinstance(thresholds, dict) else {}
+    if not isinstance(budget, dict):
+        return []
+    return [*_resource_budget_size_errors(budget), *_resource_budget_ratio_errors(budget)]
+
+
+def _is_positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
 def _validate_mutation_thresholds(thresholds: Any) -> list[str]:
@@ -197,6 +255,7 @@ def _validate_thresholds(project: dict[str, Any]) -> list[str]:
         *_validate_structure_thresholds(thresholds),
         *_validate_mutation_thresholds(thresholds),
         *_validate_performance_thresholds(thresholds),
+        *_validate_resource_budget_thresholds(thresholds),
     ]
 
 
@@ -229,6 +288,47 @@ def _validate_web(project: dict[str, Any]) -> list[str]:
     ):
         errors.append("web.base_url must be null or an http(s) URL")
     return errors
+
+
+def _validate_resource_budget(project: dict[str, Any]) -> list[str]:
+    config = project.get("resource_budget")
+    if not isinstance(config, dict):
+        return ["resource_budget must be an object"]
+    errors: list[str] = []
+    mode = config.get("mode")
+    if mode not in {"build", "source_static", "disabled"}:
+        errors.append("resource_budget.mode must be build, source_static, or disabled")
+    roots = config.get("roots")
+    errors.extend(_validate_resource_roots(roots, mode))
+    command = config.get("build_command")
+    errors.extend(_validate_optional_command(command, "resource_budget.build_command"))
+    if mode == "build" and not isinstance(command, list):
+        errors.append("resource_budget.mode=build requires resource_budget.build_command")
+    if mode == "source_static" and command is not None:
+        errors.append("resource_budget.mode=source_static requires build_command=null")
+    return errors
+
+
+def _validate_resource_roots(value: Any, mode: Any) -> list[str]:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
+        return ["resource_budget.roots must be an array of non-empty strings"]
+    if mode != "disabled" and not value:
+        return ["resource_budget.roots must not be empty when resource budgets are enabled"]
+    return []
+
+
+def _validate_optional_command(value: Any, name: str) -> list[str]:
+    if value is None:
+        return []
+    if (
+        not isinstance(value, list)
+        or not value
+        or any(not isinstance(item, str) or not item for item in value)
+    ):
+        return [f"{name} must be null or a non-empty string array"]
+    return []
 
 
 def _validate_assurance_command(assurance: dict[str, Any]) -> list[str]:
@@ -295,6 +395,7 @@ def validate_project(project: dict[str, Any]) -> list[str]:
         *_validate_thresholds(project),
         *_validate_profile_thresholds(project),
         *_validate_web(project),
+        *_validate_resource_budget(project),
         *_validate_assurance(project),
         *_validate_python(project),
     ]
