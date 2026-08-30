@@ -94,7 +94,7 @@ def test_doctor_reports_exact_models_versions_and_missing_tools_without_credenti
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "opencode/deepseek-v4-flash-free",
+        "opencode/nemotron-3-ultra-free",
     ]
 
     paths["opencode"] = "/tools/opencode"
@@ -170,13 +170,13 @@ def test_high_tier_uses_available_reviewers_without_synthetic_spend(
 ) -> None:
     plan, _series = _prepared(tmp_path, "high")
 
-    assert service._high_operability_model() == "opencode/deepseek-v4-flash-free"
+    assert service._high_operability_model() == "opencode/nemotron-3-ultra-free"
     assert [member["model_id"] for member in plan["members"]] == [
         "grok-4.5",
         "grok-4.5",
         "codex/gpt-5.6-sol",
         "codex/gpt-5.6-sol",
-        "opencode/deepseek-v4-flash-free",
+        "opencode/nemotron-3-ultra-free",
     ]
     assert {member["provider_group"] for member in plan["members"]} == {
         "xai:grok.com",
