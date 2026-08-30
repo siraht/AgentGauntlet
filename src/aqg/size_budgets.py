@@ -53,22 +53,30 @@ def _positive_or_zero_integer(value: Any, name: str) -> int:
     return value
 
 
-def normalize_limits(limits: Mapping[str, Any]) -> dict[str, int]:
-    """Validate one primary classification's warning and hard limits."""
-    if not isinstance(limits, Mapping):
-        raise SizeBudgetError("size limits must be a mapping")
+def _validate_limit_keys(limits: Mapping[str, Any]) -> None:
     unknown = sorted(set(limits) - set(_LIMIT_KEYS))
     missing = sorted(set(_LIMIT_KEYS) - set(limits))
     if unknown:
         raise SizeBudgetError(f"unknown size limit keys: {', '.join(unknown)}")
     if missing:
         raise SizeBudgetError(f"missing size limit keys: {', '.join(missing)}")
-    normalized = {key: _positive_or_zero_integer(limits[key], key) for key in _LIMIT_KEYS}
+
+
+def _validate_limit_order(limits: Mapping[str, int]) -> None:
     for metric in ("physical_lines", "raw_bytes"):
-        warning = normalized[f"warning_{metric}"]
-        hard = normalized[f"hard_{metric}"]
+        warning = limits[f"warning_{metric}"]
+        hard = limits[f"hard_{metric}"]
         if warning > hard:
             raise SizeBudgetError(f"warning_{metric} must not exceed hard_{metric}")
+
+
+def normalize_limits(limits: Mapping[str, Any]) -> dict[str, int]:
+    """Validate one primary classification's warning and hard limits."""
+    if not isinstance(limits, Mapping):
+        raise SizeBudgetError("size limits must be a mapping")
+    _validate_limit_keys(limits)
+    normalized = {key: _positive_or_zero_integer(limits[key], key) for key in _LIMIT_KEYS}
+    _validate_limit_order(normalized)
     return normalized
 
 
@@ -181,21 +189,27 @@ def _read_regular_file(root: Path, relative_path: str) -> bytes:
         raise SizeBudgetError(f"cannot read source file: {relative_path}") from exc
 
 
-def _normalize_inputs(files: Sequence[Mapping[str, Any]]) -> list[tuple[str, tuple[str, ...]]]:
-    if not isinstance(files, Sequence) or isinstance(files, (str, bytes)):
-        raise SizeBudgetError("source file inventory must be a sequence")
-    normalized: list[tuple[str, tuple[str, ...]]] = []
-    for item in files:
-        if not isinstance(item, Mapping):
-            raise SizeBudgetError("source file inventory entries must be mappings")
-        unknown = sorted(set(item) - {"path", "classifications"})
-        if unknown:
-            raise SizeBudgetError(f"unknown source inventory keys: {', '.join(unknown)}")
-        path = _relative_path(item.get("path"))
-        normalized.append((path, normalize_classifications(item.get("classifications"))))
+def _normalize_input(item: Mapping[str, Any]) -> tuple[str, tuple[str, ...]]:
+    if not isinstance(item, Mapping):
+        raise SizeBudgetError("source file inventory entries must be mappings")
+    unknown = sorted(set(item) - {"path", "classifications"})
+    if unknown:
+        raise SizeBudgetError(f"unknown source inventory keys: {', '.join(unknown)}")
+    path = _relative_path(item.get("path"))
+    return path, normalize_classifications(item.get("classifications"))
+
+
+def _reject_duplicate_paths(normalized: Sequence[tuple[str, tuple[str, ...]]]) -> None:
     paths = [path for path, _ in normalized]
     if len(paths) != len(set(paths)):
         raise SizeBudgetError("source file inventory contains duplicate paths")
+
+
+def _normalize_inputs(files: Sequence[Mapping[str, Any]]) -> list[tuple[str, tuple[str, ...]]]:
+    if not isinstance(files, Sequence) or isinstance(files, (str, bytes)):
+        raise SizeBudgetError("source file inventory must be a sequence")
+    normalized = [_normalize_input(item) for item in files]
+    _reject_duplicate_paths(normalized)
     return sorted(normalized, key=lambda item: item[0])
 
 
@@ -217,6 +231,26 @@ def _aggregate(files: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return totals
 
 
+def _analyze_file(
+    root: Path,
+    path: str,
+    classifications: tuple[str, ...],
+    thresholds: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    measurement = measure_source_bytes(_read_regular_file(root, path))
+    evaluation = evaluate_measurement(measurement, classifications, thresholds)
+    return {"path": path, "classifications": list(classifications), **measurement, **evaluation}
+
+
+def _overall_status(results: Sequence[Mapping[str, Any]]) -> str:
+    statuses = {item["status"] for item in results}
+    if "hard_failure" in statuses:
+        return "hard_failure"
+    if "warning" in statuses:
+        return "warning"
+    return "pass"
+
+
 def analyze_source_files(
     root: str | Path,
     files: Sequence[Mapping[str, Any]],
@@ -229,19 +263,8 @@ def analyze_source_files(
     if not isinstance(thresholds, Mapping):
         raise SizeBudgetError("size thresholds must be a mapping")
     normalized_thresholds = normalize_thresholds(thresholds)
-    results: list[dict[str, Any]] = []
-    for path, classifications in _normalize_inputs(files):
-        measurement = measure_source_bytes(_read_regular_file(root_path, path))
-        evaluation = evaluate_measurement(measurement, classifications, normalized_thresholds)
-        results.append(
-            {"path": path, "classifications": list(classifications), **measurement, **evaluation}
-        )
-    statuses = {item["status"] for item in results}
-    status = (
-        "hard_failure"
-        if "hard_failure" in statuses
-        else "warning"
-        if "warning" in statuses
-        else "pass"
-    )
-    return {"status": status, "files": results, "totals": _aggregate(results)}
+    results = [
+        _analyze_file(root_path, path, classifications, normalized_thresholds)
+        for path, classifications in _normalize_inputs(files)
+    ]
+    return {"status": _overall_status(results), "files": results, "totals": _aggregate(results)}

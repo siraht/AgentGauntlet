@@ -72,22 +72,25 @@ def _safe_repository_root(path: Path) -> Path:
 def _validate_limits(limits: Mapping[str, int]) -> dict[str, int]:
     if not isinstance(limits, Mapping):
         raise ConfigurationError("asset budgets must be a mapping")
+    _validate_limit_keys(limits)
+    return {key: _positive_limit(key, limits[key]) for key in _LIMIT_KEYS}
+
+
+def _validate_limit_keys(limits: Mapping[str, int]) -> None:
     missing = sorted(set(_LIMIT_KEYS) - set(limits))
     unknown = sorted(set(limits) - set(_LIMIT_KEYS))
-    if missing or unknown:
-        parts = []
-        if missing:
-            parts.append(f"missing limits: {', '.join(missing)}")
-        if unknown:
-            parts.append(f"unknown limits: {', '.join(unknown)}")
-        raise ConfigurationError("; ".join(parts))
-    normalized: dict[str, int] = {}
-    for key in _LIMIT_KEYS:
-        value = limits[key]
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ConfigurationError(f"{key} must be a positive integer byte count")
-        normalized[key] = value
-    return normalized
+    if not missing and not unknown:
+        return
+    errors = [f"missing limits: {', '.join(missing)}"] if missing else []
+    if unknown:
+        errors.append(f"unknown limits: {', '.join(unknown)}")
+    raise ConfigurationError("; ".join(errors))
+
+
+def _positive_limit(key: str, value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ConfigurationError(f"{key} must be a positive integer byte count")
+    return value
 
 
 def _validate_warning_ratio(value: float) -> float:
@@ -110,21 +113,30 @@ def _validate_freshness(value: int | None) -> int | None:
 
 
 def _resolve_build_roots(root: Path, configured: Sequence[str | Path]) -> list[Path]:
+    items = _build_root_items(configured)
+    resolved = [_resolve_build_root(root, item) for item in items]
+    ordered = sorted(resolved, key=lambda path: path.relative_to(root).as_posix())
+    _reject_overlapping_roots(ordered)
+    return ordered
+
+
+def _build_root_items(configured: Sequence[str | Path]) -> tuple[str | Path, ...]:
     if isinstance(configured, (str, bytes)) or not isinstance(configured, Sequence):
         raise ConfigurationError("build roots must be a non-empty sequence of paths")
     if not configured:
         raise ConfigurationError("at least one explicit build root is required")
     if any(not isinstance(item, (str, Path)) for item in configured):
         raise ConfigurationError("every build root must be a string or Path")
-    resolved = [_resolve_build_root(root, item) for item in configured]
-    ordered = sorted(resolved, key=lambda path: path.relative_to(root).as_posix())
-    if len(set(ordered)) != len(ordered):
+    return tuple(configured)
+
+
+def _reject_overlapping_roots(roots: Sequence[Path]) -> None:
+    if len(set(roots)) != len(roots):
         raise ConfigurationError("build roots must be unique")
-    for index, current in enumerate(ordered):
-        for other in ordered[index + 1 :]:
+    for index, current in enumerate(roots):
+        for other in roots[index + 1 :]:
             if other.is_relative_to(current):
                 raise ConfigurationError("build roots must not overlap")
-    return ordered
 
 
 def _resolve_build_root(root: Path, configured: str | Path) -> Path:
@@ -206,6 +218,12 @@ def _measure_file(
     kind: str,
     fresh_after_ns: int | None,
 ) -> dict[str, Any]:
+    content, modified_ns = _read_stable_artifact(path)
+    _require_fresh_artifact(path, modified_ns, fresh_after_ns)
+    return _artifact_evidence(root, build_root, path, kind, content, modified_ns)
+
+
+def _read_stable_artifact(path: Path) -> tuple[bytes, int]:
     try:
         before = path.stat()
         content = path.read_bytes()
@@ -216,8 +234,22 @@ def _measure_file(
     observed = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
     if identity != observed or len(content) != after.st_size:
         raise InfrastructureError(f"built artifact changed while it was measured: {path}")
-    if fresh_after_ns is not None and after.st_mtime_ns < fresh_after_ns:
+    return content, after.st_mtime_ns
+
+
+def _require_fresh_artifact(path: Path, modified_ns: int, fresh_after_ns: int | None) -> None:
+    if fresh_after_ns is not None and modified_ns < fresh_after_ns:
         raise InfrastructureError(f"built artifact is stale: {path}")
+
+
+def _artifact_evidence(
+    root: Path,
+    build_root: Path,
+    path: Path,
+    kind: str,
+    content: bytes,
+    modified_ns: int,
+) -> dict[str, Any]:
     return {
         "path": path.relative_to(root).as_posix(),
         "build_root": build_root.relative_to(root).as_posix(),
@@ -225,7 +257,7 @@ def _measure_file(
         "raw_bytes": len(content),
         "gzip_bytes": len(gzip.compress(content, compresslevel=9, mtime=0)),
         "sha256": "sha256:" + hashlib.sha256(content).hexdigest(),
-        "mtime_ns": after.st_mtime_ns,
+        "mtime_ns": modified_ns,
     }
 
 
