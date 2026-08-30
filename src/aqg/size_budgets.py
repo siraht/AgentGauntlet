@@ -205,7 +205,7 @@ def _reject_duplicate_paths(normalized: Sequence[tuple[str, tuple[str, ...]]]) -
         raise SizeBudgetError("source file inventory contains duplicate paths")
 
 
-def _normalize_inputs(files: Sequence[Mapping[str, Any]]) -> list[tuple[str, tuple[str, ...]]]:
+def _normalize_inputs(files: Any) -> list[tuple[str, tuple[str, ...]]]:
     if not isinstance(files, Sequence) or isinstance(files, (str, bytes)):
         raise SizeBudgetError("source file inventory must be a sequence")
     normalized = [_normalize_input(item) for item in files]
