@@ -42,10 +42,15 @@
       "agent_ergonomics_audit/audit/regression_tests/test_R_010_rootless_guidance.py",
       "quality/tests/test_qg.py",
       "src/aqg/templates/js/aqg-smoke.spec.mjs",
+      "tests/js/abc-plugin.test.js",
       "tests/js/dashboard.test.js",
+      "tests/test_abc_metrics.py",
       "tests/test_acceptance.py",
       "tests/test_acceptance_mutation.py",
       "tests/test_analyze_review.py",
+      "tests/test_asset_budgets.py",
+      "tests/test_assurance.py",
+      "tests/test_budget_integration.py",
       "tests/test_cli.py",
       "tests/test_control_guards.py",
       "tests/test_core.py",
@@ -55,6 +60,7 @@
       "tests/test_debt.py",
       "tests/test_debt_store.py",
       "tests/test_diagnose.py",
+      "tests/test_dogfood_control_surfaces.py",
       "tests/test_evidence_manifest.py",
       "tests/test_governance.py",
       "tests/test_maintenance.py",
@@ -66,14 +72,21 @@
       "tests/test_python_mutation_diff.py",
       "tests/test_python_mutation_reports.py",
       "tests/test_python_mutation_selection.py",
+      "tests/test_python_structure_ratchet.py",
+      "tests/test_release_authority.py",
+      "tests/test_release_verifier.py",
       "tests/test_retrospective.py",
       "tests/test_retrospective_inventory.py",
       "tests/test_review_risk_classifier.py",
+      "tests/test_risk_authority.py",
       "tests/test_run_evidence.py",
       "tests/test_schema_contracts.py",
+      "tests/test_size_budgets.py",
       "tests/test_strict_readiness.py",
       "tests/test_test_integrity.py",
-      "tests/test_trusted_grader.py"
+      "tests/test_trusted_grader.py",
+      "tests/test_trusted_verification.py",
+      "tests/test_trusted_workflow.py"
     ],
     "test_paths": [
       "agent_ergonomics_audit",
@@ -97,7 +110,7 @@
       "severity": "info"
     }
   ],
-  "generated_at": "2026-07-28T23:34:32+00:00",
+  "generated_at": "2026-08-30T22:23:29+00:00",
   "generated_by": "agent-quality-gauntlet/2.0.0",
   "mode": "adopt",
   "next_action": {
@@ -208,6 +221,7 @@
     "qa_procedures": [
       "qa/procedures/TEMPLATE.md",
       "qa/procedures/advisory-review-council.md",
+      "qa/procedures/control-surface-rehearsal.md",
       "qa/procedures/owner-status-dashboard.md",
       "qa/procedures/release-portable.md",
       "qa/procedures/web-primary-journey.md"
@@ -223,7 +237,7 @@
       "feature-spec/TODO.EXAMPLE.Product.Feature.Next.md"
     ]
   },
-  "state_fingerprint": "25b17068a927b298a97aadc9c6f41a6cdce7a7e1cc8da900004615b086d49938",
+  "state_fingerprint": "2c111c9912a3645fda662d45d67e01c8c4551e297f3eadd9bd15a5c85a69e81b",
   "summary": {
     "blockers": 0,
     "info": 2,
