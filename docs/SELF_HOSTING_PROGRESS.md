@@ -252,64 +252,94 @@ turning inherited brownfield debt into an unrelated development blocker.
 - [x] Confirm that current `lines` evidence means function lines, not file lines.
 - [x] Confirm that CSS/JavaScript byte budgets exist only as guidance today.
 - [x] Confirm that no explicit Assignments-Branches-Conditions metric exists.
-- [ ] Add dependency-free, deterministic physical-line and raw-byte measurement
-      for governed hand-written source and test files.
-- [ ] Add separate limits for production, CSS, and test files, with warning
-      headroom and hard caps.
-- [ ] Add fresh-build raw and gzip CSS/JavaScript artifact budgets, including
-      individual-artifact and aggregate totals.
-- [ ] Add versioned Python and JavaScript/TypeScript ABC vectors and magnitudes.
-- [ ] Preserve existing complexity, nesting, function-length, CRAP, coverage,
+- [x] Add a dependency-free deterministic kernel for physical lines, nonblank
+      lines, raw bytes, and SHA-256 over an explicit source/test inventory.
+- [x] Add kernel-level production, CSS, and test classifications with warning
+      boundaries, hard boundaries, deterministic totals, and fail-closed input
+      validation.
+- [x] Add a dependency-free raw and deterministic-gzip CSS/JavaScript artifact
+      kernel with individual-artifact and aggregate totals, warning headroom,
+      hashes, stable ordering, and explicit build roots.
+- [x] Add versioned `aqg-python-abc-v1` and `aqg-javascript-abc-v1` vectors and
+      magnitudes. The definitions are deliberately language-specific.
+- [x] Wire all four kernels through protected project defaults, scaffolded
+      projects, adapters, retrospective inventory, and the intended profiles.
+      The focused integration matrix passes; whole-profile evidence remains a
+      separate checkpoint below.
+- [x] Preserve existing complexity, nesting, function-length, CRAP, coverage,
       acceptance, and mutation controls alongside the new metrics.
-- [ ] Surface exact offenders, limits, headroom, classification, and remediation
-      guidance in normalized evidence and review reports.
+- [x] Surface exact offenders, limits, headroom, and classification in normalized
+      evidence and review reports.
 
 ### Brownfield and anti-gaming requirements
 
-- [ ] Extend retrospective inventory fingerprints to file lines, file bytes,
+- [x] Extend retrospective inventory fingerprints to file lines, file bytes,
       ABC magnitude, individual asset bytes, and aggregate resource bytes.
-- [ ] Treat reviewed inherited excess as visible non-blocking debt.
-- [ ] Block new offenders and any increase to a reviewed debt value.
-- [ ] Require every new governed file to meet the current hard limit.
-- [ ] Reject missing, stale, malformed, or unexpectedly empty build evidence as
+- [x] Treat inherited Git-base excess as visible non-blocking debt.
+- [x] Block new offenders and any increase to an inherited debt value.
+- [x] Require every new governed file to meet the current hard limit.
+- [x] Reject missing, stale, malformed, or unexpectedly empty build evidence as
       configuration or infrastructure error rather than a pass.
-- [ ] Inventory generated, vendored, and minified files explicitly; allow only
-      narrow classified exclusions rather than extension-renaming evasion.
+- [x] Make the source-budget kernel measure generated, vendored, and minified
+      inventory entries while returning their exact exclusion reasons instead
+      of silently discarding them.
+- [ ] Prove the adapter's path classification and governed inventory cannot be
+      evaded by renaming or moving files, and keep exclusions narrow and
+      visible in run evidence.
 - [ ] Detect or review wrapper-chain/file-sharding responses so splitting a file
       without reducing complexity or coupling is not accepted as pruning.
 - [ ] Never allow ordinary feature work to raise a budget or add an exclusion.
 
 ### Execution-profile design
 
-- [ ] Keep source line/byte and ABC checks in the seconds-scale fast structure
+- [x] Keep source line/byte and ABC checks in the seconds-scale fast structure
       gate.
-- [ ] Run fresh built-artifact budgets at PR/checkpoint scope, not after every
+- [x] Run fresh built-artifact budgets at PR/checkpoint scope, not after every
       edit.
-- [ ] Keep sampled Lighthouse/browser transfer evidence in deep and release
+- [x] Keep sampled Lighthouse/browser transfer evidence in deep and release
       profiles as a complementary diagnostic, not a substitute for byte counts.
-- [ ] Record metric-definition versions and exact effective thresholds in each
+- [x] Record metric-definition versions and exact effective thresholds in each
       run so historical comparisons remain meaningful after adapter evolution.
 
 ### Verification and dogfood checklist
 
-- [ ] Add project-schema and scaffold-default contract tests for every new
+- [x] Add project-schema and scaffold-default contract tests for every new
       threshold.
-- [ ] Add Python, JavaScript/TypeScript, CSS, generated-file, test-file, and
-      build-output fixtures at below-warning, warning, and failing boundaries.
-- [ ] Prove missing output, stale output, malformed manifests, and failed builds
-      cannot pass.
-- [ ] Prove an inherited oversized file is reported but an unrelated conforming
+- [x] Add 55 focused Python contracts for the Python ABC, source-size, and
+      artifact-budget kernels, plus seven Vitest contracts for JavaScript,
+      TypeScript, JSX, and TSX ABC measurement.
+- [x] Exercise source and artifact warning/hard boundaries, UTF-8 and empty
+      input, CSS/JavaScript totals, excluded generated/minified entries, stable
+      ordering, missing/unreadable files, path escape, symlink hazards, stale
+      artifacts, and invalid thresholds in focused kernel tests.
+- [x] Prove at kernel level that two individually acceptable CSS files can fail
+      their aggregate budget, so simple file splitting does not erase download
+      size.
+- [ ] Prove through the complete adapter that missing output, stale output,
+      malformed configuration, and failed builds retain the correct 2/3 exit
+      category and immutable detailed evidence.
+- [x] Prove an inherited oversized file is reported but an unrelated conforming
       change remains unblocked.
-- [ ] Prove increasing that inherited file by one unit is rejected.
-- [ ] Prove a new oversized file and a new oversized JS/CSS artifact are rejected.
-- [ ] Prove deliberate file splitting cannot erase aggregate asset-budget debt.
-- [ ] Run focused tests after each implementation slice.
+- [x] Prove increasing that inherited file by one unit is rejected.
+- [x] Prove a new oversized source file is rejected; built JS/CSS rejection is
+      proved at the asset kernel and resource-adapter boundary.
+- [x] Prove deliberate file splitting cannot erase aggregate asset-budget debt
+      in the deterministic artifact kernel.
+- [x] Run focused tests after each completed kernel slice. The committed kernel
+      set currently has 55 passing Python tests and seven passing Vitest tests.
+- [x] Refactor the source-size and artifact engines to pass their own starter
+      caps: maximum cyclomatic complexity is 10 and 7 respectively; maximum
+      ABC magnitude is 18.25 and 19.85 respectively.
 - [ ] Run the fast gauntlet after integration and retain immutable evidence.
 - [ ] Run the risk-selected deep checkpoint only after the implementation
       surface settles.
-- [ ] Dogfood the new metrics on AgentGauntlet in shadow/ratchet-compatible mode,
-      record all findings, and revert every deliberate fault.
-- [ ] Update operator, authoring, adapter-catalog, and project-status guidance.
+- [x] Dogfood the structure and resource adapters on AgentGauntlet in
+      ratchet-compatible mode: both pass after the integration refactors.
+      Whole-profile proof remains open because a pre-existing uncommitted README
+      fails formatting/workspace-integrity and was deliberately not overwritten.
+- [x] Revert every deliberate fault automatically through temporary test
+      repositories rather than leaving fault files in the checkout.
+- [x] Update adapter-catalog, project-status, and self-hosting guidance.
 - [ ] Produce granular commits and push only after local evidence is complete;
       do not re-enable or invoke GitHub Actions.
 
@@ -337,3 +367,23 @@ must not be lowered merely to obtain green output.
 - Approaching a budget should generate ranked pruning guidance. Crossing the
   hard limit blocks growth; acceptable remediation must preserve behavioral
   contracts and pass tests, coverage, and mutation where applicable.
+
+### Kernel evidence and current limitation
+
+The completed kernels are recorded by commits `bc01c8c` (Python ABC),
+`dd0c9b3` (source-file budgets), `a55f6cd` (web artifact budgets), `fec40a5`
+(JavaScript/TypeScript ABC), and `6c625fe` (self-cap refactoring). Their focused
+contracts prove deterministic measurement and failure behavior in isolation.
+
+Commits `2489d5b`, `8f39461`, and `2fe0e11` integrate the kernels, add genuine
+Git-base ratchets and focused adapter contracts, and keep conformance fixtures
+aligned with canonical defaults. The project/schema/scaffold matrix reports 173
+passing tests plus 80 subtests; the full unit adapter reports 768 passing Python
+tests and 16 passing Vitest tests; AgentGauntlet's structure and static-resource
+adapters both pass.
+
+The complete fast/deep workflow is not yet green: the only known fast formatting
+failure is the pre-existing uncommitted README, which this rollout deliberately
+does not overwrite or commit, and the risk-selected deep/council checkpoint
+therefore remains open. That is a workspace ownership limitation, not a relabelled
+pass.

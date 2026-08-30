@@ -1,6 +1,6 @@
 # AgentGauntlet project status
 
-Status date: 2026-07-28
+Status date: 2026-08-30
 
 ## The short version
 
@@ -18,6 +18,14 @@ work and its development workflow is usable, but its recovered implementation
 still has substantial whole-tree coverage, complexity, and mutation debt. No
 reviewed debt baseline has been installed, so AgentGauntlet honestly does not
 claim that self-hosting ratchet or strict certification has been earned.
+
+The current rollout now contains independently tested kernels for whole-file
+source budgets, built CSS/JavaScript byte budgets, and versioned Python and
+JavaScript/TypeScript ABC metrics. Their protected configuration, adapters,
+profiles, retrospective inventory, and generated-project defaults are wired and
+pass the focused integration matrix. A complete fast/deep claim remains open
+because the owner-controlled uncommitted README fails formatting and workspace
+integrity; the rollout does not overwrite or silently commit that file.
 
 ## What the owner should believe
 
@@ -55,6 +63,42 @@ claim that self-hosting ratchet or strict certification has been earned.
 - Exact requirement-to-test traceability and domain-valid semantic acceptance
   mutation.
 - Stable multi-sample performance evidence instead of a single noisy timing.
+
+### Structural and resource-budget rollout
+
+The committed metric kernels now provide these functional artifacts:
+
+- Dependency-free UTF-8 source measurement with physical/nonblank lines, raw
+  bytes, hashes, explicit production/CSS/test classifications, warning and
+  hard boundaries, exclusions that remain inventoried, and stable totals.
+- `aqg-python-abc-v1` and `aqg-javascript-abc-v1`, each preserving its exact
+  Assignments-Branches-Conditions vector, Euclidean magnitude, function
+  location, and language-specific definition identifier.
+- Exact raw and deterministic-gzip measurement of built `.js`, `.mjs`, `.cjs`,
+  and `.css`, with both per-file and aggregate budgets so file splitting cannot
+  erase total download debt.
+- Fail-closed handling for invalid limits, invalid UTF-8, missing/unreadable or
+  non-regular source files, missing/empty/overlapping/escaping artifact roots,
+  symlinks, stale artifacts, and files changing during measurement.
+
+Focused evidence currently consists of 55 passing Python kernel contracts and
+seven passing Node contracts. The source-size and artifact modules were then
+dogfooded against the candidate's own 10-complexity and 20-ABC starter caps;
+their maxima are complexity 10/7 and ABC 18.25/19.85 respectively.
+
+The candidate profile design keeps source-size and ABC work in `structure`,
+including fast, and adds the build/static `resource_budget` gate at PR, deep,
+and release checkpoints. Starter boundaries and language-specific counting
+rules are listed in `docs/LANGUAGE_ADAPTER_CATALOG.md`.
+
+Proved at this checkpoint: project/schema/scaffold compatibility, source and
+Python-function no-regression behavior, a green complete unit adapter (768
+Python and 16 Vitest tests), and green structure and static-resource adapters on
+AgentGauntlet itself. Still open: route-specific initial-load size,
+anti-renaming classification, full built-output fault taxonomy, and a fresh
+green immutable fast/deep manifest for the exact final candidate. Existing
+cyclomatic complexity, function length, nesting, CRAP, coverage, acceptance,
+and mutation controls remain required.
 
 ### Existing-repository adoption
 
@@ -178,6 +222,10 @@ the original plan either left incomplete or trusted too easily:
 - Critical changes still need actual accountable human review and release
   authority.
 - Two representative brownfield pilots are intentionally deferred.
+- The new source-file, ABC, and built-resource kernels have not yet earned an
+  end-to-end rollout claim. Candidate adapter/profile code must pass its schema,
+  scaffold, retrospective, deliberate-regression, fast, and risk-selected deep
+  checkpoints before the checklist can close.
 
 ## How confidence was built
 
@@ -238,19 +286,23 @@ requires them.
 
 ## Best next improvements
 
-1. Calibrate the advisory council on a corpus of known-good and deliberately
+1. Finish and prove the structural/resource-budget integration: project and
+   scaffold contracts, adapter exit taxonomy, retrospective fingerprints,
+   deliberate inherited/new/regression probes, immutable fast/deep evidence,
+   and generated TypeScript/web dogfood.
+2. Calibrate the advisory council on a corpus of known-good and deliberately
    defective changes; measure unique finding yield, false positives,
    contradiction rate, latency, and cost by role/model.
-2. Add approved enterprise/local provider routes for `internal`,
+3. Add approved enterprise/local provider routes for `internal`,
    `confidential`, and `regulated` bundles. Current routing already classifies
    and rejects those scopes before any provider call.
-3. Add bounded reconciliation: reviewers see anonymized conflicting claims,
+4. Add bounded reconciliation: reviewers see anonymized conflicting claims,
    not identities, and must cite evidence for any changed position.
-4. Generate a plain-language owner brief that explains each council finding,
+5. Generate a plain-language owner brief that explains each council finding,
    confidence, evidence, and recommended decision without technical shorthand.
-5. Continue extracting recovered complexity hotspots behind characterization
+6. Continue extracting recovered complexity hotspots behind characterization
    tests and bounded mutation campaigns.
-6. Reduce the inner-loop p95 without removing controls; keep the complete fast
+7. Reduce the inner-loop p95 without removing controls; keep the complete fast
    suite at coherent checkpoints rather than every edit.
-7. Pilot two real brownfield repositories later, as intentionally deferred,
+8. Pilot two real brownfield repositories later, as intentionally deferred,
    before recommending portfolio-wide ratchet defaults.
