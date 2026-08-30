@@ -389,7 +389,7 @@ def test_removing_required_gate_or_protected_path_is_weakening(
     _request(project, changes, monkeypatch)
     path = project / "quality" / "policy.toml"
     text = path.read_text(encoding="utf-8")
-    text = text.replace('gates = ["format", "lint", "typecheck"]', 'gates = ["format", "lint"]')
+    text = text.replace('gates = ["format","lint","typecheck"]', 'gates = ["format","lint"]')
     text = text.replace('  "CLAUDE.md",\n', "")
     path.write_text(text, encoding="utf-8")
     report = validate_policy_maintenance(project, load_policy(project), "HEAD")
