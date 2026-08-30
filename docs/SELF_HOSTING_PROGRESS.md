@@ -236,3 +236,104 @@ After the final code and documentation surface settles:
    repeated green timing is stable;
 6. retire debt without increasing any reviewed fingerprint, then propose
    strict only after a current debt-free enforcing deep pass.
+
+## 2026-08-30 — structural and resource-budget implementation plan
+
+This checkpoint converts four agent-oriented maintainability controls into
+deterministic, evidenced AQG policy. Cyclomatic complexity is already enforced;
+the remaining work adds whole-file limits, direct CSS/JavaScript resource
+budgets, and versioned ABC metrics without weakening existing thresholds or
+turning inherited brownfield debt into an unrelated development blocker.
+
+### Outcomes
+
+- [x] Audit the current implementation rather than relying on documentation.
+- [x] Confirm Python and JavaScript/TypeScript cyclomatic-complexity enforcement.
+- [x] Confirm that current `lines` evidence means function lines, not file lines.
+- [x] Confirm that CSS/JavaScript byte budgets exist only as guidance today.
+- [x] Confirm that no explicit Assignments-Branches-Conditions metric exists.
+- [ ] Add dependency-free, deterministic physical-line and raw-byte measurement
+      for governed hand-written source and test files.
+- [ ] Add separate limits for production, CSS, and test files, with warning
+      headroom and hard caps.
+- [ ] Add fresh-build raw and gzip CSS/JavaScript artifact budgets, including
+      individual-artifact and aggregate totals.
+- [ ] Add versioned Python and JavaScript/TypeScript ABC vectors and magnitudes.
+- [ ] Preserve existing complexity, nesting, function-length, CRAP, coverage,
+      acceptance, and mutation controls alongside the new metrics.
+- [ ] Surface exact offenders, limits, headroom, classification, and remediation
+      guidance in normalized evidence and review reports.
+
+### Brownfield and anti-gaming requirements
+
+- [ ] Extend retrospective inventory fingerprints to file lines, file bytes,
+      ABC magnitude, individual asset bytes, and aggregate resource bytes.
+- [ ] Treat reviewed inherited excess as visible non-blocking debt.
+- [ ] Block new offenders and any increase to a reviewed debt value.
+- [ ] Require every new governed file to meet the current hard limit.
+- [ ] Reject missing, stale, malformed, or unexpectedly empty build evidence as
+      configuration or infrastructure error rather than a pass.
+- [ ] Inventory generated, vendored, and minified files explicitly; allow only
+      narrow classified exclusions rather than extension-renaming evasion.
+- [ ] Detect or review wrapper-chain/file-sharding responses so splitting a file
+      without reducing complexity or coupling is not accepted as pruning.
+- [ ] Never allow ordinary feature work to raise a budget or add an exclusion.
+
+### Execution-profile design
+
+- [ ] Keep source line/byte and ABC checks in the seconds-scale fast structure
+      gate.
+- [ ] Run fresh built-artifact budgets at PR/checkpoint scope, not after every
+      edit.
+- [ ] Keep sampled Lighthouse/browser transfer evidence in deep and release
+      profiles as a complementary diagnostic, not a substitute for byte counts.
+- [ ] Record metric-definition versions and exact effective thresholds in each
+      run so historical comparisons remain meaningful after adapter evolution.
+
+### Verification and dogfood checklist
+
+- [ ] Add project-schema and scaffold-default contract tests for every new
+      threshold.
+- [ ] Add Python, JavaScript/TypeScript, CSS, generated-file, test-file, and
+      build-output fixtures at below-warning, warning, and failing boundaries.
+- [ ] Prove missing output, stale output, malformed manifests, and failed builds
+      cannot pass.
+- [ ] Prove an inherited oversized file is reported but an unrelated conforming
+      change remains unblocked.
+- [ ] Prove increasing that inherited file by one unit is rejected.
+- [ ] Prove a new oversized file and a new oversized JS/CSS artifact are rejected.
+- [ ] Prove deliberate file splitting cannot erase aggregate asset-budget debt.
+- [ ] Run focused tests after each implementation slice.
+- [ ] Run the fast gauntlet after integration and retain immutable evidence.
+- [ ] Run the risk-selected deep checkpoint only after the implementation
+      surface settles.
+- [ ] Dogfood the new metrics on AgentGauntlet in shadow/ratchet-compatible mode,
+      record all findings, and revert every deliberate fault.
+- [ ] Update operator, authoring, adapter-catalog, and project-status guidance.
+- [ ] Produce granular commits and push only after local evidence is complete;
+      do not re-enable or invoke GitHub Actions.
+
+### Initial policy values to validate, not silently weaken
+
+The first fixtures will exercise production source at 300-line warning/500-line
+hard-cap, CSS at 300/450, tests at 600/800, and hand-written files at 75/100 KiB.
+Built-web starter caps are 250 KiB gzip per JavaScript artifact, 400 KiB total
+JavaScript, 75 KiB per CSS artifact, and 100 KiB total CSS. ABC magnitude starts
+in shadow calibration with candidate caps of 20 for normal checks, 15 for deep,
+and 10 for release. Project-specific changes to these starter values remain
+protected policy maintenance and must be evidence-backed; existing thresholds
+must not be lowered merely to obtain green output.
+
+### Decisions and lessons
+
+- File maintainability and user-download performance are different controls:
+  source line/byte limits belong in structure, while compiled resource budgets
+  require a fresh build and their own provenance.
+- A direct byte count is deterministic. Lighthouse remains useful but a score
+  can vary or conceal a large bundle on fast hardware.
+- ABC terminology varies across ecosystems. AQG will publish versioned
+  per-language counting rules and retain the full `<A, B, C>` vector instead of
+  presenting an unexplained scalar as universal truth.
+- Approaching a budget should generate ranked pruning guidance. Crossing the
+  hard limit blocks growth; acceptable remediation must preserve behavioral
+  contracts and pass tests, coverage, and mutation where applicable.
