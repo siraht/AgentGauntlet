@@ -64,7 +64,7 @@ REVIEW_PURPOSES = ("candidate", "debt_baseline", "policy_maintenance")
 
 def _high_operability_model() -> str:
     """Return the no-cost third-provider route without requiring Claude access."""
-    return "opencode/nemotron-3-ultra-free"
+    return "opencode/nemotron-3.5-lightning-free"
 
 
 TIER_MEMBERS: dict[str, tuple[tuple[str, str], ...]] = {
