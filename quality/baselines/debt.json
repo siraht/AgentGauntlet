@@ -1,6 +1,6 @@
 {
-  "control_fingerprint": "sha256:c640c7a33e111373f042688d035255760ed46cf8a9a2548649117e1f9ef48f00",
-  "created_at": "2026-08-13T07:52:39+00:00",
+  "control_fingerprint": "sha256:0b864e4066f57ee23e80fad9e089b8146c8b5e861271443b2304dee7d2c5e2e1",
+  "created_at": "2026-08-31T00:06:30+00:00",
   "inventory": [
     {
       "category": "coverage",
@@ -40,7 +40,7 @@
       "fingerprint": "coverage:python:branches",
       "path": "python",
       "severity": "medium",
-      "value": 61.42649199417758
+      "value": 63.35676625659051
     },
     {
       "category": "coverage",
@@ -48,43 +48,40 @@
       "fingerprint": "coverage:python:lines",
       "path": "python",
       "severity": "medium",
-      "value": 71.58160050409577
+      "value": 73.45787008296179
     }
   ],
   "measurement": {
-    "change_fingerprint": "sha256:746306bdcb476604349ea0fb117dc9cd4090e4063dd5f80b468a372032c381c1",
-    "manifest_fingerprint": "sha256:792c729811de275ffa804866519567a6f107240daa660203e959bc4a0ede5dfc",
-    "measured_at": "2026-08-13T07:52:39+00:00",
+    "change_fingerprint": "sha256:d79099d6cfab180733d17f157a440ebd7bff1233f01e67e7ccc148acfc650c8b",
+    "manifest_fingerprint": "sha256:9d85bc4bf0c7a91c98fd9294117cf3c4ecccc600d34a0cbf9ff99abafaaad166",
+    "measured_at": "2026-08-31T00:06:30+00:00",
     "profile": "deep",
-    "run_id": "20260813-075007-de5a9351"
+    "run_id": "20260831-000424-e49aef17"
   },
-  "policy_fingerprint": "sha256:6e7409c6853e9bf17770cecb1e2416a7479158d6d6f1b82fe18dc29430b58fac",
+  "policy_fingerprint": "sha256:35fe940c360b13fb0be492883bf2981867953e5ffe82493bbec27b33c9816120",
   "review_authority": {
     "covered_roles": [
+      "adversarial",
       "operability_rollback",
       "requirements_behavior",
       "security_trust",
       "test_evidence"
     ],
     "kind": "agent_council",
-    "manifest_sha256": "sha256:0e3de2468299197b0aa4c7074944149b890bde6390c6afd7f291c6a3a0f3fdc4",
-    "provider_groups": [
-      "openai:codex",
-      "opencode:opencode.ai",
-      "xai:grok.com"
-    ],
-    "report_sha256": "sha256:ac1ea862e7ba0da200a7c45f10b5b5d6d145646e69020b6cb3adfc312a7082ae",
-    "run_id": "council-20260813T075314Z-c45dd056",
+    "manifest_sha256": "sha256:b08d0e30fbe8f8796732bae38e6930aab00e104bd1c945186b5c502b28578ea6",
+    "provider_groups": ["openai:codex", "opencode:opencode.ai", "xai:grok.com"],
+    "report_sha256": "sha256:9cf97e6c567816b6d8ae6286d691f7881efc7c85b797a814698a1706b584cd56",
+    "run_id": "council-20260831T000637Z-94847c30",
     "scope": {
-      "base_revision": "origin/main",
-      "change_fingerprint": "sha256:746306bdcb476604349ea0fb117dc9cd4090e4063dd5f80b468a372032c381c1",
-      "control_fingerprint": "sha256:41a2cd7a55a391e426aa1e4c1c979a0bb791d4df3cc01ae455978bdab75e0ff1",
-      "revision": "059bb7890d47ccd33ae88fea6607a08282648b13"
+      "base_revision": "9f7423e7ca49e2eab754e4d78fa33651eb145928",
+      "change_fingerprint": "sha256:d79099d6cfab180733d17f157a440ebd7bff1233f01e67e7ccc148acfc650c8b",
+      "control_fingerprint": "sha256:d2ee69988bac8940f5587254ffce165c227279077fd4700d53fef60a6ed55e6b",
+      "revision": "9f7423e7ca49e2eab754e4d78fa33651eb145928"
     },
     "tier": "high"
   },
-  "reviewed_at": "2026-08-13T07:59:04+00:00",
+  "reviewed_at": "2026-08-31T00:16:04+00:00",
   "schema_version": 1,
-  "source_revision": "059bb7890d47ccd33ae88fea6607a08282648b13",
+  "source_revision": "9f7423e7ca49e2eab754e4d78fa33651eb145928",
   "state": "reviewed"
 }
