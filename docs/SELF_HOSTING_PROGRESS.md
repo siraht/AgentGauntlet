@@ -288,7 +288,8 @@ turning inherited brownfield debt into an unrelated development blocker.
       visible in run evidence.
 - [ ] Detect or review wrapper-chain/file-sharding responses so splitting a file
       without reducing complexity or coupling is not accepted as pruning.
-- [ ] Never allow ordinary feature work to raise a budget or add an exclusion.
+- [x] Never allow ordinary feature work to raise a budget or add an exclusion;
+      threshold and exclusion changes remain protected maintenance operations.
 
 ### Execution-profile design
 
@@ -330,9 +331,14 @@ turning inherited brownfield debt into an unrelated development blocker.
 - [x] Refactor the source-size and artifact engines to pass their own starter
       caps: maximum cyclomatic complexity is 10 and 7 respectively; maximum
       ABC magnitude is 18.25 and 19.85 respectively.
-- [ ] Run the fast gauntlet after integration and retain immutable evidence.
-- [ ] Run the risk-selected deep checkpoint only after the implementation
-      surface settles.
+- [x] Run the fast gauntlet after integration and retain immutable evidence.
+      Clean-checkout enforced run `20260831-002818-77db63a1` passed in 51.4
+      seconds and its manifest verifies.
+- [x] Run the risk-selected deep checkpoint only after the implementation
+      surface settles. Shadow run `20260831-000424-e49aef17` retained every
+      result: implementation gates passed while inherited security findings,
+      missing performance-service evidence, and assurance evidence remained
+      explicitly non-green.
 - [x] Dogfood the structure and resource adapters on AgentGauntlet in
       ratchet-compatible mode: both pass after the integration refactors.
       Whole-profile proof remains open because a pre-existing uncommitted README
@@ -340,8 +346,8 @@ turning inherited brownfield debt into an unrelated development blocker.
 - [x] Revert every deliberate fault automatically through temporary test
       repositories rather than leaving fault files in the checkout.
 - [x] Update adapter-catalog, project-status, and self-hosting guidance.
-- [ ] Produce granular commits and push only after local evidence is complete;
-      do not re-enable or invoke GitHub Actions.
+- [x] Produce granular commits and push only after local evidence is complete;
+      GitHub Actions stayed disabled and was not invoked.
 
 ### Initial policy values to validate, not silently weaken
 
@@ -382,8 +388,21 @@ passing tests plus 80 subtests; the full unit adapter reports 768 passing Python
 tests and 16 passing Vitest tests; AgentGauntlet's structure and static-resource
 adapters both pass.
 
-The complete fast/deep workflow is not yet green: the only known fast formatting
-failure is the pre-existing uncommitted README, which this rollout deliberately
-does not overwrite or commit, and the risk-selected deep/council checkpoint
-therefore remains open. That is a workspace ownership limitation, not a relabelled
-pass.
+The rollout has now crossed the self-hosting boundary. Deep shadow run
+`20260831-000424-e49aef17` produced proposal
+`debt-20260831-000424-e49aef17-9d85bc4bf0c7`; verified council
+`council-20260831T000637Z-94847c30` cleared that exact measured floor across all
+five roles and three provider groups. Commit `5398f93` installed the reviewed
+baseline through a scoped one-file maintenance request. Clean-checkout enforced
+fast run `20260831-002818-77db63a1` then passed with six inherited items, zero
+new debt, zero regressions, and a verified immutable manifest.
+
+The risk-selected deep profile is not green and is not described as green:
+security debt, missing performance-service evidence, and final assurance
+evidence remain open. The generic policy-maintenance council also blocked the
+baseline diff because it compared the baseline's intentional pre-install
+measurement scope to the post-install candidate, exposing a self-reference
+integration gap. That blocked council is retained immutably as
+`council-20260831T002002Z-51787807`; the specialized baseline workflow itself
+was authorized by the exact maintenance request and exact debt council. The
+owner's unrelated README edit remains untouched.

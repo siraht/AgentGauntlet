@@ -1,6 +1,6 @@
 # AgentGauntlet project status
 
-Status date: 2026-08-30
+Status date: 2026-08-31
 
 ## The short version
 
@@ -13,19 +13,23 @@ review a change; retain tamper-evident evidence; inspect the result in a CLI,
 TUI, or local dashboard; and adopt an existing repository without making all
 of its inherited debt block ordinary work.
 
-AgentGauntlet is currently dogfooding itself in **shadow** mode. Its controls
-work and its development workflow is usable, but its recovered implementation
-still has substantial whole-tree coverage, complexity, and mutation debt. No
-reviewed debt baseline has been installed, so AgentGauntlet honestly does not
-claim that self-hosting ratchet or strict certification has been earned.
+AgentGauntlet is now dogfooding itself in **ratchet** mode. Its reviewed debt
+baseline was derived from manifested deep shadow run
+`20260831-000424-e49aef17`, cleared by the five-role, three-provider council
+`council-20260831T000637Z-94847c30`, and installed through the exact one-file
+maintenance path. Inherited debt remains visible; strict whole-tree
+certification has not been earned.
 
 The current rollout now contains independently tested kernels for whole-file
 source budgets, built CSS/JavaScript byte budgets, and versioned Python and
 JavaScript/TypeScript ABC metrics. Their protected configuration, adapters,
 profiles, retrospective inventory, and generated-project defaults are wired and
-pass the focused integration matrix. A complete fast/deep claim remains open
-because the owner-controlled uncommitted README fails formatting and workspace
-integrity; the rollout does not overwrite or silently commit that file.
+pass the focused integration matrix. Clean-checkout enforced fast run
+`20260831-002818-77db63a1` passed in 51.4 seconds with a verified manifest, six
+visible inherited items, and zero new debt or regressions. The risk-selected
+deep profile remains honestly non-green because security debt, missing
+performance-service evidence, and final assurance evidence are still open. The
+owner-controlled uncommitted README remains untouched in the working checkout.
 
 ## What the owner should believe
 
@@ -36,7 +40,7 @@ integrity; the rollout does not overwrite or silently commit that file.
 | Is AgentGauntlet ready for a production release?           | **No claim yet**           | Release evidence and actual human release authority are intentionally separate from development evidence.                                                       |
 | Can it install into a new TypeScript/web project?          | **Yes, with beta caution** | A generated strict Vite/TypeScript project passed unit, property, structure, coverage, acceptance, and browser-wiring checks in a connected dogfood run.        |
 | Can it adopt an existing repository without freezing work? | **Yes**                    | Shadow audit separates measured quality debt from missing evidence, invalid configuration, infrastructure failure, and unknown product intent.                  |
-| Does the no-regression ratchet work?                       | **Implemented and tested** | It compares exact reviewed debt fingerprints and values, but it becomes authoritative only after someone reviews and installs a baseline.                       |
+| Does the no-regression ratchet work?                       | **Yes, now self-hosted**   | The reviewed baseline is installed; enforced fast evidence reports six inherited items while blocking new fingerprints and worsened values.                     |
 | Can agents replace every human decision?                   | **No**                     | Agents can provide broad technical review. Product intent, policy ownership, and release authority remain explicit boundaries rather than fabricated approvals. |
 
 ## What works now
@@ -92,11 +96,12 @@ and release checkpoints. Starter boundaries and language-specific counting
 rules are listed in `docs/LANGUAGE_ADAPTER_CATALOG.md`.
 
 Proved at this checkpoint: project/schema/scaffold compatibility, source and
-Python-function no-regression behavior, a green complete unit adapter (768
-Python and 16 Vitest tests), and green structure and static-resource adapters on
-AgentGauntlet itself. Still open: route-specific initial-load size,
-anti-renaming classification, full built-output fault taxonomy, and a fresh
-green immutable fast/deep manifest for the exact final candidate. Existing
+Python-function no-regression behavior, a green complete unit adapter (770
+Python and 16 Vitest tests), green structure and static-resource adapters, and
+a verified clean-checkout enforced fast manifest. Still open: route-specific
+initial-load size, anti-renaming classification, the complete built-output
+fault taxonomy, and remediation of the explicitly retained deep-profile gaps.
+Existing
 cyclomatic complexity, function length, nesting, CRAP, coverage, acceptance,
 and mutation controls remain required.
 
@@ -158,12 +163,12 @@ variables are minimized, and timeouts fail closed.
 
 Configured perspectives are:
 
-| Perspective                   | Default model              |
-| ----------------------------- | -------------------------- |
-| Requirements and behavior     | Grok 4.5                   |
-| Test and evidence quality     | Codex GPT-5.6 Sol          |
-| Security and trust boundaries | Codex GPT-5.6 Sol          |
-| Operations and rollback       | OpenCode DeepSeek V4 Flash |
+| Perspective                   | Default model                                |
+| ----------------------------- | -------------------------------------------- |
+| Requirements and behavior     | Grok 4.5                                     |
+| Test and evidence quality     | Codex GPT-5.6 Sol                            |
+| Security and trust boundaries | Codex GPT-5.6 Sol                            |
+| Operations and rollback       | OpenCode Nemotron 3.5 Lightning (free route) |
 
 GLM-4.7-Flash and DeepSeek V4 Flash form the inexpensive smoke tier. The PR
 tier retains Synthetic support. High tier uses three existing
@@ -213,19 +218,21 @@ the original plan either left incomplete or trusted too easily:
 
 - The recovered codebase is not whole-tree clean at current Standard
   thresholds. Existing coverage, structure, and mutation debt remains real.
-- AgentGauntlet has not installed a reviewed self-hosting debt baseline because
-  the owner explicitly deferred that review. It therefore remains in shadow.
+- AgentGauntlet is in ratchet, not strict mode. The reviewed baseline contains
+  six inherited items and must be retired gradually rather than hidden.
 - Stop-hook enforcement is disabled. It should remain disabled until the fast
   profile is green, stable, and reasonably quick across repeated runs.
-- The advisory council has no policy authority and has not been calibrated
-  against enough real reviewed changes to justify expanding its authority.
+- The council is accepted as the normal technical authority for the specialized
+  debt-baseline workflow, but its result cannot relabel deterministic failures
+  or authorize a release.
 - Critical changes still need actual accountable human review and release
   authority.
 - Two representative brownfield pilots are intentionally deferred.
-- The new source-file, ABC, and built-resource kernels have not yet earned an
-  end-to-end rollout claim. Candidate adapter/profile code must pass its schema,
-  scaffold, retrospective, deliberate-regression, fast, and risk-selected deep
-  checkpoints before the checklist can close.
+- The generic policy-maintenance council still misinterprets the intentional
+  pre-install measurement scope embedded in a reviewed debt baseline as stale
+  post-install authority. The specialized exact-request plus debt-council path
+  is proven; unifying those two scopes without a self-referential fingerprint is
+  an open integration improvement.
 
 ## How confidence was built
 
@@ -239,12 +246,14 @@ AgentGauntlet has been tested at several levels:
 - live JavaScript/Python/package-manager/browser fixtures;
 - an end-to-end strict TypeScript/web pilot;
 - local dashboard and TUI control-surface dogfood;
-- deterministic repeated release builds and hosted CI;
+- deterministic repeated release builds and clean local checkout verification;
 - bounded changed-code structure, coverage, and mutation proofs;
 - real provider-tool discovery and fail-closed advisory-council evidence.
 
 This is strong evidence that the mechanisms execute as designed. It is not a
 mathematical proof that every adapter is correct in every future repository.
+GitHub Actions remains disabled, so none of this evidence consumed hosted
+Actions minutes.
 
 ## Practical use today
 
@@ -270,15 +279,15 @@ For ordinary development:
 
 ```sh
 ./aqg check inner
-./aqg audit shadow --profile fast
-./aqg check-risk --shadow --keep-going
+./aqg check fast
+./aqg check-risk --keep-going
 ./aqg review --write --sarif
 ./aqg status
 ```
 
-The two shadow commands are correct for this repository today. After a reviewed
-baseline and promotion to `ratchet`, use `check fast` and
-`check-risk --keep-going` instead.
+AgentGauntlet itself now uses these enforcing ratchet commands. Repositories
+that have not installed a reviewed baseline must continue using
+`audit shadow --profile fast` and `check-risk --shadow --keep-going`.
 
 Use deep checks at PR or meaningful checkpoint boundaries. Use release and
 human-assurance controls only for an actual release or risk profile that
@@ -286,23 +295,29 @@ requires them.
 
 ## Best next improvements
 
-1. Finish and prove the structural/resource-budget integration: project and
-   scaffold contracts, adapter exit taxonomy, retrospective fingerprints,
-   deliberate inherited/new/regression probes, immutable fast/deep evidence,
-   and generated TypeScript/web dogfood.
-2. Calibrate the advisory council on a corpus of known-good and deliberately
+1. Unify specialized debt-baseline authority with the generic
+   policy-maintenance gate without introducing a self-referential candidate
+   fingerprint; preserve the blocked council as the regression fixture.
+2. Reduce council latency with isolated parallel ballots and selective retry of
+   only missing roles, while retaining immutable per-role evidence and quorum.
+3. Resolve the real deep-profile gaps: triage the inherited security findings,
+   configure reproducible performance-service evidence, and produce the
+   applicable assurance artifacts without manufacturing a pass.
+4. Reduce the roughly 51-second fast checkpoint toward a seconds-scale inner
+   loop without removing its complete coherent checkpoint coverage.
+5. Prove anti-renaming path classification, wrapper-chain/file-sharding review,
+   and the complete built-output failure taxonomy end to end.
+6. Calibrate the advisory council on a corpus of known-good and deliberately
    defective changes; measure unique finding yield, false positives,
    contradiction rate, latency, and cost by role/model.
-3. Add approved enterprise/local provider routes for `internal`,
+7. Add approved enterprise/local provider routes for `internal`,
    `confidential`, and `regulated` bundles. Current routing already classifies
    and rejects those scopes before any provider call.
-4. Add bounded reconciliation: reviewers see anonymized conflicting claims,
+8. Add bounded reconciliation: reviewers see anonymized conflicting claims,
    not identities, and must cite evidence for any changed position.
-5. Generate a plain-language owner brief that explains each council finding,
+9. Generate a plain-language owner brief that explains each council finding,
    confidence, evidence, and recommended decision without technical shorthand.
-6. Continue extracting recovered complexity hotspots behind characterization
-   tests and bounded mutation campaigns.
-7. Reduce the inner-loop p95 without removing controls; keep the complete fast
-   suite at coherent checkpoints rather than every edit.
-8. Pilot two real brownfield repositories later, as intentionally deferred,
-   before recommending portfolio-wide ratchet defaults.
+10. Continue extracting recovered complexity hotspots behind characterization
+    tests and bounded mutation campaigns.
+11. Pilot two real brownfield repositories later, as intentionally deferred,
+    before recommending portfolio-wide ratchet defaults.
