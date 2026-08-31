@@ -77,6 +77,16 @@ def test_real_profile_evidence_conforms_to_published_schemas(tmp_path: Path) -> 
     with (
         mock.patch.dict(os.environ, {"AQG_RUN_ID": run_id}, clear=False),
         mock.patch("aqg.runner.load_project", return_value=_project()),
+        mock.patch(
+            "aqg.runner._provenance",
+            return_value={
+                "revision": "a" * 40,
+                "base_ref": "main",
+                "base_revision": "b" * 40,
+                "change_fingerprint": "sha256:" + "c" * 64,
+                "control_fingerprint": "sha256:" + "d" * 64,
+            },
+        ),
     ):
         code, _ = run_profile(
             tmp_path,

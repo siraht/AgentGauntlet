@@ -74,7 +74,6 @@ from aqg.evidence_manifest import write_run_manifest
 from aqg.policy import GATE_NAMES, load_policy, render_policy, validate_policy
 from aqg.project import load_project, validate_project
 from aqg.review import analyze_review
-from aqg.runner import run_gate
 from aqg.sbom import (
     generate_sboms,
     javascript_inventory,
@@ -1182,25 +1181,6 @@ class SetupContractTests(RepoCase):
         self.assertEqual(report["scope"], "none")
         self.assertEqual(report["functions"], [])
         self.assertEqual(report["failures"], [])
-
-    def test_gate_commands_do_not_invoke_a_shell(self) -> None:
-        escaped = self.root / "escaped"
-        policy = {
-            "gates": {
-                "probe": {
-                    "command": f"python3 -c \"print('ok')\" ; touch {escaped}",
-                    "clean_paths": [],
-                    "quality_failure_exit_codes": [1],
-                    "timeout_seconds": 10,
-                }
-            }
-        }
-
-        code, evidence = run_gate(self.root, policy, "probe", "shell-safety")
-
-        self.assertEqual(code, PASS)
-        self.assertEqual(evidence["raw_exit_code"], 0)
-        self.assertFalse(escaped.exists())
 
     def test_auto_mode_selects_adopt_with_history(self) -> None:
         (self.root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")

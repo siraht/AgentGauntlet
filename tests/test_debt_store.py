@@ -53,6 +53,7 @@ def _run(
             "mode": mode,
             "revision": revision,
             "base_ref": "HEAD",
+            "base_revision": "b" * 40,
             "change_fingerprint": change_fingerprint(root, "HEAD"),
             "control_fingerprint": control_fingerprint(root),
         },
@@ -99,7 +100,7 @@ def _clear_council_report(
         },
         "scope": {
             "revision": proposal["source_revision"],
-            "base_revision": "HEAD",
+            "base_revision": "b" * 40,
             "change_fingerprint": proposal["measurement"]["change_fingerprint"],
             "control_fingerprint": control_fingerprint or proposal["control_fingerprint"],
             "evidence_manifest_sha256": "sha256:" + "9" * 64,
@@ -137,6 +138,7 @@ def test_council_authority_requires_clear_diverse_exact_candidate_evidence(
     complete_controls = "sha256:" + "f" * 64
     summary = {
         "base_ref": "HEAD",
+        "base_revision": "b" * 40,
         "control_fingerprint": complete_controls,
     }
     report = _clear_council_report(proposal, control_fingerprint=complete_controls)

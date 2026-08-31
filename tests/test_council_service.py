@@ -203,6 +203,7 @@ def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
     run_dir.mkdir(parents=True)
     summary = {
         "revision": "abc123",
+        "base_revision": "origin/main",
         "change_fingerprint": "sha256:" + "1" * 64,
         "control_fingerprint": "sha256:" + "2" * 64,
         "profile": "deep",
@@ -210,7 +211,6 @@ def test_quality_run_selection_requires_scope_match_manifest_and_secrets(
     }
     write_evidence_json(run_dir / "summary.json", summary)
     write_run_manifest(run_dir, "run-1")
-
     selected, selected_summary = service._matching_quality_run(tmp_path, _scope(), "deep")
 
     assert selected == run_dir

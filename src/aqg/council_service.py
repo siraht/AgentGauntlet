@@ -38,6 +38,7 @@ from .evidence_manifest import (
     write_evidence_json,
     write_run_manifest,
 )
+from .git_refs import resolve_git_commit
 from .policy import load_policy
 from .project import load_project
 from .review import analyze_review
@@ -158,14 +159,9 @@ def _matching_quality_run(
             summary = read_json(run_dir / "summary.json")
         except ConfigurationError:
             continue
-        expected = (scope["revision"], scope["change_fingerprint"], scope["control_fingerprint"])
-        actual = (
-            summary.get("revision"),
-            summary.get("change_fingerprint"),
-            summary.get("control_fingerprint"),
-        )
+        identity = ("revision", "base_revision", "change_fingerprint", "control_fingerprint")
         if (
-            actual == expected
+            all(summary.get(key) == scope[key] for key in identity)
             and _secret_gate_passed(summary)
             and _profile_satisfies(summary.get("profile"), required_profile)
         ):
@@ -458,7 +454,7 @@ def _json_text(value: Any) -> str:
 def _scope(root: Path, base: str) -> dict[str, str]:
     return {
         "revision": git_revision(root),
-        "base_revision": base,
+        "base_revision": resolve_git_commit(root, base),
         "change_fingerprint": change_fingerprint(root, base),
         "control_fingerprint": control_fingerprint(root),
     }

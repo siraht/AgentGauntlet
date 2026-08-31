@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from unittest import mock
 
@@ -19,8 +20,35 @@ from aqg.evidence import (
     snapshot_gate_details,
 )
 from aqg.evidence_manifest import verify_run_manifest, write_run_manifest
-from aqg.runner import run_gate, run_profile
+from aqg.runner import _provenance, run_gate, run_profile
 from aqg.util import write_json
+
+
+def test_run_provenance_resolves_symbolic_base_to_immutable_commit(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "aqg@example.test"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "AQG Test"], cwd=tmp_path, check=True)
+    (tmp_path / "tracked.txt").write_text("baseline\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"], cwd=tmp_path, check=True, capture_output=True
+    )
+    expected = subprocess.run(
+        ["git", "rev-parse", "main"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    project = _project()
+    project["enforcement"]["base_ref"] = "main"
+
+    with mock.patch("aqg.runner.load_project", return_value=project):
+        provenance = _provenance(tmp_path)
+
+    assert provenance["base_ref"] == "main"
+    assert provenance["base_revision"] == expected
+    assert provenance["base_revision"] != provenance["base_ref"]
 
 
 def _report(root: Path, directory: str = "unit", **changes: object) -> Path:
@@ -198,6 +226,13 @@ def test_standalone_gate_finalizes_and_missing_adapter_detail_is_infrastructure(
         _gate_policy(f"python3 {script.name} adapter unit"),
         "unit",
         "standalone",
+        provenance={
+            "revision": "candidate",
+            "base_ref": "main",
+            "base_revision": "b" * 40,
+            "change_fingerprint": "sha256:change",
+            "control_fingerprint": "sha256:control",
+        },
     )
     run_dir = tmp_path / ".aqg" / "runs" / "standalone"
     assert code == INFRASTRUCTURE_ERROR
@@ -205,6 +240,27 @@ def test_standalone_gate_finalizes_and_missing_adapter_detail_is_infrastructure(
     assert verify_run_manifest(run_dir)["ok"] is True
     with pytest.raises(ConfigurationError, match="already exists"):
         run_gate(tmp_path, _gate_policy("python3 -c \"print('ok')\""), "unit", "standalone")
+
+
+def test_gate_commands_do_not_invoke_a_shell(tmp_path: Path) -> None:
+    escaped = tmp_path / "escaped"
+    code, evidence = run_gate(
+        tmp_path,
+        _gate_policy(f"python3 -c \"print('ok')\" ; touch {escaped}", gate="probe"),
+        "probe",
+        "shell-safety",
+        provenance={
+            "revision": "candidate",
+            "base_ref": "main",
+            "base_revision": "b" * 40,
+            "change_fingerprint": "sha256:change",
+            "control_fingerprint": "sha256:control",
+        },
+    )
+
+    assert code == PASS
+    assert evidence["raw_exit_code"] == 0
+    assert not escaped.exists()
 
 
 def test_trusted_gate_never_executes_candidate_controlled_grader(tmp_path: Path) -> None:
@@ -238,6 +294,13 @@ def test_trusted_gate_never_executes_candidate_controlled_grader(tmp_path: Path)
             _gate_policy("python3 quality/qg.py adapter probe", gate="probe"),
             "probe",
             "trusted-grader",
+            provenance={
+                "revision": "candidate",
+                "base_ref": "main",
+                "base_revision": "b" * 40,
+                "change_fingerprint": "sha256:change",
+                "control_fingerprint": "sha256:control",
+            },
         )
     assert code == PASS
     assert str(trusted_launcher.resolve()) in evidence["command"]
@@ -250,6 +313,7 @@ def test_profile_snapshots_details_then_manifests_before_latest(tmp_path: Path) 
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
+        "base_revision": "b" * 40,
         "change_fingerprint": "sha256:change",
         "control_fingerprint": "sha256:control",
     }
@@ -271,6 +335,7 @@ def test_latest_is_not_updated_when_manifest_finalization_fails(tmp_path: Path) 
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
+        "base_revision": "b" * 40,
         "change_fingerprint": "sha256:change",
         "control_fingerprint": "sha256:control",
     }
@@ -297,6 +362,7 @@ def test_profile_summary_records_wall_clock_start_before_gate_execution(tmp_path
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
+        "base_revision": "b" * 40,
         "change_fingerprint": "sha256:change",
         "control_fingerprint": "sha256:control",
     }
@@ -335,6 +401,7 @@ def test_shadow_run_preserves_quality_observation_but_returns_non_blocking(tmp_p
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
+        "base_revision": "b" * 40,
         "change_fingerprint": "sha256:change",
         "control_fingerprint": "sha256:control",
     }
@@ -386,6 +453,7 @@ def test_shadow_run_records_unusable_measurement_without_blocking_development(
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
+        "base_revision": "b" * 40,
         "change_fingerprint": "sha256:change",
         "control_fingerprint": "sha256:control",
     }
@@ -420,6 +488,7 @@ def test_explicit_shadow_records_stale_baseline_without_blocking(tmp_path: Path)
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
+        "base_revision": "b" * 40,
         "change_fingerprint": "sha256:change",
         "control_fingerprint": "sha256:control",
     }
@@ -510,6 +579,7 @@ def test_reviewed_ratchet_reports_inherited_debt_but_rejects_worsening(
     provenance = {
         "revision": "candidate",
         "base_ref": "main",
+        "base_revision": "b" * 40,
         "change_fingerprint": "sha256:change",
         "control_fingerprint": "sha256:control",
     }

@@ -33,14 +33,12 @@ from .evidence_manifest import (
     write_evidence_text,
     write_run_manifest,
 )
+from .git_refs import immutable_provenance
 from .policy import safe_remove, validate_policy
 from .project import load_project
 from .promotion import enforcement_stage
 from .retrospective import build_retrospective, ratchet_exit_code
 from .util import (
-    change_fingerprint,
-    control_fingerprint,
-    git_revision,
     human_duration,
     read_json,
     utc_now,
@@ -69,13 +67,7 @@ def _base_ref(root: Path) -> str:
 
 
 def _provenance(root: Path) -> dict[str, str]:
-    base = _base_ref(root)
-    return {
-        "revision": git_revision(root),
-        "base_ref": base,
-        "change_fingerprint": change_fingerprint(root, base),
-        "control_fingerprint": control_fingerprint(root),
-    }
+    return immutable_provenance(root, _base_ref(root))
 
 
 def _merge_settings(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

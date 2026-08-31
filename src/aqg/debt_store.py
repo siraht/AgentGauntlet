@@ -238,7 +238,7 @@ def _council_scope_errors(
     scope = report.get("scope")
     expected = {
         "revision": proposal["source_revision"],
-        "base_revision": summary.get("base_ref"),
+        "base_revision": summary.get("base_revision"),
         "change_fingerprint": proposal["measurement"]["change_fingerprint"],
         # Council evidence is bound to the complete execution controls captured
         # by the shadow run.  The proposal deliberately stores the narrower
