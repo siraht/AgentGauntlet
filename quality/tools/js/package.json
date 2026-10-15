@@ -1,7 +1,7 @@
 {
   "description": "Project-local JavaScript/Web quality tools resolved and locked during setup managed by Agent Quality Gauntlet",
   "devDependencies": {
-    "@axe-core/playwright": "4.12.1",
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.0",
     "@stryker-mutator/core": "9.6.1",
